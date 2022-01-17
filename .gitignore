@@ -1,8 +1,8 @@
 config/*.conf
 env/
+__pycache__/
 dreams/v-diffusion-pytorch/
 dreams/stylegan2/
-dreams/__pycache__/
 dreams/vqgan/CLIP/
 dreams/vqgan/models/
 dreams/vqgan/taming-transformers/
