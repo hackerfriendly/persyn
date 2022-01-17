@@ -111,15 +111,13 @@ def vdiff_clip(channel, prompt, model, image_id):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch '''
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Supported models: cc12m_1 yfcc_1 yfcc_2
         cmd = [
             f'{SCRIPT_PATH}/v-diffusion-pytorch/clip_sample.py',
             '--out', f'{tmpdir}/{image_id}.jpg',
-            '--model', 'yfcc_2',
+            '--model', model,
             '--steps', f'{DEFAULT_STEPS}',
             '--size', '512', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
-            '--model', model,
             prompt
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
@@ -140,7 +138,7 @@ def vqgan(channel, prompt, model, image_id):
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
 def stylegan2(channel, prompt, model, image_id):
-    ''' https://colab.research.google.com/drive/15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP '''
+    ''' https://github.com/NVlabs/stylegan2 '''
     psi = random.uniform(0.6, 0.9)
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
