@@ -1,4 +1,4 @@
-dreams/env/
+env/
 dreams/v-diffusion-pytorch/
 dreams/stylegan2/
 dreams/__pycache__/

@@ -1,0 +1,12 @@
+slack_bolt
+openai
+requests
+certifi
+nltk
+elasticsearch
+humanize
+text2emotion
+alt-profanity-check
+flair
+spacy
+tweepy
