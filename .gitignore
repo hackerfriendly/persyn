@@ -1,3 +1,4 @@
+config/*.conf
 env/
 dreams/v-diffusion-pytorch/
 dreams/stylegan2/
