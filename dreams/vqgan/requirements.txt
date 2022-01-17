@@ -1,0 +1,10 @@
+setuptools==59.5.0
+ftfy
+regex
+tqdm
+omegaconf
+pytorch-lightning
+einops
+transformers
+pyimage
+torchvision
