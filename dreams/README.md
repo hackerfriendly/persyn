@@ -1,15 +1,8 @@
-Image generators go here.
+Do AIs dream of electric prompts? Image generators go here.
 
-# Installation
+To install all available image generators:
 
-1) Make a virtualenv and activate it
+  $ ./install.sh
 
-  virtualenv --python=python3 env --prompt='(dreams-env) '
-  . env/bin/activate
-
-2) cd vqgan/ && ./install.sh && cd -
-
-3) git clone https://github.com/hackerfriendly/v-diffusion-pytorch
-
-4) cd v-diffulsion-pytorch/ && ./install.sh
-
+This will download approximately 20GB of model data needed for CLIP, VQGAN,
+v-diffusion-pytorch, and StyleGAN2.
