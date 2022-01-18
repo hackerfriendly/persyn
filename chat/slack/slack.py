@@ -5,7 +5,6 @@ slackbolt.py
 A Slack bot based on GPT-3.
 """
 import collections
-import json
 import logging
 import os
 import random
@@ -18,38 +17,34 @@ import uuid
 import datetime as dt
 import threading as th
 
-from collections import Counter
-
 import urllib3
 import requests
 import humanize
-import openai
 import tweepy
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk.errors import SlackApiError
 
-# sentiment analysis
-import flair
-
-# emotion "analysis"
-import text2emotion as te
-
-# scikit-learn profanity filter (alt-profanity-check)
-from profanity_check import predict_prob as profanity_prob
-
 # long term memory
 from elasticsearch import Elasticsearch
+
+# Emotions courtesy of Dr. Noonian Soong
+from feels import (
+    random_emoji,
+    nope_emoji,
+    get_spectrum,
+    get_feels,
+    rank_feels
+)
+
+from gpt import GPT
 
 # Disable SSL warnings for Elastic
 urllib3.disable_warnings()
 
 # These are all defined in config/*.conf
-app = App(token=os.environ['SLACK_BOT_TOKEN'])
-
-openai.api_key = os.getenv('OPENAI_API_KEY')
-OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'davinci')
+ME = os.environ["BOT_NAME"]
 
 ELASTIC_URL = os.environ['ELASTIC_URL']
 ELASTIC_KEY = os.environ.get('ELASTIC_KEY', None)
@@ -58,19 +53,17 @@ ELASTIC_INDEX = os.environ.get('ELASTIC_INDEX', 'bot-v0')
 # Minimum reply quality. Lower numbers get more dark + sleazy.
 MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
 
-ME = os.environ["BOT_NAME"]
-
 IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip", "vqgan", "stylegan2"]
 IMAGE_ENGINE_WEIGHTS = [0.3, 0.3, 0.3, 0.1]
 
 # New conversation every 10 minutes
 CONVERSATION_INTERVAL = 600
 
+# GPT-3 for completion
+completion = GPT(bot_name=ME, min_score=MINIMUM_QUALITY_SCORE)
+
 # Long-term memory
 es = Elasticsearch([ELASTIC_URL], http_auth=(ME, ELASTIC_KEY), verify_certs=False, timeout=30)
-
-# flair sentiment
-fs = flair.models.TextClassifier.load('en-sentiment')
 
 # Twitter
 twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
@@ -80,8 +73,8 @@ twitter = tweepy.API(twitter_auth)
 
 BASEURL = os.environ.get('BASEURL', None)
 
-# Strictly forbidden words
-FORBIDDEN = ['Elsa', 'Arendelle', 'Kristoff', 'Olaf', 'Frozen']
+# Slack bolt App
+app = App(token=os.environ['SLACK_BOT_TOKEN'])
 
 # How are we feeling today?
 feels = {}
@@ -91,9 +84,6 @@ STM = 16
 
 # Train of Thought (Short Term Memory): one deque per channel
 ToT = {}
-
-# Heuristic choice statistics
-STATS = {}
 
 # Username cache
 known_users = {}
@@ -108,104 +98,6 @@ def setup_logging(stream=sys.stderr, log_format="%(message)s", debug=False):
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(stream=stream, level=level, format=log_format)
 
-def random_emoji():
-    ''' :wink: '''
-    return random.choice((
-        ':bowtie:', ':smile:', ':simple_smile:', ':laughing:', ':blush:', ':smiley:', ':relaxed:',
-        ':smirk:', ':heart_eyes:', ':kissing_heart:', ':kissing_closed_eyes:', ':flushed:',
-        ':relieved:', ':satisfied:', ':grin:', ':wink:', ':stuck_out_tongue_winking_eye:',
-        ':stuck_out_tongue_closed_eyes:', ':grinning:', ':kissing:', ':kissing_smiling_eyes:',
-        ':stuck_out_tongue:', ':sleeping:', ':worried:', ':frowning:', ':anguished:',
-        ':open_mouth:', ':grimacing:', ':confused:', ':hushed:', ':expressionless:', ':unamused:',
-        ':sweat_smile:', ':sweat:', ':disappointed_relieved:', ':weary:', ':pensive:',
-        ':disappointed:', ':confounded:', ':fearful:', ':cold_sweat:', ':persevere:', ':cry:',
-        ':sob:', ':joy:', ':astonished:', ':scream:', ':tired_face:', ':angry:',
-        ':rage:', ':triumph:', ':sleepy:', ':yum:', ':mask:', ':sunglasses:', ':dizzy_face:',
-        ':imp:', ':smiling_imp:', ':neutral_face:', ':no_mouth:', ':innocent:', ':alien:',
-        ':yellow_heart:', ':blue_heart:', ':purple_heart:', ':heart:', ':green_heart:',
-        ':broken_heart:', ':heartbeat:', ':heartpulse:', ':two_hearts:', ':revolving_hearts:',
-        ':cupid:', ':sparkling_heart:', ':sparkles:', ':star:', ':star2:', ':dizzy:', ':boom:',
-        ':collision:', ':anger:', ':exclamation:', ':question:', ':grey_exclamation:',
-        ':grey_question:', ':zzz:', ':dash:', ':sweat_drops:', ':notes:', ':musical_note:',
-        ':fire:', ':shit:', ':+1:', ':-1:',
-        ':ok_hand:', ':punch:', ':fist:', ':v:', ':wave:', ':hand:',
-        ':raised_hand:', ':open_hands:', ':point_up:', ':point_down:', ':point_left:',
-        ':point_right:', ':raised_hands:', ':pray:', ':point_up_2:', ':clap:', ':muscle:',
-        ':the_horns:', ':middle_finger:'
-    ))
-
-# Behold the emoji emotional spectrum
-spectrum = [
-    ':imp:', ':angry:', ':rage:', ':triumph:', ':scream:', ':tired_face:',
-    ':sweat:', ':cold_sweat:', ':fearful:', ':sob:', ':weary:', ':cry:', ':mask:',
-    ':confounded:', ':persevere:', ':unamused:', ':confused:', ':dizzy_face:',
-    ':disappointed_relieved:', ':disappointed:', ':worried:', ':anguished:',
-    ':frowning:', ':astonished:', ':flushed:', ':open_mouth:', ':hushed:',
-    ':pensive:', ':expressionless:', ':neutral_face:', ':grimacing:',
-    ':no_mouth:', ':kissing:', ':relieved:', ':smirk:', ':relaxed:',
-    ':simple_smile:', ':blush:', ':wink:', ':sunglasses:', ':yum:',
-    ':stuck_out_tongue:', ':stuck_out_tongue_closed_eyes:',
-    ':stuck_out_tongue_winking_eye:', ':smiley:', ':smile:', ':laughing:',
-    ':sweat_smile:', ':joy:', ':grin:'
-]
-
-emotion_map = {
-    'Happy': 'happy',
-    'Angry': 'angry',
-    'Surprise': 'surprised',
-    'Sad': 'sad',
-    'Fear': 'afraid'
-}
-
-degrees = (
-    'hardly', 'barely', 'a little', 'kind of', 'sort of', 'slightly', 'somewhat',
-    'relatively', 'to some degree', 'more or less', 'fairly', 'moderately', 'just about',
-    'passably', 'tolerably', 'reasonably', 'largely', 'pretty', 'quite', 'bordering on',
-    'almost', 'thoroughly', 'truly', 'significantly', 'very', 'wholly', 'altogether',
-    'entirely', 'totally', 'utterly', 'positively', 'absolutely'
-)
-
-NOPE_EMOJI = ['-1', 'hankey', 'no_entry', 'no_entry_sign']
-
-def get_degree(score):
-    ''' Turn a 0.0-1.0 score into a degree '''
-    return degrees[int(score * (len(degrees) - 1))]
-
-def get_feels(prompt):
-    ''' How do we feel about this conversation? Ask text2emotion and return an object + text. '''
-    emotions = te.get_emotion(prompt)
-    phrase = []
-    for emo in emotions.items():
-        if emo[1] < 0.2:
-            continue
-        phrase.append(f"{get_degree(emo[1])} {emotion_map[emo[0]]}")
-
-    if not phrase:
-        return {"obj": emotions, "text": "nothing in particular"}
-
-    if len(phrase) == 1:
-        return {"obj": emotions, "text": phrase[0]}
-
-    return {"obj": emotions, "text": ', '.join(phrase[:-1]) + f", and {phrase[-1]}"}
-
-def get_flair_score(prompt):
-    ''' Run the flair sentiment prediction model. Returns a float, -1.0 to 1.0 '''
-    sent = flair.data.Sentence(prompt)
-    fs.predict(sent)
-
-    if sent.labels[0].value == 'NEGATIVE':
-        return -sent.labels[0].score
-
-    return sent.labels[0].score
-
-def get_profanity_score(prompt):
-    ''' Profanity analysis with slkearn. Returns a float, -1.0 to 0 '''
-    return -profanity_prob([prompt])[0]
-
-def has_forbidden(text):
-    ''' Returns True if any forbidden word appears in text '''
-    return bool(re.search(fr'\b({"|".join(FORBIDDEN)})\b', text))
-
 def cast(message):
     ''' Cast to icecast, maybe speak out loud '''
     try:
@@ -217,10 +109,6 @@ def cast(message):
         logging.warning(f"<<< sent to tts: {message}")
     except Exception: # pylint: disable=broad-except
         logging.info(">>> connect to tts failed.")
-
-def get_spectrum(score):
-    ''' Translate a score from -1 to 1 into an emoji on the spectrum '''
-    return spectrum[int(((score + 1) / 2) * (len(spectrum) - 1))]
 
 def load_from_ltm(channel):
     ''' Load the last conversation from LTM. '''
@@ -346,133 +234,6 @@ def save_to_ltm(channel, them, msg):
 
     return _id
 
-def get_gpt_response(prompt, tot, stop=None, temperature=0.9, max_tokens=200, engine=OPENAI_MODEL):
-    """ Send the prompt to GPT and return the response """
-    response = openai.Completion.create(
-        engine=engine,
-        prompt=prompt,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        n=8,
-        frequency_penalty=0.5,
-        presence_penalty=0.6,
-        stop=stop
-    )
-    logging.debug(f'Prompt: {prompt}\nResponse: {response}')
-
-    # Choose a response based on the most positive sentiment.
-    scored = {}
-    weights = []
-    stat = 'gpt_replies'
-    if stat not in STATS:
-        STATS[stat] = Counter()
-
-    for choice in response.choices:
-        # Just the first line
-        text = choice['text'].strip().split('\n')[0]
-        # Skip blanks
-        if not text:
-            STATS[stat].update(['blank'])
-            continue
-        # No urls
-        if 'http' in text:
-            STATS[stat].update(['URL'])
-            continue
-        if text in ['…', '...', '..', '.']:
-            STATS[stat].update(['…'])
-            continue
-        if has_forbidden(text):
-            STATS[stat].update(['forbidden'])
-            continue
-        # Skip prompt bleed-through
-        if 'This is a conversation between' in text or f'{ME} is feeling' in text or text.startswith("I am feeling"):
-            STATS[stat].update(['prompt bleed-through'])
-            continue
-        # Don't repeat yourself
-        if f"{ME}: {text}" in tot:
-            STATS[stat].update(['repetition'])
-            continue
-
-        # Too long? Ditch the last sentence fragment.
-        if choice['finish_reason'] == 'length':
-            try:
-                STATS[stat].update(['truncated to first sentence'])
-                text = text[:text.rindex('.') + 1]
-            except ValueError:
-                pass
-
-        # Now for sentiment analysis
-        raw = choice['text'].strip()
-
-        all_scores = {
-            "flair": get_flair_score(raw),
-            "t2e": rank_feels(get_feels(raw)),
-            "profanity": get_profanity_score(raw)
-        }
-
-        # Sum the sentiments, emotional heuristic, and offensive quotient
-        score = sum(all_scores.values())
-        all_scores['total'] = score
-        logging.warning(
-            ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]) + f' : {raw}'
-        )
-
-        if score < MINIMUM_QUALITY_SCORE:
-            STATS[stat].update(['poor quality'])
-            continue
-
-        if all_scores['profanity'] < -0.5:
-            STATS[stat].update(['profanity'])
-            continue
-
-        scored[score] = text
-
-    if not scored:
-        STATS[stat].update(['replies exhausted'])
-        return ':shrug:'
-
-    for item in sorted(scored.items()):
-        logging.warning(f"{item[0]:0.2f}: {item[1]}")
-
-    # Start with 1.0 for each reply
-    weights = [1.0,] * len(scored)
-
-    # If there's only one, use it
-    if len(scored) == 1:
-        STATS[stat].update(['only one reply possible'])
-    # If we're feeling too down, take it up a notch
-    elif rank_feels(feels['current']) < 0:
-        STATS[stat].update(['feeling down'])
-        weights[0] /= 10
-        weights[1] /= 2
-    # If we're feeling too good, take it down a notch
-    elif rank_feels(feels['current']) > 0.95:
-        STATS[stat].update(['feeling high'])
-        weights[-1] /= 10
-    # Otherwise choose randomly
-    else:
-        STATS[stat].update(['free choice'])
-
-    idx = random.choices(list(sorted(scored)), weights=weights)[0]
-    reply = scored[idx]
-    logging.warning(f"scores: {sorted(scored)} weights: {weights} choice: {idx} {reply}")
-    logging.warning(STATS)
-    return reply
-
-def rank_feels(some_feels):
-    ''' Distill the feels obj into a float. 0 is neutral, range -1 to +1 '''
-    score = 0.0
-    emo = some_feels["obj"]
-    for k in list(emo):
-        # Fear is half positive
-        if k == 'Fear':
-            score = score + (emo[k] / 2.0)
-        elif k in ('Happy', 'Surprise'):
-            score = score + emo[k]
-        else:
-            score = score - emo[k]
-    return score
-
 def get_last_message(channel):
     ''' Return the last message seen on this channel '''
     try:
@@ -512,9 +273,10 @@ It is {natural_time()}. {ME} is feeling {feels['current']['text']}.
 {ME}:"""
 
     logging.warning(prompt)
-    reply = get_gpt_response(
-        prompt,
-        ToT[channel]['convo'],
+    reply = completion.get_best_reply(
+        prompt=prompt,
+        convo=ToT[channel]['convo'],
+        feels_score=rank_feels(feels['current']),
         stop=[f"{u}:" for u in get_channel_members(channel)]
     )
     ToT[channel]['convo'].append(f"{ME}: {reply}")
@@ -659,31 +421,32 @@ def wink(say, context): # pylint: disable=unused-argument
     ''' Every single emoji gets a emoji one back. '''
     say(random_emoji())
 
-def get_summary(text, engine=OPENAI_MODEL):
-    ''' tl;dr: Return a condensed summary from GPT in the most ridiculous way possible.'''
-    response = openai.Completion.create(
-        engine=engine,
-        prompt=f"{text}\n\nTo sum it up in one sentence:\n",
-        temperature=0,
-        max_tokens=50,
-        top_p=1.0,
-        frequency_penalty=0.0,
-        presence_penalty=0.0
-    )
-    reply = response.choices[0]['text'].strip().split('\n')[0]
+def get_summary(text, engine='davinci'):
+    return
+#     ''' tl;dr: Return a condensed summary from GPT in the most ridiculous way possible.'''
+#     response = openai.Completion.create(
+#         engine=engine,
+#         prompt=f"{text}\n\nTo sum it up in one sentence:\n",
+#         temperature=0,
+#         max_tokens=50,
+#         top_p=1.0,
+#         frequency_penalty=0.0,
+#         presence_penalty=0.0
+#     )
+#     reply = response.choices[0]['text'].strip().split('\n')[0]
 
-    if ':' in reply:
-        reply = reply.split(':')[1]
+#     if ':' in reply:
+#         reply = reply.split(':')[1]
 
-    # Too long? Ditch the last sentence fragment.
-    if response.choices[0]['finish_reason'] == "length":
-        try:
-            reply = reply[:reply.rindex('.') + 1]
-        except ValueError:
-            pass
+#     # Too long? Ditch the last sentence fragment.
+#     if response.choices[0]['finish_reason'] == "length":
+#         try:
+#             reply = reply[:reply.rindex('.') + 1]
+#         except ValueError:
+#             pass
 
-    logging.warning(f"summary: {reply}")
-    return reply
+#     logging.warning(f"summary: {reply}")
+#     return reply
 
 @app.message(re.compile(r"^summary$", re.I))
 def summarize(say, context):
@@ -798,7 +561,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
             # only post on the first reaction
             if 'reactions' in msg and len(msg['reactions']) == 1:
                 print(msg['reactions'][0]['name'])
-                if msg['reactions'][0]['name'] in NOPE_EMOJI:
+                if msg['reactions'][0]['name'] in nope_emoji:
                     logging.warning(f"Not posting: {msg['reactions'][0]['name']}")
                     return
 
@@ -846,5 +609,4 @@ if __name__ == "__main__":
         handler.start()
     # Exit gracefully on ^C (so the wrapper script while loop continues)
     except KeyboardInterrupt as kbderr:
-        logging.warning(STATS)
         raise SystemExit(0) from kbderr
