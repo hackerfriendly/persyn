@@ -20,5 +20,5 @@ def test_all_voices():
             "text": f"Hello from {voice}",
             "voice": voice
         }
-        reply = requests.post(f'{os.environ["GTTS_SERVER_URL"]}/say/', json=req)
+        reply = requests.post(f'{os.environ["GTTS_SERVER_URL"]}/say/', params=req)
         assert reply.ok

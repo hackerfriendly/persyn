@@ -7,7 +7,7 @@ from subprocess import run, CalledProcessError
 from typing import Optional
 from io import BytesIO
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Query
 from gtts import gTTS
 
 app = FastAPI()
@@ -29,8 +29,8 @@ async def root():
 
 @app.post("/say/")
 async def say(
-    text: str = Body(..., min_length=1, max_length=5000),
-    voice: Optional[str] = Body("USA", max_length=32)):
+    text: str = Query(..., min_length=1, max_length=5000),
+    voice: Optional[str] = Query("USA", max_length=32)):
     ''' Generate with gTTS and pipe to audio. '''
 
     if voice not in VOICES:
