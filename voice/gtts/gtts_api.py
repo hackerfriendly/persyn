@@ -27,6 +27,14 @@ async def root():
     ''' Hi there! '''
     return {"message": "Google Text To Speech server. Try /docs"}
 
+@app.get("/voices/")
+async def voices():
+    ''' List all available voices '''
+    return {
+        "voices": list(VOICES),
+        "success": True
+    }
+
 @app.post("/say/")
 async def say(
     text: str = Query(..., min_length=1, max_length=5000),

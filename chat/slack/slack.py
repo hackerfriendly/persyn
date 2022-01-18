@@ -9,7 +9,6 @@ import logging
 import os
 import random
 import re
-import socket
 import sys
 import tempfile
 import uuid
@@ -38,6 +37,7 @@ from feels import (
     rank_feels
 )
 
+# Prompt completion
 from gpt import GPT
 
 # Disable SSL warnings for Elastic
@@ -73,6 +73,11 @@ twitter = tweepy.API(twitter_auth)
 
 BASEURL = os.environ.get('BASEURL', None)
 
+# Voice support
+VOICE_SERVER = os.environ['GTTS_SERVER_URL']
+DEFAULT_VOICE = os.environ.get('DEFAULT_VOICE', 'UK')
+VOICES = []
+
 # Slack bolt App
 app = App(token=os.environ['SLACK_BOT_TOKEN'])
 
@@ -98,17 +103,36 @@ def setup_logging(stream=sys.stderr, log_format="%(message)s", debug=False):
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(stream=stream, level=level, format=log_format)
 
-def cast(message):
-    ''' Cast to icecast, maybe speak out loud '''
-    try:
-        sock = socket.create_connection(('localhost', 10102))
-        sock.settimeout(5)
-        sock.sendall(message.encode('utf-8'))
-        sock.sendall(b'\n')
-        sock.close()
-        logging.warning(f"<<< sent to tts: {message}")
-    except Exception: # pylint: disable=broad-except
-        logging.info(">>> connect to tts failed.")
+def tts(message, voice=None):
+    ''' Send a message to a voice server '''
+    global VOICE_SERVER, VOICES
+
+    if not VOICE_SERVER:
+        logging.warning(">>> No tts voice server found")
+        return
+
+    if not VOICES:
+        reply = requests.get(f'{VOICE_SERVER}/voices/')
+        if not reply.ok:
+            logging.warning(f">>> could not fetch tts voices: {reply.text}")
+            VOICE_SERVER = None
+            return
+        VOICES = [v for v in reply.json()['voices'] if v != DEFAULT_VOICE]
+        logging.warning(f"Available voices: {VOICES}")
+
+    if voice is None:
+        voice = random.choice(VOICES)
+
+    req = {
+        "text": message,
+        "voice": voice
+    }
+    reply = requests.post(f'{VOICE_SERVER}/say/', params=req)
+
+    if reply.ok:
+        logging.warning(f">>> sent to tts: ({voice}): {message}")
+    else:
+        logging.warning(f">>> connect to tts failed: {reply.text}")
 
 def load_from_ltm(channel):
     ''' Load the last conversation from LTM. '''
@@ -297,7 +321,6 @@ def help_me(say, context): # pylint: disable=unused-argument
   `forget it`: Clear the conversation history for this channel
   `status`: How is {ME} feeling right now?
   `summary`: Explain it all to me in a single sentence.
-  :speak_no_evil: : Enable/disable speaking at Unit 16
   :camera: : Generate a picture summarizing this conversation
   :camera: _prompt_ : Generate a picture of _prompt_
   :selfie: Take a selfie
@@ -356,16 +379,6 @@ def status_report(say, context):
     )
 
     take_a_photo(channel, completion.get_summary('\n'.join(ToT[channel]['convo'])).strip())
-
-@app.message(re.compile(r"^:speak_no_evil:$"))
-def toggle(say, context): # pylint: disable=unused-argument
-    ''' Local text to speech '''
-    if os.path.exists('.voice-enabled'):
-        os.remove('.voice-enabled')
-        say(":monkey_face: :-1:")
-    else:
-        with open('.voice-enabled', 'w', encoding='utf-8'):
-            say(":monkey_face: :+1:")
 
 @app.message(re.compile(r"^:camera:(.+)$"))
 def picture(say, context): # pylint: disable=unused-argument
@@ -468,13 +481,13 @@ def catch_all(say, context):
     them = get_display_name(context['user_id'])
     msg = substitute_names(context['matches'][0]).strip()
 
-    cast(msg)
+    tts(msg)
 
     # 5% of the time, say nothing (for now).
     if random.random() < 0.95:
         the_reply = get_reply(channel, them, msg)
         say(the_reply)
-        cast(f"{ME.upper()}:{the_reply}")
+        tts(the_reply, voice=DEFAULT_VOICE)
 
     # Status update (and photo) in 2 minutes. Can be interrupted.
     ToT[channel]['last_status'] = dt.datetime.now()

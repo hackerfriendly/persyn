@@ -234,7 +234,7 @@ class GPT():
             f"{self.bot_name} is feeling",
             "I am feeling"
         ):
-            if text.startswith(line):
+            if line in text:
                 return True
 
         return False
