@@ -53,8 +53,8 @@ ELASTIC_INDEX = os.environ.get('ELASTIC_INDEX', 'bot-v0')
 # Minimum reply quality. Lower numbers get more dark + sleazy.
 MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
 
-IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip", "vqgan", "stylegan2"]
-IMAGE_ENGINE_WEIGHTS = [0.3, 0.3, 0.3, 0.1]
+IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "vqgan", "stylegan2"]
+IMAGE_ENGINE_WEIGHTS = [0.45, 0.45, 0.1]
 
 # New conversation every 10 minutes
 CONVERSATION_INTERVAL = 600
@@ -355,7 +355,7 @@ def status_report(say, context):
         when=random.randint(12 * 3600, 48 * 3600)
     )
 
-    take_a_photo(channel, get_summary('\n'.join(ToT[channel]['convo'])).strip())
+    take_a_photo(channel, completion.get_summary('\n'.join(ToT[channel]['convo'])).strip())
 
 @app.message(re.compile(r"^:speak_no_evil:$"))
 def toggle(say, context): # pylint: disable=unused-argument
@@ -414,39 +414,12 @@ def photo_summary(say, context): # pylint: disable=unused-argument
         when=60,
         what=f"_{ME} takes a picture of this conversation._ It will take a few minutes to develop."
     )
-    take_a_photo(channel, get_summary('\n'.join(ToT[channel]['convo'])).strip())
+    take_a_photo(channel, completion.get_summary('\n'.join(ToT[channel]['convo'])).strip())
 
 @app.message(re.compile(r"^:\w+:"))
 def wink(say, context): # pylint: disable=unused-argument
     ''' Every single emoji gets a emoji one back. '''
     say(random_emoji())
-
-def get_summary(text, engine='davinci'):
-    return
-#     ''' tl;dr: Return a condensed summary from GPT in the most ridiculous way possible.'''
-#     response = openai.Completion.create(
-#         engine=engine,
-#         prompt=f"{text}\n\nTo sum it up in one sentence:\n",
-#         temperature=0,
-#         max_tokens=50,
-#         top_p=1.0,
-#         frequency_penalty=0.0,
-#         presence_penalty=0.0
-#     )
-#     reply = response.choices[0]['text'].strip().split('\n')[0]
-
-#     if ':' in reply:
-#         reply = reply.split(':')[1]
-
-#     # Too long? Ditch the last sentence fragment.
-#     if response.choices[0]['finish_reason'] == "length":
-#         try:
-#             reply = reply[:reply.rindex('.') + 1]
-#         except ValueError:
-#             pass
-
-#     logging.warning(f"summary: {reply}")
-#     return reply
 
 @app.message(re.compile(r"^summary$", re.I))
 def summarize(say, context):
@@ -458,7 +431,7 @@ def summarize(say, context):
         return
 
     recent = '\n'.join(ToT[channel]['convo'])
-    summary = get_summary(recent)
+    summary = completion.get_summary(recent)
     say(summary or ":shrug:")
 
 def say_something_later(say, channel, context, when, what=None):

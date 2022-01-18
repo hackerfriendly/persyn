@@ -196,6 +196,33 @@ class GPT():
 
         return weights
 
+    def get_summary(self, text):
+        ''' Ask GPT for a summary'''
+        response = openai.Completion.create(
+            engine=self.engine,
+            prompt=f"{text}\n\nTo sum it up in one sentence:\n",
+            temperature=0.1,
+            max_tokens=50,
+            top_p=1.0,
+            frequency_penalty=0.0,
+            presence_penalty=0.0
+        )
+        reply = response.choices[0]['text'].strip().split('\n')[0]
+
+        # To the right of the : (if any)
+        if ':' in reply:
+            reply = reply.split(':')[1]
+
+        # Too long? Ditch the last sentence fragment.
+        if response.choices[0]['finish_reason'] == "length":
+            try:
+                reply = reply[:reply.rindex('.') + 1]
+            except ValueError:
+                pass
+
+        logging.warning(f"summary: {reply}")
+        return reply
+
     def has_forbidden(self, text):
         ''' Returns True if any forbidden word appears in text '''
         return bool(re.search(fr'\b({"|".join(self.forbidden)})\b', text))
