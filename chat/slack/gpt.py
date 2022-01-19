@@ -78,7 +78,7 @@ class GPT():
         reply = [cleanup(sents[0].text)]
         # Possibly add more
         try:
-            for sent in sents[1:]:
+            for sent in sents[1:4]:
                 if ':' in sent.text:
                     return ' '.join(reply)
                 re.search('[a-zA-Z]', sent.text)
@@ -196,13 +196,13 @@ class GPT():
 
         return weights
 
-    def get_summary(self, text):
+    def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
         ''' Ask GPT for a summary'''
         response = openai.Completion.create(
             engine=self.engine,
-            prompt=f"{text}\n\nTo sum it up in one sentence:\n",
+            prompt=f"{text}\n\n{summarizer}\n",
             temperature=0.1,
-            max_tokens=50,
+            max_tokens=max_tokens,
             top_p=1.0,
             frequency_penalty=0.0,
             presence_penalty=0.0
