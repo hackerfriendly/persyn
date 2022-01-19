@@ -48,7 +48,8 @@ ME = os.environ["BOT_NAME"]
 
 ELASTIC_URL = os.environ['ELASTIC_URL']
 ELASTIC_KEY = os.environ.get('ELASTIC_KEY', None)
-ELASTIC_INDEX = os.environ.get('ELASTIC_INDEX', 'bot-v0')
+ELASTIC_CONVO_INDEX = os.environ.get('ELASTIC_CONVO_INDEX', 'bot-conversations-v0')
+ELASTIC_SUMMARY_INDEX = os.environ.get('ELASTIC_SUMMARY_INDEX', 'bot-summaries-v0')
 
 # Minimum reply quality. Lower numbers get more dark + sleazy.
 MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
@@ -140,7 +141,7 @@ def load_from_ltm(channel):
     clear_stm(channel)
 
     history = es.search( # pylint: disable=unexpected-keyword-arg
-        index=ELASTIC_INDEX,
+        index=ELASTIC_CONVO_INDEX,
         query={
             "term": {"channel.keyword": channel}
         },
@@ -253,16 +254,30 @@ def save_to_ltm(channel, them, msg):
         "elapsed": elapsed(prev_ts, cur_ts),
         "convo_id": ToT[channel]['convo_id']
     }
-    _id = es.index(index=ELASTIC_INDEX,  document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    _id = es.index(index=ELASTIC_CONVO_INDEX,  document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     logging.debug(f"doc: {_id}")
 
     return _id
+
+# def get_summaries(channel, n=3):
+#     ''' Return the last n conversation summaries seen on this channel '''
+#     try:
+#         return es.search( # pylint: disable=unexpected-keyword-arg
+#             index=ELASTIC_SUMMARY_INDEX,
+#             query={
+#                 "term": {"channel.keyword": channel}
+#             },
+#             sort=[{"@timestamp":{"order":"desc"}}], # TODO: needs @timestamp
+#             size=n
+#         )['hits']['hits'][0]
+#     except KeyError:
+#         return None
 
 def get_last_message(channel):
     ''' Return the last message seen on this channel '''
     try:
         return es.search( # pylint: disable=unexpected-keyword-arg
-            index=ELASTIC_INDEX,
+            index=ELASTIC_CONVO_INDEX,
             query={
                 "term": {"channel.keyword": channel}
             },

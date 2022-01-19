@@ -10,12 +10,13 @@ export BOT_NAME='Persyn'
 export SLACK_APP_TOKEN='xapp-...'
 export SLACK_BOT_TOKEN='xoxb-...'
 
-# Long Term Memory support. Optional.
+# Long Term Memory support. Optional, but recommended.
 
 # export ELASTIC_URL='https://...:9200'
 # export ELASTIC_USER=${BOT_NAME}
 # export ELASTIC_KEY='...'
-# export ELASTIC_INDEX='bot-v0'
+# export ELASTIC_CONVO_INDEX='bot-conversations-v0'
+# export ELASTIC_SUMMARY_INDEX='bot-summaries-v0'
 
 # OpenAI (GPT3). Required, and it costs $. Sign up at https://openai.com/api/
 export OPENAI_API_KEY=''
@@ -55,3 +56,6 @@ export OPENAI_MODEL='davinci'
 
 # export TWITTER_AUTOPOST=1
 
+# Offline huggingface models. Comment out to allow online model updates.
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
