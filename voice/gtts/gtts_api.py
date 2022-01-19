@@ -47,6 +47,12 @@ async def say(
             detail=f"Invalid voice. Choose one of: {', '.join(list(VOICES))}"
         )
 
+    if not any(c.isalnum() for c in text):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Text must contain at least one alphanumeric character."
+        )
+
     try:
         print(f"({voice}):", text)
         tts = gTTS(text, lang='en', tld=VOICES[voice])
