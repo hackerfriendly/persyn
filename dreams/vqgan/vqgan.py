@@ -284,7 +284,6 @@ if __name__ == '__main__':
         print("style:", args.style)
 
     args.prompts.append(args.style)
-    args.prompts.append("trending on ArtStation")
 
     # ### Actually do the run..
 
