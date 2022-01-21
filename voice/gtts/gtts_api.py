@@ -53,6 +53,9 @@ async def say(
             detail=f"Text must contain at least one alphanumeric character."
         )
 
+    # Simple filtering goes here
+    text = text.replace('*','')
+
     try:
         print(f"({voice}):", text)
         tts = gTTS(text, lang='en', tld=VOICES[voice])
