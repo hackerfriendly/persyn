@@ -55,7 +55,10 @@ ELASTIC_SUMMARY_INDEX = os.environ.get('ELASTIC_SUMMARY_INDEX', 'bot-summaries-v
 MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
 
 IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "vqgan", "stylegan2"]
-IMAGE_ENGINE_WEIGHTS = [0.45, 0.45, 0.1]
+IMAGE_MODELS = {
+    "stylegan2": ["ffhq", "car", "cat", "church", "horse", "waifu"]
+}
+IMAGE_ENGINE_WEIGHTS = [0.4, 0.4, 0.2]
 
 # New conversation every 10 minutes
 CONVERSATION_INTERVAL = 600
@@ -245,11 +248,19 @@ def take_a_photo(channel, prompt, engine=None):
             weights=IMAGE_ENGINE_WEIGHTS
         )[0]
 
-    req = {
-        "engine": engine,
-        "channel": channel,
-        "prompt": prompt
-    }
+    if engine == "stylegan2":
+        req = {
+            "engine": engine,
+            "channel": channel,
+            "prompt": prompt,
+            "model": random.choice(IMAGE_MODELS["stylegan2"])
+        }
+    else:
+        req = {
+            "engine": engine,
+            "channel": channel,
+            "prompt": prompt
+        }
     reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
     logging.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/ {prompt} : {reply.status_code}")
     return reply.status_code
@@ -345,7 +356,8 @@ def get_reply(channel, them, msg):
             # Summarize the previous conversation for later
             summarize_convo(channel, last_message['_source']['convo_id'])
             clear_stm(channel)
-            ToT[channel]['convo'].append(last_message)
+            for line in get_convo_summaries(channel, 3):
+                ToT[channel]['convo'].append(line)
 
         then = dt.datetime.fromisoformat(last_message['_source']['@timestamp']).replace(tzinfo=None)
         delta = f"They last spoke {humanize.naturaltime(dt.datetime.now() - then)}."
