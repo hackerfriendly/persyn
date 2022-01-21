@@ -18,7 +18,7 @@ class GPT():
     def __init__(
         self,
         bot_name,
-        min_score,
+        min_score=0.0,
         api_key=os.getenv('OPENAI_API_KEY'),
         engine=os.environ.get('OPENAI_MODEL', 'davinci')
         ):
