@@ -56,12 +56,12 @@ class GPT():
         for item in sorted(scored.items()):
             logging.warning(f"{item[0]:0.2f}: {item[1]}")
 
-        weights = self.calculate_weights(scored, feels_score)
+        weights = list(scored)
 
         idx = random.choices(list(sorted(scored)), weights=weights)[0]
         reply = scored[idx]
 
-        logging.warning(f"scores: {sorted(scored)} weights: {weights} choice: {idx} {reply}")
+        logging.warning(f"weights: {sorted(weights)} choice: {idx} {reply}")
         logging.warning(self.stats)
 
         return reply
@@ -172,39 +172,14 @@ class GPT():
 
         return scored
 
-    def calculate_weights(self, scored, feels_score):
-        ''' Calculate the weights for scored potential replies '''
-
-        # Start with 1.0 for each reply
-        weights = [1.0,] * len(scored)
-
-        # If there's only one, use it
-        if len(scored) == 1:
-            self.stats.update(['only one reply possible'])
-        # If we're feeling too down, take it up a notch
-        elif feels_score < 0:
-            self.stats.update(['feeling down'])
-            weights[0] /= 10
-            weights[1] /= 2
-        # If we're feeling too good, take it down a notch
-        elif feels_score > 0.95:
-            self.stats.update(['feeling high'])
-            weights[-1] /= 10
-        # Otherwise choose randomly
-        else:
-            self.stats.update(['free choice'])
-
-        return weights
-
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
         ''' Ask GPT for a summary'''
         response = openai.Completion.create(
             engine=self.engine,
             prompt=f"{text}\n\n{summarizer}\n",
-            temperature=0.1,
             max_tokens=max_tokens,
-            top_p=1.0,
-            frequency_penalty=0.0,
+            top_p=0.1,
+            frequency_penalty=0.5,
             presence_penalty=0.0
         )
         reply = response.choices[0]['text'].strip().split('\n')[0]
