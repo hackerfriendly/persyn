@@ -106,6 +106,11 @@ def setup_logging(stream=sys.stderr, log_format="%(message)s", debug=False):
 
 def tts(message, voice=None):
     ''' Send a message to a voice server '''
+
+    # Skip continuation messages
+    if message == "...":
+        return
+
     global VOICE_SERVER, VOICES
 
     if not VOICE_SERVER:
@@ -160,10 +165,43 @@ def load_from_ltm(channel):
 
         # Clear the short term memory after CONVERSATION_INTERVAL
         if time_lag > CONVERSATION_INTERVAL:
-            ToT[channel]['convo'] = []
+            clear_stm(channel)
 
         ToT[channel]['convo'].append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
         ToT[channel]['convo_id'] = line['_source']['convo_id']
+
+def get_convo_by_id(convo_id):
+    ''' Extract a full conversation by its convo_id. Returns a list of strings. '''
+    history = es.search( # pylint: disable=unexpected-keyword-arg
+        index=ELASTIC_CONVO_INDEX,
+        query={
+            "term": {"convo_id.keyword": convo_id}
+        },
+        sort=[{"@timestamp":{"order":"asc"}}],
+        size=1000
+    )['hits']['hits']
+
+    ret = []
+    for line in history:
+        ret.append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
+
+    logging.debug(f"get_convo_by_id({convo_id}): {ret}")
+    return ret
+
+def summarize_convo(channel, convo_id):
+    ''' Generate a GPT summary of a conversation chosen by id '''
+    summary = completion.get_summary(
+        text='\n'.join(get_convo_by_id(convo_id)),
+        summarizer="To briefly summarize this conversation, ",
+        max_tokens=200
+    )
+    doc = {
+        "convo_id": convo_id,
+        "summary": summary,
+        "channel": channel,
+        "@timestamp": get_cur_ts()
+    }
+    _id = es.index(index=ELASTIC_SUMMARY_INDEX, document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
 def new_channel(channel):
     ''' Initialize a new channel. '''
@@ -228,9 +266,13 @@ def clear_stm(channel):
     ToT[channel]['convo'].clear()
     ToT[channel]['convo_id'] = uuid.uuid4()
 
+def get_cur_ts():
+    ''' Return a properly formatted timestamp string '''
+    return str(dt.datetime.now(dt.timezone.utc).astimezone().isoformat())
+
 def save_to_ltm(channel, them, msg):
     ''' Save convo to ElasticSearch '''
-    cur_ts = str(dt.datetime.now(dt.timezone.utc).astimezone().isoformat())
+    cur_ts = get_cur_ts()
     last_message = get_last_message(channel)
 
     if last_message:
@@ -254,24 +296,26 @@ def save_to_ltm(channel, them, msg):
         "elapsed": elapsed(prev_ts, cur_ts),
         "convo_id": ToT[channel]['convo_id']
     }
-    _id = es.index(index=ELASTIC_CONVO_INDEX,  document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    _id = es.index(index=ELASTIC_CONVO_INDEX, document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     logging.debug(f"doc: {_id}")
 
     return _id
 
-# def get_summaries(channel, n=3):
-#     ''' Return the last n conversation summaries seen on this channel '''
-#     try:
-#         return es.search( # pylint: disable=unexpected-keyword-arg
-#             index=ELASTIC_SUMMARY_INDEX,
-#             query={
-#                 "term": {"channel.keyword": channel}
-#             },
-#             sort=[{"@timestamp":{"order":"desc"}}], # TODO: needs @timestamp
-#             size=n
-#         )['hits']['hits'][0]
-#     except KeyError:
-#         return None
+def get_convo_summaries(channel, size=1):
+    ''' Return the last n conversation summaries seen on this channel '''
+    try:
+        ret = es.search( # pylint: disable=unexpected-keyword-arg
+            index=ELASTIC_SUMMARY_INDEX,
+            query={
+                "term": {"channel.keyword": channel}
+            },
+            sort=[{"@timestamp":{"order":"desc"}}],
+            size=size
+        )['hits']['hits']
+    except KeyError:
+        return None
+
+    return [convo['_source']['summary'] for convo in ret[::-1]]
 
 def get_last_message(channel):
     ''' Return the last message seen on this channel '''
@@ -298,20 +342,29 @@ def get_reply(channel, them, msg):
     if last_message:
         # Have we moved on?
         if last_message['_source']['convo_id'] != ToT[channel]['convo_id']:
+            # Summarize the previous conversation for later
+            summarize_convo(channel, last_message['_source']['convo_id'])
             clear_stm(channel)
-            # Pick something else to talk about HERE
+            ToT[channel]['convo'].append(last_message)
 
         then = dt.datetime.fromisoformat(last_message['_source']['@timestamp']).replace(tzinfo=None)
         delta = f"They last spoke {humanize.naturaltime(dt.datetime.now() - then)}."
+        prefix = f"This is a conversation between {' and '.join(get_channel_members(channel))}. {delta}"
+    else:
+        prefix = ""
 
     convo = '\n'.join(ToT[channel]['convo'])
-    prompt = f"""This is a conversation between {' and '.join(get_channel_members(channel))}. {delta}
+
+    if not convo:
+        convo = '\n\n'.join(get_convo_summaries(channel, 3))
+
+    prompt = f"""{prefix}
 It is {natural_time()}. {ME} is feeling {feels['current']['text']}.
 
 {convo}
 {ME}:"""
 
-    logging.warning(prompt)
+    logging.warning(f"\n-=-=-=-\n{prompt}\n-=-=-=-\n")
     reply = completion.get_best_reply(
         prompt=prompt,
         convo=ToT[channel]['convo'],
