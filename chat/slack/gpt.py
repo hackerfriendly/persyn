@@ -1,5 +1,4 @@
 ''' GPT-3 completion engine '''
-import logging
 import os
 import random
 import re
@@ -12,6 +11,9 @@ import spacy
 from ftfy import fix_text
 
 from feels import get_flair_score, get_feels_score, get_profanity_score
+
+# Color logging
+from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
 
 class GPT():
     ''' Container for GPT-3 completion requests '''
@@ -32,7 +34,7 @@ class GPT():
         # Strictly forbidden words
         self.forbidden = ['Elsa', 'Arendelle', 'Kristoff', 'Olaf', 'Frozen']
 
-    def get_best_reply(self, prompt, convo, feels_score=0.0, stop=None, temperature=0.9, max_tokens=200):
+    def get_best_reply(self, prompt, convo, stop=None, temperature=0.9, max_tokens=200):
         ''' Given a text prompt and recent conversation, send the prompt to GPT3 and return a simple text response. '''
         response = openai.Completion.create(
             engine=self.engine,
@@ -44,7 +46,7 @@ class GPT():
             presence_penalty=0.6,
             stop=stop
         )
-        logging.debug(f'Prompt: {prompt}\nResponse: {response}')
+        # debug(f'🧠 Prompt: {prompt}\n🗣 Response:', response)
 
         # Choose a response based on the most positive sentiment.
         scored = self.score_choices(response.choices, convo)
@@ -54,15 +56,15 @@ class GPT():
             return ':shrug:'
 
         for item in sorted(scored.items()):
-            logging.warning(f"{item[0]:0.2f}: {item[1]}")
+            warning(f"{item[0]:0.2f}:", item[1])
 
         weights = list(scored)
 
         idx = random.choices(list(sorted(scored)), weights=weights)[0]
         reply = scored[idx]
 
-        logging.warning(f"weights: {sorted(weights)} choice: {idx} {reply}")
-        logging.warning(self.stats)
+        warning(f"🗣 Choice: {idx:0.2f}", reply)
+        warning("📊 Stats:", self.stats)
 
         return reply
 
@@ -156,8 +158,8 @@ class GPT():
             # Sum the sentiments, emotional heuristic, offensive quotient, and topic_bonus
             score = sum(all_scores.values()) + topic_bonus
             all_scores['total'] = score
-            logging.warning(
-                ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]) + f' : {raw}'
+            warning(
+                ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()])
             )
 
             if score < self.min_score:
@@ -186,16 +188,16 @@ class GPT():
 
         # To the right of the : (if any)
         if ':' in reply:
-            reply = reply.split(':')[1]
+            reply = reply.split(':')[1].strip()
 
         # Too long? Ditch the last sentence fragment.
         if response.choices[0]['finish_reason'] == "length":
             try:
-                reply = reply[:reply.rindex('.') + 1]
+                reply = reply[:reply.rindex('.') + 1].strip()
             except ValueError:
                 pass
 
-        logging.warning(f"summary: {reply}")
+        warning("get_summary():", reply)
         return reply
 
     def has_forbidden(self, text):

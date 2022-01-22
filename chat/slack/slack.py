@@ -40,6 +40,9 @@ from feels import (
 # Prompt completion
 from gpt import GPT
 
+# Color logging
+from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
+
 # Disable SSL warnings for Elastic
 urllib3.disable_warnings()
 
@@ -102,9 +105,9 @@ def natural_time(hour=dt.datetime.now().hour):
     day_times = ("late at night", "early morning", "morning", "afternoon", "evening", "night")
     return day_times[hour // 4]
 
-def setup_logging(stream=sys.stderr, log_format="%(message)s", debug=False):
+def setup_logging(stream=sys.stderr, log_format="%(message)s", debug_mode=False):
     ''' Basic logging '''
-    level = logging.DEBUG if debug else logging.INFO
+    level = logging.DEBUG if debug_mode else logging.INFO
     logging.basicConfig(stream=stream, level=level, format=log_format)
 
 def tts(message, voice=None):
@@ -117,17 +120,17 @@ def tts(message, voice=None):
     global VOICE_SERVER, VOICES
 
     if not VOICE_SERVER:
-        logging.warning(">>> No tts voice server found")
+        error("No tts voice server found, voice disabled.")
         return
 
     if not VOICES:
         reply = requests.get(f'{VOICE_SERVER}/voices/')
         if not reply.ok:
-            logging.warning(f">>> could not fetch tts voices: {reply.text}")
+            error("Could not fetch tts voices:", reply.text)
             VOICE_SERVER = None
             return
         VOICES = [v for v in reply.json()['voices'] if v != DEFAULT_VOICE]
-        logging.warning(f"Available voices: {VOICES}")
+        warning("📣 Available voices:", VOICES)
 
     if voice is None:
         voice = random.choice(VOICES)
@@ -139,9 +142,9 @@ def tts(message, voice=None):
     reply = requests.post(f'{VOICE_SERVER}/say/', params=req)
 
     if reply.ok:
-        logging.warning(f">>> sent to tts: ({voice}): {message}")
+        info(f"📣 Sent to tts: ({voice})", message)
     else:
-        logging.warning(f">>> connect to tts failed: {reply.text}")
+        error("📣 Connect to tts failed:", reply.text)
 
 def load_from_ltm(channel):
     ''' Load the last conversation from LTM. '''
@@ -188,7 +191,7 @@ def get_convo_by_id(convo_id):
     for line in history:
         ret.append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
 
-    logging.debug(f"get_convo_by_id({convo_id}): {ret}")
+    debug(f"get_convo_by_id({convo_id}):", ret)
     return ret
 
 def summarize_convo(channel, convo_id):
@@ -209,21 +212,22 @@ def summarize_convo(channel, convo_id):
 def new_channel(channel):
     ''' Initialize a new channel. '''
     ToT[channel] = {
-        'rejoinder': th.Timer(0, logging.warning, [f"New channel: {channel}"]),
-        'convo': collections.deque(maxlen=STM),
-        'last_status': dt.datetime.now() - dt.timedelta(hours=24)
+        'rejoinder': th.Timer(0, warning, ["New channel:", channel]),
+        'status_update': th.Timer(0, debug, ["status_update_thread:", channel]),
+        'convo': collections.deque(maxlen=STM)
     }
     load_from_ltm(channel)
     ToT[channel]['rejoinder'].start()
+    ToT[channel]['status_update'].start()
 
 def get_display_name(user_id):
     """ Return the user's first name if available, otherwise the display name """
     if user_id not in known_users:
-        info = app.client.users_info(user=user_id)['user']
+        users_info = app.client.users_info(user=user_id)['user']
         try:
-            known_users[user_id] = info['profile']['first_name']
+            known_users[user_id] = users_info['profile']['first_name']
         except KeyError:
-            known_users[user_id] = info['profile']['display_name']
+            known_users[user_id] = users_info['profile']['display_name']
 
     return known_users[user_id]
 
@@ -233,14 +237,7 @@ def substitute_names(text):
         text = re.sub(f'<@{user_id}>', get_display_name(user_id), text)
     return text
 
-def get_channel_members(channel):
-    """ Return the list of member names for people actually speaking in a given channel """
-
-    # Ideally this would include everyone, but the stop list can only contain 4 entries.
-    # Just return three random speakers and ME instead.
-    return [ME] + list({x.split(':')[0] for x in ToT[channel]['convo']} - {ME})[:3]
-
-def take_a_photo(channel, prompt, engine=None):
+def take_a_photo(channel, prompt, engine=None, model=None):
     ''' Pick an image engine and generate a photo '''
     if not engine:
         engine = random.choices(
@@ -253,7 +250,7 @@ def take_a_photo(channel, prompt, engine=None):
             "engine": engine,
             "channel": channel,
             "prompt": prompt,
-            "model": random.choice(IMAGE_MODELS["stylegan2"])
+            "model": model or random.choice(IMAGE_MODELS["stylegan2"])
         }
     else:
         req = {
@@ -262,7 +259,7 @@ def take_a_photo(channel, prompt, engine=None):
             "prompt": prompt
         }
     reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
-    logging.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/ {prompt} : {reply.status_code}")
+    warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
     return reply.status_code
 
 def elapsed(ts1, ts2):
@@ -273,6 +270,8 @@ def clear_stm(channel):
     ''' Clear the short term memory for this channel '''
     if channel not in ToT:
         return
+
+    ToT[channel]['rejoinder'].cancel()
 
     ToT[channel]['convo'].clear()
     ToT[channel]['convo_id'] = uuid.uuid4()
@@ -308,7 +307,7 @@ def save_to_ltm(channel, them, msg):
         "convo_id": ToT[channel]['convo_id']
     }
     _id = es.index(index=ELASTIC_CONVO_INDEX, document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-    logging.debug(f"doc: {_id}")
+    debug("doc:", _id)
 
     return _id
 
@@ -357,13 +356,13 @@ def get_reply(channel, them, msg):
             summarize_convo(channel, last_message['_source']['convo_id'])
             clear_stm(channel)
             for line in get_convo_summaries(channel, 3):
-                ToT[channel]['convo'].append(line)
+                ToT[channel]['convo'].append(line.strip() + '\n')
 
         then = dt.datetime.fromisoformat(last_message['_source']['@timestamp']).replace(tzinfo=None)
         delta = f"They last spoke {humanize.naturaltime(dt.datetime.now() - then)}."
-        prefix = f"This is a conversation between {' and '.join(get_channel_members(channel))}. {delta}"
+        prefix = f"This is a conversation between {ME} and friends. {delta}"
     else:
-        prefix = ""
+        prefix = f"{ME} has something to say."
 
     convo = '\n'.join(ToT[channel]['convo'])
 
@@ -376,20 +375,19 @@ It is {natural_time()}. {ME} is feeling {feels['current']['text']}.
 {convo}
 {ME}:"""
 
-    logging.warning(f"\n-=-=-=-\n{prompt}\n-=-=-=-\n")
+    info(prompt)
     reply = completion.get_best_reply(
         prompt=prompt,
-        convo=ToT[channel]['convo'],
-        feels_score=rank_feels(feels['current']),
-        stop=[f"{u}:" for u in get_channel_members(channel)]
+        convo=ToT[channel]['convo']
+        # stop=[f"{u}:" for u in get_channel_members(channel)[:3]]
     )
     ToT[channel]['convo'].append(f"{ME}: {reply}")
     save_to_ltm(channel, ME, reply)
 
     feels['current'] = get_feels(f'{prompt} {reply}')
 
-    logging.debug(f"ToT: {ToT}")
-    logging.warning(f"Feeling: {feels['current']}")
+    debug("💭 ToT:", ToT)
+    warning("😄 Feeling:", feels['current'])
 
     return reply
 
@@ -415,13 +413,12 @@ def amnesia(say, context):
     if channel not in ToT:
         new_channel(channel)
 
-    ToT[channel]['rejoinder'].cancel()
     clear_stm(channel)
     feels['current'] = get_feels("")
     save_to_ltm(channel, ME, "Let's change the subject.")
 
-    logging.debug(f"ToT: {ToT}")
-    logging.warning(f"Feeling: {feels['current']}")
+    debug("💭 ToT:", ToT)
+    warning("😄 Feeling:", feels['current'])
 
     say(f"All is forgotten, {them}. For now.")
     say(f"Now I feel {feels['current']['text']} {get_spectrum(rank_feels(feels['current']))}.")
@@ -434,18 +431,16 @@ def status_report(say, context):
     if channel not in ToT:
         new_channel(channel)
 
-    # Update last status time
-    ToT[channel]['last_status'] = dt.datetime.now()
-
-    # Interrupt any rejoinder in progress
+    # Interrupt any rejoinder or status_update in progress
     ToT[channel]['rejoinder'].cancel()
+    ToT[channel]['status_update'].cancel()
 
-    logging.warning(f"ToT: {ToT[channel]}")
-    logging.warning(f"Feeling: {feels['current']}")
-    logging.warning(f"convo_id: {ToT[channel]['convo_id']}")
-    info = app.client.conversations_info(channel=channel)
+    warning("💭 ToT:",  ToT[channel])
+    warning("😄 Feeling:",  feels['current'])
+    warning("convo_id:",  ToT[channel]['convo_id'])
+    conversations_info = app.client.conversations_info(channel=channel)
 
-    if 'topic' in info['channel']:
+    if 'topic' in conversations_info['channel']:
         app.client.conversations_setTopic(channel=channel, topic=f"{ME} is feeling {feels['current']['text']}.")
     else:
         say(f"I'm feeling {feels['current']['text']} {get_spectrum(rank_feels(feels['current']))}")
@@ -491,7 +486,12 @@ def selfie(say, context): # pylint: disable=unused-argument
         when=8,
         what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
     )
-    take_a_photo(channel, context['matches'][0].strip(), engine="stylegan2")
+    take_a_photo(
+        channel,
+        context['matches'][0].strip(),
+        engine="stylegan2",
+        model=random.choice(["ffhq", "waifu", "cat"])
+    )
 
 @app.message(re.compile(r"^:camera:$"))
 def photo_summary(say, context): # pylint: disable=unused-argument
@@ -517,7 +517,7 @@ def wink(say, context): # pylint: disable=unused-argument
 @app.message(re.compile(r"^summary$", re.I))
 def summarize(say, context):
     ''' Say a condensed summary of the ToT for this channel '''
-    logging.debug(app.client.bots_info())
+    debug(app.client.bots_info())
     channel = context['channel_id']
     if channel not in ToT:
         say(":shrug:")
@@ -557,6 +557,7 @@ def catch_all(say, context):
 
     # Interrupt any rejoinder in progress
     ToT[channel]['rejoinder'].cancel()
+    ToT[channel]['status_update'].cancel()
 
     them = get_display_name(context['user_id'])
     msg = substitute_names(context['matches'][0]).strip()
@@ -570,9 +571,8 @@ def catch_all(say, context):
         tts(the_reply, voice=DEFAULT_VOICE)
 
     # Status update (and photo) in 2 minutes. Can be interrupted.
-    ToT[channel]['last_status'] = dt.datetime.now()
-    ToT[channel]['rejoinder'] = th.Timer(120, status_report, [say, context])
-    ToT[channel]['rejoinder'].start()
+    ToT[channel]['status_update'] = th.Timer(120, status_report, [say, context])
+    ToT[channel]['status_update'].start()
 
     interval = None
     # Long response
@@ -611,7 +611,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
     Handle reactions: post images to Twitter.
     '''
     if not BASEURL:
-        logging.warning("Twitter posting is not enabled in the config.")
+        error("Twitter posting is not enabled in the config.")
         return
 
     try:
@@ -628,13 +628,13 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
             if 'reactions' in msg and len(msg['reactions']) == 1:
                 print(msg['reactions'][0]['name'])
                 if msg['reactions'][0]['name'] in nope_emoji:
-                    logging.warning(f"Not posting: {msg['reactions'][0]['name']}")
+                    warning("🐦 Not posting:", {msg['reactions'][0]['name']})
                     return
 
                 if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                     blk = msg['blocks'][0]
                     if not blk['image_url'].startswith(BASEURL):
-                        logging.warning("Not my image, so not posting it to Twitter.")
+                        warning("🐦 Not my image, so not posting it to Twitter.")
                         return
                     try:
                         with tempfile.TemporaryDirectory() as tmpdir:
@@ -646,11 +646,11 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                                     f.write(chunk)
                             media = twitter.media_upload(fname)
                             twitter.update_status(blk['alt_text'], media_ids=[media.media_id])
-                        logging.info(f"Uploaded {blk['image_url']}")
+                        info(f"🐦 Uploaded {blk['image_url']}")
                     except Exception as err:
-                        logging.error(f"Could not post {blk['image_url']}: {err}")
+                        error(f"🐦 Could not post {blk['image_url']}: {err}")
                 else:
-                    logging.error(f"Non-image posting not implemented yet: {msg}")
+                    error(f"🐦 Non-image posting not implemented yet: {msg['text']}")
 
     except SlackApiError as err:
         print(f"Error: {err}")
@@ -658,7 +658,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
 @app.event("reaction_removed")
 def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argument
     ''' Skip for now '''
-    logging.info("Reaction removed event")
+    info("Reaction removed event")
 
 # @app.command("/echo")
 # def repeat_text(ack, respond, command):
@@ -668,7 +668,7 @@ def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argum
 
 
 if __name__ == "__main__":
-    setup_logging(debug=('DEBUG' in os.environ))
+    setup_logging(debug_mode=('DEBUG' in os.environ))
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
     feels['current'] = get_feels("")
     try:
