@@ -58,12 +58,10 @@ class GPT():
         for item in sorted(scored.items()):
             warning(f"{item[0]:0.2f}:", item[1])
 
-        weights = list(scored)
-
-        idx = random.choices(list(sorted(scored)), weights=weights)[0]
+        idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
         reply = scored[idx]
 
-        warning(f"🗣 Choice: {idx:0.2f}", reply)
+        warning(f"✅ Choice: {idx:0.2f}", reply)
         warning("📊 Stats:", self.stats)
 
         return reply
@@ -159,7 +157,8 @@ class GPT():
             score = sum(all_scores.values()) + topic_bonus
             all_scores['total'] = score
             warning(
-                ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()])
+                ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
+                "❌" if (score < self.min_score or all_scores['profanity'] < -0.5) else "👍"
             )
 
             if score < self.min_score:
@@ -172,7 +171,13 @@ class GPT():
 
             scored[score] = text
 
-        return scored
+        # weights are assumed to be positive. 0 == no chance, so add 1.
+        min_score = abs(min(list(scored))) + 1
+        adjusted = {}
+        for item in scored.items():
+            adjusted[item[0] + min_score] = item[1]
+
+        return adjusted
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
         ''' Ask GPT for a summary'''
