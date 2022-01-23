@@ -166,15 +166,16 @@ def load_from_ltm(channel):
     last_ts = history[-1]['_source']['@timestamp']
 
     for line in history[::-1]:
-        time_lag = elapsed(last_ts, line['_source']['@timestamp'])
-        last_ts = line['_source']['@timestamp']
+        src = line['_source']
+        time_lag = elapsed(last_ts, src['@timestamp'])
+        last_ts = src['@timestamp']
 
         # Clear the short term memory after CONVERSATION_INTERVAL
         if time_lag > CONVERSATION_INTERVAL:
             clear_stm(channel)
 
-        ToT[channel]['convo'].append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
-        ToT[channel]['convo_id'] = line['_source']['convo_id']
+        ToT[channel]['convo'].append(f"{src['speaker']}: {src['msg']}")
+        ToT[channel]['convo_id'] = src['convo_id']
 
 def get_convo_by_id(convo_id):
     ''' Extract a full conversation by its convo_id. Returns a list of strings. '''
@@ -272,7 +273,6 @@ def clear_stm(channel):
         return
 
     ToT[channel]['rejoinder'].cancel()
-
     ToT[channel]['convo'].clear()
     ToT[channel]['convo_id'] = uuid.uuid4()
 
@@ -357,6 +357,7 @@ def get_reply(channel, them, msg):
             clear_stm(channel)
             for line in get_convo_summaries(channel, 3):
                 ToT[channel]['convo'].append(line.strip() + '\n')
+            ToT[channel]['convo'].append(f"{them}: {msg}")
 
         then = dt.datetime.fromisoformat(last_message['_source']['@timestamp']).replace(tzinfo=None)
         delta = f"They last spoke {humanize.naturaltime(dt.datetime.now() - then)}."
@@ -437,7 +438,7 @@ def status_report(say, context):
 
     warning("💭 ToT:",  ToT[channel])
     warning("😄 Feeling:",  feels['current'])
-    warning("convo_id:",  ToT[channel]['convo_id'])
+    debug("convo_id:",  ToT[channel]['convo_id'])
     conversations_info = app.client.conversations_info(channel=channel)
 
     if 'topic' in conversations_info['channel']:
