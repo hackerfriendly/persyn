@@ -6,7 +6,6 @@ A Slack chat plugin for Persyn. Sends Slack events to interact.py.
 """
 import logging
 import os
-import pathlib
 import random
 import re
 import sys
@@ -21,10 +20,8 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk.errors import SlackApiError
 
-sys.path.append(str(pathlib.Path(__file__).parent.parent.parent.resolve()))
-
 # Color logging
-from utils.color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
+from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
 
 # These are all defined in config/*.conf
 ME = os.environ["BOT_NAME"]
@@ -34,9 +31,6 @@ IMAGE_MODELS = {
     "stylegan2": ["ffhq", "car", "cat", "church", "horse", "waifu"]
 }
 IMAGE_ENGINE_WEIGHTS = [0.4, 0.4, 0.2]
-
-# New conversation every 10 minutes
-CONVERSATION_INTERVAL = 600
 
 # Twitter
 twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
@@ -111,13 +105,6 @@ def take_a_photo(channel, prompt, engine=None, model=None):
     warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
     return reply.status_code
 
-def clear_stm(channel):
-    ''' Clear the short term memory for this channel '''
-    if channel not in reminders:
-        return
-
-    reminders[channel]['rejoinder'].cancel()
-
 def get_reply(channel, msg, speaker_id=None, speaker_name=None):
     ''' Ask interact for an appropriate response. '''
     req = {
@@ -128,6 +115,20 @@ def get_reply(channel, msg, speaker_id=None, speaker_name=None):
     }
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/get_reply/", params=req).json()
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        critical(f"🤖 Could not get_reply(): {err}")
+        return ":shrug:"
+
+    return reply['reply']
+
+def get_summary(channel):
+    ''' Ask interact for a channel summary. '''
+    req = {
+        "channel": channel
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req).json()
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         critical(f"🤖 Could not get_reply(): {err}")
@@ -200,13 +201,13 @@ def photo_summary(say, context): # pylint: disable=unused-argument
         when=60,
         what=f"_{ME} takes a picture of this conversation._ It will take a few minutes to develop."
     )
-    take_a_photo(channel, get_reply(channel, "GENERATE_SUMMARY"))
+    take_a_photo(channel, get_summary(channel))
 
 @app.message(re.compile(r"^summary$", re.I))
 def summarize(say, context):
     ''' Say a condensed summary of this channel '''
     channel = context['channel_id']
-    say(get_reply(channel, "GENERATE_SUMMARY"))
+    say(get_summary(channel))
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
