@@ -1,0 +1,14 @@
+#!/bin/bash
+cd $(dirname $0)/interact
+
+. env/bin/activate
+
+# for nvcc
+export PATH=$PATH:/usr/local/cuda-11.0/bin/
+
+while :; do
+	figlet -f slant -w 100 Interact starting up | lolcat -a -d 5
+	. ../config/*.conf
+	uvicorn interact:app --port ${DREAM_SERVER_PORT} --host ${DREAM_SERVER_HOST} ${DEV}
+	sleep 1
+done

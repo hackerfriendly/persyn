@@ -2,8 +2,6 @@
 dreams.py
 
 A REST API for generating chat bot hallucinations.
-
-Run with
 '''
 import json
 import os
