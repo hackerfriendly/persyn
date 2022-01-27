@@ -63,6 +63,10 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if not convo_history:
             return []
 
+        # Skip summaries if we hit max lines
+        if len(convo_history) == lines:
+            summaries = 0
+
         convo_id = convo_history[0]['_source']['convo_id']
         ret = self.load_summaries(channel, summaries)
 
