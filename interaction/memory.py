@@ -1,9 +1,7 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 import uuid
-import datetime as dt
 
 import urllib3
-
 import elasticsearch
 
 # Color logging
@@ -52,9 +50,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Return a list of lines from the conversation index for this channel.
         If the conversation interval has elapsed, load summaries instead.
         '''
-        ret = []
-
-        history = self.es.search( # pylint: disable=unexpected-keyword-arg
+        convo_history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
             query={
                 "term": {"channel.keyword": channel}
@@ -63,17 +59,17 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             size=lines
         )['hits']['hits']
 
-        if not history:
+        # Nothing in the channel
+        if not convo_history:
+            return []
+
+        convo_id = convo_history[0]['_source']['convo_id']
+        ret = self.load_summaries(channel, summaries)
+
+        if elapsed(get_cur_ts(), convo_history[0]['_source']['@timestamp']) > self.conversation_interval:
             return ret
 
-        if elapsed(get_cur_ts(), history[-1]['_source']['@timestamp']) > self.conversation_interval:
-            if summaries:
-                for summary in self.load_summaries(channel, summaries):
-                    ret.append(summary)
-            return ret
-
-        convo_id = history[-1]['_source']['convo_id']
-        for line in history[::-1]:
+        for line in convo_history[::-1]:
             src = line['_source']
             if src['convo_id'] != convo_id:
                 continue
@@ -142,6 +138,20 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         debug("doc:", _id)
         return new_convo
+
+    def save_summary(self, channel, convo_id, summary):
+        '''
+        Save a conversation summary to ElasticSearch.
+        '''
+        doc = {
+            "convo_id": convo_id,
+            "summary": summary,
+            "channel": channel,
+            "@timestamp": get_cur_ts()
+        }
+        _id = self.es.index(index=self.index['summary'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        debug("doc:", _id)
+        return True
 
     def get_last_message(self, channel):
         ''' Return the last message seen on this channel '''
