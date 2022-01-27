@@ -9,6 +9,9 @@ import elasticsearch
 # Color logging
 from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
 
+# Time
+from chrono import elapsed, get_cur_ts
+
 # Disable SSL warnings for Elastic
 urllib3.disable_warnings()
 
@@ -82,7 +85,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     def load_summaries(self, channel, summaries=3):
         '''
-        Return a list of the most recent this channel.
+        Return a list of the most recent summaries for this channel.
         '''
         ret = []
 
@@ -171,11 +174,3 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
-
-def elapsed(ts1, ts2):
-    ''' Elapsed seconds between two timestamps (str in isoformat) '''
-    return abs((dt.datetime.fromisoformat(ts2) - dt.datetime.fromisoformat(ts1)).total_seconds())
-
-def get_cur_ts():
-    ''' Return a properly formatted timestamp string '''
-    return str(dt.datetime.now(dt.timezone.utc).astimezone().isoformat())
