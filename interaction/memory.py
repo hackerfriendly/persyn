@@ -25,19 +25,24 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         verify_certs=True,
         timeout=30
     ):
-        self.es = elasticsearch.Elasticsearch([url], http_auth=(auth_name, auth_key), verify_certs=verify_certs, timeout=timeout) # pylint: disable=invalid-name
+        self.es = elasticsearch.Elasticsearch( # pylint: disable=invalid-name
+            [url],
+            http_auth=(auth_name, auth_key),
+            verify_certs=verify_certs,
+            timeout=timeout
+        )
         self.index = {
             "convo": convo_index,
             "summary": summary_index
         }
         self.conversation_interval = conversation_interval
 
-        for i in self.index:
+        for item in self.index.items():
             try:
-                self.es.search(index=self.index[i], query={"match_all": {}}, size=1)
+                self.es.search(index=item[1], query={"match_all": {}}, size=1) # pylint: disable=unexpected-keyword-arg
             except elasticsearch.exceptions.NotFoundError:
-                warning(f"Creating index {i}")
-                self.es.index(index=self.index[i], document={'@timestamp': get_cur_ts()})
+                warning(f"Creating index {item[0]}")
+                self.es.index(index=item[1], document={'@timestamp': get_cur_ts()}, refresh='true') # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
     def load_convo(self, channel, lines=16, summaries=3):
         '''
@@ -130,7 +135,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "elapsed": elapsed(prev_ts, cur_ts),
             "convo_id": convo_id
         }
-        _id = self.es.index(index=self.index['convo'], document=doc)["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        _id = self.es.index(index=self.index['convo'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
         debug("doc:", _id)
         return new_convo
