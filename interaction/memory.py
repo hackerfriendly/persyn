@@ -66,7 +66,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         convo_id = convo_history[0]['_source']['convo_id']
         ret = self.load_summaries(channel, summaries)
 
-        if elapsed(get_cur_ts(), convo_history[0]['_source']['@timestamp']) > self.conversation_interval:
+        if self.time_to_move_on(convo_history[0]['_source']['@timestamp']):
             return ret
 
         for line in convo_history[::-1]:
@@ -119,7 +119,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if last_message:
             prev_ts = last_message['_source']['@timestamp']
 
-            if elapsed(prev_ts, cur_ts) <= self.conversation_interval:
+            if not self.time_to_move_on(prev_ts, cur_ts):
                 new_convo = False
                 convo_id = last_message['_source']['convo_id']
         else:
@@ -184,3 +184,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
+
+    def time_to_move_on(self, then, now=None):
+        ''' Returns True if time elapsed between then and now is too long, otherwise False '''
+        return elapsed(then, now or get_cur_ts()) > self.conversation_interval
