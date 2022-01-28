@@ -101,7 +101,7 @@ def vdiff_cfg(channel, prompt, model, image_id):
             '--size', '512', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             '--model', model,
-            prompt
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
@@ -116,7 +116,7 @@ def vdiff_clip(channel, prompt, model, image_id):
             '--steps', f'{DEFAULT_STEPS}',
             '--size', '512', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
-            prompt
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
@@ -131,7 +131,7 @@ def vqgan(channel, prompt, model, image_id):
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             '--vqgan-config', f'models/{model}.yaml',
             '--vqgan-checkpoint', f'models/{model}.ckpt',
-            prompt
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
