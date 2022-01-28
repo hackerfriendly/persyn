@@ -11,7 +11,7 @@ log = ColorLog()
 
 # Voice support
 VOICE_SERVER = os.environ['GTTS_SERVER_URL']
-DEFAULT_VOICE = os.environ.get('DEFAULT_VOICE', 'UK')
+BOT_VOICE = os.environ.get('BOT_VOICE', 'UK')
 VOICES = []
 
 def tts(message, voice=None):
@@ -33,7 +33,7 @@ def tts(message, voice=None):
             log.error("Could not fetch tts voices:", reply.text)
             VOICE_SERVER = None
             return
-        VOICES = [v for v in reply.json()['voices'] if v != DEFAULT_VOICE]
+        VOICES = [v for v in reply.json()['voices'] if v != BOT_VOICE]
         log.warning("📣 Available voices:", VOICES)
 
     if voice is None:
