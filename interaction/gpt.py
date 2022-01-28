@@ -97,7 +97,7 @@ class GPT():
 
     def validate_choice(self, text, convo):
         '''
-        Filter and potentially alter text to fit.
+        Filter low quality GPT responses
         '''
         # Skip blanks
         if not text:
@@ -121,18 +121,6 @@ class GPT():
         if text in ' '.join(convo[:3]):
             self.stats.update(['repetition'])
             return None
-        # Fix unbalanced symbols
-        for symbol in r'(){}[]<>':
-            if text.count(symbol) % 2:
-                text = text.replace(symbol, '')
-        for symbol in r'"*_':
-            if text.count(symbol) % 2:
-                if text.startswith(symbol):
-                    text = text + symbol
-                elif text.endswith(symbol):
-                    text = symbol + text
-                else:
-                    text = text.replace(symbol, '')
 
         return text
 
@@ -161,6 +149,19 @@ class GPT():
                     text = text[:text.rindex('.') + 1]
                 except ValueError:
                     pass
+
+            # Fix unbalanced symbols
+            for symbol in r'(){}[]<>':
+                if text.count(symbol) % 2:
+                    text = text.replace(symbol, '')
+            for symbol in r'"*_':
+                if text.count(symbol) % 2:
+                    if text.startswith(symbol):
+                        text = text + symbol
+                    elif text.endswith(symbol):
+                        text = symbol + text
+                    else:
+                        text = text.replace(symbol, '')
 
             # Now for sentiment analysis. This uses the entire raw response to see where it's leading.
             raw = choice['text'].strip()

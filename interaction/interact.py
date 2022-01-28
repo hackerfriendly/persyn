@@ -61,10 +61,10 @@ ltm = LongTermMemory(
     verify_certs=False
 )
 
-def summarize_convo(channel, convo_id=None):
+def summarize_convo(service, channel, convo_id=None):
     ''' Generate a GPT summary of a conversation chosen by id '''
     if not convo_id:
-        last_message = ltm.get_last_message(channel)
+        last_message = ltm.get_last_message(service, channel)
         if not last_message:
             return ""
         convo_id = last_message['_source']['convo_id']
@@ -74,26 +74,23 @@ def summarize_convo(channel, convo_id=None):
         summarizer="To briefly summarize this conversation, ",
         max_tokens=200
     )
-    ltm.save_summary(channel, convo_id, summary)
+    ltm.save_summary(service, channel, convo_id, summary)
     return summary
 
-def get_reply(channel, msg, speaker_id, speaker_name):
+def get_reply(service, channel, msg, speaker_id, speaker_name):
     ''' Get the best reply for the given channel. '''
-
-    # Rest API call here
-
     if msg != '...':
-        ltm.save_convo(channel, msg, speaker_id, speaker_name)
+        ltm.save_convo(service, channel, msg, speaker_id, speaker_name)
         tts(msg)
 
-    last_message = ltm.get_last_message(channel)
+    last_message = ltm.get_last_message(service, channel)
 
     if last_message:
         # Have we moved on?
         if ltm.time_to_move_on(last_message['_source']['@timestamp']):
             # Summarize the previous conversation for later.
             # TODO: move this to a separate thread. No need to wait for summaries here.
-            summarize_convo(channel, last_message['_source']['convo_id'])
+            summarize_convo(service, channel, last_message['_source']['convo_id'])
 
         then = dt.datetime.fromisoformat(last_message['_source']['@timestamp']).replace(tzinfo=None)
         delta = f"They last spoke {humanize.naturaltime(dt.datetime.now() - then)}."
@@ -102,7 +99,7 @@ def get_reply(channel, msg, speaker_id, speaker_name):
         prefix = f"{BOT_NAME} has something to say."
 
     # Load summaries and conversation
-    convo = ltm.load_convo(channel)
+    convo = ltm.load_convo(service, channel)
     newline = '\n'
 
     prompt = f"""{prefix}
@@ -116,7 +113,7 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
         prompt=prompt,
         convo=convo
     )
-    ltm.save_convo(channel, reply, speaker_id=BOT_ID, speaker_name=BOT_NAME)
+    ltm.save_convo(service, channel, reply, speaker_id=BOT_ID, speaker_name=BOT_NAME)
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
 
@@ -131,6 +128,7 @@ async def root():
 
 @app.post("/reply/")
 async def handle_reply(
+    service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=5000),
     speaker_id: str = Query(..., min_length=1, max_length=255),
@@ -145,15 +143,16 @@ async def handle_reply(
         )
 
     return {
-        "reply": get_reply(channel, msg, speaker_id, speaker_name)
+        "reply": get_reply(service, channel, msg, speaker_id, speaker_name)
     }
 
 @app.post("/summary/")
 async def handle_summary(
+    service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: Optional[str] = Query(None, min_length=36, max_length=36)
     ):
     ''' Return the reply '''
     return {
-        "summary": summarize_convo(channel, convo_id)
+        "summary": summarize_convo(service, channel, convo_id)
     }

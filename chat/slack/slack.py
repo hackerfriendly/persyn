@@ -43,6 +43,8 @@ BASEURL = os.environ.get('BASEURL', None)
 
 # Slack bolt App
 app = App(token=os.environ['SLACK_BOT_TOKEN'])
+# Saved to the service field in ltm
+SLACK_SERVICE = app.client.auth_test().data['url']
 
 # Reminders: container for delayed response threads
 reminders = {}
@@ -105,6 +107,7 @@ def get_reply(channel, msg, speaker_id=None, speaker_name=None):
     ''' Ask interact for an appropriate response. '''
     log.info(f"[{channel}] {speaker_name}: {msg}")
     req = {
+        "service": SLACK_SERVICE,
         "channel": channel,
         "msg": msg,
         "speaker_id": speaker_id,
@@ -124,6 +127,7 @@ def get_reply(channel, msg, speaker_id=None, speaker_name=None):
 def get_summary(channel):
     ''' Ask interact for a channel summary. '''
     req = {
+        "service": SLACK_SERVICE,
         "channel": channel
     }
     try:
@@ -231,7 +235,6 @@ def say_something_later(say, channel, context, when, what=None):
 @app.message(re.compile(r"(.*)", re.I))
 def catch_all(say, context):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
-
     channel = context['channel_id']
 
     if channel not in reminders:

@@ -47,7 +47,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                 log.warning(f"Creating index {item[0]}")
                 self.es.index(index=item[1], document={'@timestamp': get_cur_ts()}, refresh='true') # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
-    def load_convo(self, channel, lines=16, summaries=3):
+    def load_convo(self, service, channel, lines=16, summaries=3):
         '''
         Return a list of lines from the conversation index for this channel.
         If the conversation interval has elapsed, load summaries instead.
@@ -55,7 +55,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         convo_history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
             query={
-                "term": {"channel.keyword": channel}
+                "bool": {
+                    "must": [
+                        {"match": {"service.keyword": service}},
+                        {"match": {"channel.keyword": channel}}
+                    ]
+                }
             },
             sort=[{"@timestamp":{"order":"desc"}}],
             size=lines
@@ -70,7 +75,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             summaries = 0
 
         convo_id = convo_history[0]['_source']['convo_id']
-        ret = self.load_summaries(channel, summaries)
+        ret = self.load_summaries(service, channel, summaries)
 
         if self.time_to_move_on(convo_history[0]['_source']['@timestamp']):
             return ret
@@ -85,7 +90,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"load_convo(): {ret}")
         return ret
 
-    def load_summaries(self, channel, summaries=3):
+    def load_summaries(self, service, channel, summaries=3):
         '''
         Return a list of the most recent summaries for this channel.
         '''
@@ -94,7 +99,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['summary'],
             query={
-                "term": {"channel.keyword": channel}
+                "bool": {
+                    "must": [
+                        {"match": {"service.keyword": service}},
+                        {"match": {"channel.keyword": channel}}
+                    ]
+                }
             },
             sort=[{"@timestamp":{"order":"desc"}}],
             size=summaries
@@ -107,7 +117,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"load_summaries(): {ret}")
         return ret
 
-    def save_convo(self, channel, msg, speaker_id=None, speaker_name=None):
+    def save_convo(self, service, channel, msg, speaker_id=None, speaker_name=None):
         '''
         Save a line of conversation to ElasticSearch.
         If the conversation interval has elapsed, start a new convo.
@@ -120,7 +130,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             speaker_name = speaker_id
 
         cur_ts = get_cur_ts()
-        last_message = self.get_last_message(channel)
+        last_message = self.get_last_message(service, channel)
 
         if last_message:
             prev_ts = last_message['_source']['@timestamp']
@@ -133,6 +143,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         doc = {
             "@timestamp": cur_ts,
+            "service": service,
             "channel": channel,
             "speaker": speaker_name,
             "speaker_id": speaker_id,
@@ -145,13 +156,14 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug("doc:", _id)
         return new_convo
 
-    def save_summary(self, channel, convo_id, summary):
+    def save_summary(self, service, channel, convo_id, summary):
         '''
         Save a conversation summary to ElasticSearch.
         '''
         doc = {
             "convo_id": convo_id,
             "summary": summary,
+            "service": service,
             "channel": channel,
             "@timestamp": get_cur_ts()
         }
@@ -159,13 +171,18 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug("doc:", _id)
         return True
 
-    def get_last_message(self, channel):
+    def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
         try:
             return self.es.search( # pylint: disable=unexpected-keyword-arg
                 index=self.index['convo'],
                 query={
-                    "term": {"channel.keyword": channel}
+                    "bool": {
+                        "must": [
+                            {"match": {"service.keyword": service}},
+                            {"match": {"channel.keyword": channel}}
+                        ]
+                    }
                 },
                 sort=[{"@timestamp":{"order":"desc"}}],
                 size=1
