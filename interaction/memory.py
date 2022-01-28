@@ -4,11 +4,13 @@ import uuid
 import urllib3
 import elasticsearch
 
-# Color logging
-from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
-
 # Time
 from chrono import elapsed, get_cur_ts
+
+# Color logging
+from color_logging import ColorLog
+
+log = ColorLog()
 
 # Disable SSL warnings for Elastic
 urllib3.disable_warnings()
@@ -42,7 +44,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             try:
                 self.es.search(index=item[1], query={"match_all": {}}, size=1) # pylint: disable=unexpected-keyword-arg
             except elasticsearch.exceptions.NotFoundError:
-                warning(f"Creating index {item[0]}")
+                log.warning(f"Creating index {item[0]}")
                 self.es.index(index=item[1], document={'@timestamp': get_cur_ts()}, refresh='true') # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
     def load_convo(self, channel, lines=16, summaries=3):
@@ -80,7 +82,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
             ret.append(f"{src['speaker']}: {src['msg']}")
 
-        debug(f"load_convo(): {ret}")
+        log.debug(f"load_convo(): {ret}")
         return ret
 
     def load_summaries(self, channel, summaries=3):
@@ -102,7 +104,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             src = line['_source']
             ret.append(src['summary'])
 
-        debug(f"load_summaries(): {ret}")
+        log.debug(f"load_summaries(): {ret}")
         return ret
 
     def save_convo(self, channel, msg, speaker_id=None, speaker_name=None):
@@ -140,7 +142,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
         _id = self.es.index(index=self.index['convo'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
-        debug("doc:", _id)
+        log.debug("doc:", _id)
         return new_convo
 
     def save_summary(self, channel, convo_id, summary):
@@ -154,7 +156,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "@timestamp": get_cur_ts()
         }
         _id = self.es.index(index=self.index['summary'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-        debug("doc:", _id)
+        log.debug("doc:", _id)
         return True
 
     def get_last_message(self, channel):
@@ -186,7 +188,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         for line in history:
             ret.append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
 
-        debug(f"get_convo_by_id({convo_id}):", ret)
+        log.debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
 
     def time_to_move_on(self, then, now=None):

@@ -4,11 +4,9 @@ slack.py
 
 A Slack chat plugin for Persyn. Sends Slack events to interact.py.
 """
-import logging
 import os
 import random
 import re
-import sys
 import tempfile
 
 import threading as th
@@ -21,10 +19,13 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk.errors import SlackApiError
 
 # Color logging
-from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
+from color_logging import ColorLog
+
+log = ColorLog()
 
 # These are all defined in config/*.conf
-ME = os.environ["BOT_NAME"]
+BOT_NAME = os.environ["BOT_NAME"]
+BOT_ID = os.environ["BOT_ID"]
 
 IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "vqgan", "stylegan2"]
 IMAGE_MODELS = {
@@ -51,15 +52,10 @@ known_users = {}
 
 # TODO: callback thread to poll(?) interact, or inbound API call for push notifications
 
-def setup_logging(stream=sys.stderr, log_format="%(message)s", debug_mode=False):
-    ''' Basic logging '''
-    level = logging.DEBUG if debug_mode else logging.INFO
-    logging.basicConfig(stream=stream, level=level, format=log_format)
-
 def new_channel(channel):
     ''' Initialize a new channel. '''
     reminders[channel] = {
-        'rejoinder': th.Timer(0, warning, ["New channel:", channel]),
+        'rejoinder': th.Timer(0, log.warning, ["New channel:", channel]),
     }
     reminders[channel]['rejoinder'].start()
 
@@ -102,11 +98,12 @@ def take_a_photo(channel, prompt, engine=None, model=None):
             "prompt": prompt
         }
     reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
-    warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
+    log.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
     return reply.status_code
 
 def get_reply(channel, msg, speaker_id=None, speaker_name=None):
     ''' Ask interact for an appropriate response. '''
+    log.info(f"[{channel}] {speaker_name}: {msg}")
     req = {
         "channel": channel,
         "msg": msg,
@@ -114,13 +111,15 @@ def get_reply(channel, msg, speaker_id=None, speaker_name=None):
         "speaker_name": speaker_name
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/get_reply/", params=req).json()
-        reply.raise_for_status()
+        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/reply/", params=req)
+        response.raise_for_status()
     except requests.exceptions.RequestException as err:
-        critical(f"🤖 Could not get_reply(): {err}")
+        log.critical(f"🤖 Could not get_reply(): {err}")
         return ":shrug:"
 
-    return reply['reply']
+    reply = response.json()['reply']
+    log.warning(f"[{channel}] {BOT_NAME}: {reply}")
+    return reply
 
 def get_summary(channel):
     ''' Ask interact for a channel summary. '''
@@ -128,21 +127,21 @@ def get_summary(channel):
         "channel": channel
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req).json()
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
-        critical(f"🤖 Could not get_reply(): {err}")
+        log.critical(f"🤖 Could not get_reply(): {err}")
         return ":shrug:"
 
-    return reply['reply']
+    return reply.json()['summary']
 
 @app.message(re.compile(r"^help$", re.I))
 def help_me(say, context): # pylint: disable=unused-argument
     ''' TODO: These should really be / commands. '''
     say(f"""Commands:
-  `...`: Let {ME} keep talking without interrupting
+  `...`: Let {BOT_NAME} keep talking without interrupting
   `forget it`: Clear the conversation history for this channel
-  `status`: How is {ME} feeling right now?
+  `status`: How is {BOT_NAME} feeling right now?
   `summary`: Explain it all to me in a single sentence.
   :camera: : Generate a picture summarizing this conversation
   :camera: _prompt_ : Generate a picture of _prompt_
@@ -156,13 +155,13 @@ def picture(say, context): # pylint: disable=unused-argument
     channel = context['channel_id']
     prompt = context['matches'][0].strip()
 
-    say(f"OK, {them}.\n_{ME} takes out a camera and frames the scene_")
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a camera and frames the scene_")
     say_something_later(
         say,
         channel,
         context,
         when=60,
-        what=f"*{ME} takes a picture of _{prompt}_* It will take a few minutes to develop."
+        what=f"*{BOT_NAME} takes a picture of _{prompt}_* It will take a few minutes to develop."
     )
     take_a_photo(channel, prompt)
 
@@ -172,7 +171,7 @@ def selfie(say, context): # pylint: disable=unused-argument
     them = get_display_name(context['user_id'])
     channel = context['channel_id']
 
-    say(f"OK, {them}.\n_{ME} takes out a camera and smiles awkwardly_.")
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a camera and smiles awkwardly_.")
     say_something_later(
         say,
         channel,
@@ -193,13 +192,13 @@ def photo_summary(say, context): # pylint: disable=unused-argument
     them = get_display_name(context['user_id'])
     channel = context['channel_id']
 
-    say(f"OK, {them}.\n_{ME} takes out a camera and frames the scene_")
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a camera and frames the scene_")
     say_something_later(
         say,
         channel,
         context,
         when=60,
-        what=f"_{ME} takes a picture of this conversation._ It will take a few minutes to develop."
+        what=f"_{BOT_NAME} takes a picture of this conversation._ It will take a few minutes to develop."
     )
     take_a_photo(channel, get_summary(channel))
 
@@ -232,6 +231,7 @@ def say_something_later(say, channel, context, when, what=None):
 @app.message(re.compile(r"(.*)", re.I))
 def catch_all(say, context):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
+
     channel = context['channel_id']
 
     if channel not in reminders:
@@ -245,12 +245,15 @@ def catch_all(say, context):
     msg = substitute_names(context['matches'][0]).strip()
 
     # 5% of the time, say nothing (for now).
-    if random.random() < 0.95:
-        the_reply = get_reply(channel, msg, speaker_id, speaker_name)
-        say(the_reply)
+    # if random.random() < 0.05:
+    #     return
+
+    the_reply = get_reply(channel, msg, speaker_id, speaker_name)
 
     if the_reply == ":shrug:":
         return
+
+    say(the_reply)
 
     interval = None
     # Long response
@@ -290,7 +293,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
     Handle reactions: post images to Twitter.
     '''
     if not BASEURL:
-        error("Twitter posting is not enabled in the config.")
+        log.error("Twitter posting is not enabled in the config.")
         return
 
     try:
@@ -307,13 +310,13 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
             if 'reactions' in msg and len(msg['reactions']) == 1:
                 print(msg['reactions'][0]['name'])
                 if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign']:
-                    warning("🐦 Not posting:", {msg['reactions'][0]['name']})
+                    log.warning("🐦 Not posting:", {msg['reactions'][0]['name']})
                     return
 
                 if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                     blk = msg['blocks'][0]
                     if not blk['image_url'].startswith(BASEURL):
-                        warning("🐦 Not my image, so not posting it to Twitter.")
+                        log.warning("🐦 Not my image, so not posting it to Twitter.")
                         return
                     try:
                         with tempfile.TemporaryDirectory() as tmpdir:
@@ -325,11 +328,11 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                                     f.write(chunk)
                             media = twitter.media_upload(fname)
                             twitter.update_status(blk['alt_text'], media_ids=[media.media_id])
-                        info(f"🐦 Uploaded {blk['image_url']}")
+                        log.info(f"🐦 Uploaded {blk['image_url']}")
                     except requests.exceptions.RequestException as err:
-                        error(f"🐦 Could not post {blk['image_url']}: {err}")
+                        log.error(f"🐦 Could not post {blk['image_url']}: {err}")
                 else:
-                    error(f"🐦 Non-image posting not implemented yet: {msg['text']}")
+                    log.error(f"🐦 Non-image posting not implemented yet: {msg['text']}")
 
     except SlackApiError as err:
         print(f"Error: {err}")
@@ -337,7 +340,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
 @app.event("reaction_removed")
 def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argument
     ''' Skip for now '''
-    info("Reaction removed event")
+    log.info("Reaction removed event")
 
 # @app.command("/echo")
 # def repeat_text(ack, respond, command):
@@ -347,7 +350,6 @@ def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argum
 
 
 if __name__ == "__main__":
-    setup_logging(debug_mode=('DEBUG' in os.environ))
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
     try:
         handler.start()
