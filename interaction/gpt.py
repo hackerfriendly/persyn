@@ -13,18 +13,22 @@ from ftfy import fix_text
 from feels import get_flair_score, get_feels_score, get_profanity_score
 
 # Color logging
-from color_logging import debug, info, warning, error, critical # pylint: disable=unused-import
+from color_logging import ColorLog
+
+log = ColorLog()
 
 class GPT():
     ''' Container for GPT-3 completion requests '''
     def __init__(
         self,
         bot_name,
+        bot_id,
         min_score=0.0,
         api_key=os.getenv('OPENAI_API_KEY'),
         engine=os.environ.get('OPENAI_MODEL', 'davinci')
         ):
         self.bot_name = bot_name
+        self.bot_id = bot_id
         self.min_score = min_score
         self.engine = engine
         self.stats = Counter()
@@ -42,11 +46,11 @@ class GPT():
             temperature=temperature,
             max_tokens=max_tokens,
             n=8,
-            frequency_penalty=0.5,
+            frequency_penalty=0.8,
             presence_penalty=0.6,
             stop=stop
         )
-        # debug(f'🧠 Prompt: {prompt}\n🗣 Response:', response)
+        log.info(f"🧠 Prompt: {prompt}")
 
         # Choose a response based on the most positive sentiment.
         scored = self.score_choices(response.choices, convo)
@@ -56,13 +60,13 @@ class GPT():
             return ':shrug:'
 
         for item in sorted(scored.items()):
-            warning(f"{item[0]:0.2f}:", item[1])
+            log.warning(f"{item[0]:0.2f}:", item[1])
 
         idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
         reply = scored[idx]
 
-        warning(f"✅ Choice: {idx:0.2f}", reply)
-        warning("📊 Stats:", self.stats)
+        log.info(f"✅ Choice: {idx:0.2f}", reply)
+        log.warning(f"📊 Stats: {self.stats}")
 
         return reply
 
@@ -91,6 +95,47 @@ class GPT():
         except TypeError:
             return ''
 
+    def validate_choice(self, text, convo):
+        '''
+        Filter and potentially alter text to fit.
+        '''
+        # Skip blanks
+        if not text:
+            self.stats.update(['blank'])
+            return None
+        # No urls
+        if 'http' in text:
+            self.stats.update(['URL'])
+            return None
+        if text in ['…', '...', '..', '.']:
+            self.stats.update(['…'])
+            return None
+        if self.has_forbidden(text):
+            self.stats.update(['forbidden'])
+            return None
+        # Skip prompt bleed-through
+        if self.bleed_through(text):
+            self.stats.update(['prompt bleed-through'])
+            return None
+        # Don't repeat yourself for the last three sentences in convo
+        if text in ' '.join(convo[:3]):
+            self.stats.update(['repetition'])
+            return None
+        # Fix unbalanced symbols
+        for symbol in r'(){}[]<>':
+            if text.count(symbol) % 2:
+                text = text.replace(symbol, '')
+        for symbol in r'"*_':
+            if text.count(symbol) % 2:
+                if text.startswith(symbol):
+                    text = text + symbol
+                elif text.endswith(symbol):
+                    text = symbol + text
+                else:
+                    text = text.replace(symbol, '')
+
+        return text
+
     def score_choices(self, choices, convo):
         '''
         Filter potential responses for quality, sentimentm and profanity.
@@ -101,31 +146,13 @@ class GPT():
         nouns_in_convo = {word.lemma_ for word in self.nlp(' '.join(convo)) if word.pos_ == "NOUN"}
 
         for choice in choices:
-            # Only consider the first line
-            text = self.truncate(choice['text'])
+            text = self.validate_choice(self.truncate(choice['text']), convo)
 
-            # Skip blanks
             if not text:
-                self.stats.update(['blank'])
                 continue
-            # No urls
-            if 'http' in text:
-                self.stats.update(['URL'])
-                continue
-            if text in ['…', '...', '..', '.']:
-                self.stats.update(['…'])
-                continue
-            if self.has_forbidden(text):
-                self.stats.update(['forbidden'])
-                continue
-            # Skip prompt bleed-through
-            if self.bleed_through(text):
-                self.stats.update(['prompt bleed-through'])
-                continue
-            # Don't repeat yourself
-            if f"{self.bot_name}: {text}" in convo:
-                self.stats.update(['repetition'])
-                continue
+
+            log.debug(f"text: {text}")
+            log.debug(f"convo: {convo}")
 
             # Too long? Ditch the last sentence fragment.
             if choice['finish_reason'] == 'length':
@@ -156,7 +183,7 @@ class GPT():
             # Sum the sentiments, emotional heuristic, offensive quotient, and topic_bonus
             score = sum(all_scores.values()) + topic_bonus
             all_scores['total'] = score
-            warning(
+            log.warning(
                 ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
                 "❌" if (score < self.min_score or all_scores['profanity'] < -0.5) else "👍"
             )
@@ -186,7 +213,7 @@ class GPT():
             prompt=f"{text}\n\n{summarizer}\n",
             max_tokens=max_tokens,
             top_p=0.1,
-            frequency_penalty=0.5,
+            frequency_penalty=0.8,
             presence_penalty=0.0
         )
         reply = response.choices[0]['text'].strip().split('\n')[0]
@@ -202,7 +229,7 @@ class GPT():
             except ValueError:
                 pass
 
-        warning("get_summary():", reply)
+        log.warning("get_summary():", reply)
         return reply
 
     def has_forbidden(self, text):

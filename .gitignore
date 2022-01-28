@@ -1,4 +1,5 @@
 config/*.conf
+*.pyc
 env/
 __pycache__/
 dreams/v-diffusion-pytorch/

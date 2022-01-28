@@ -1,0 +1,17 @@
+#!/bin/bash
+cd $(dirname $0)/interaction
+
+. env/bin/activate
+
+# flair sentiment analysis and Tacotron2 TTS on the 1070
+export CUDA_VISIBLE_DEVICES=2
+
+# for nvcc
+export PATH=$PATH:/usr/local/cuda-11.0/bin/
+
+while :; do
+	figlet -f slant -w 100 Interact starting up | lolcat -a -d 5
+	. ../config/*.conf
+	uvicorn interact:app --port ${INTERACT_SERVER_PORT} --host ${INTERACT_SERVER_HOST} ${DEV}
+	sleep 1
+done
