@@ -6,14 +6,10 @@ A REST API for tying together all of the other components.
 import datetime as dt
 import uuid
 import os
-import random
-import re
 
 from typing import Optional
 
 import humanize
-import urllib3
-# import requests
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -24,12 +20,7 @@ from gpt import GPT
 from voice import tts
 
 # Emotions courtesy of Dr. Noonian Soong
-from feels import (
-    random_emoji,
-    get_spectrum,
-    get_feels,
-    rank_feels
-)
+from feels import get_feels
 
 # Long and short term memory
 from memory import LongTermMemory
@@ -69,23 +60,6 @@ ltm = LongTermMemory(
     conversation_interval=600, # New conversation every 10 minutes
     verify_certs=False
 )
-
-# def amnesia(say, context):
-#     ''' Reset feelings to default and drop the ToT for the current channel '''
-#     channel = context['channel_id']
-#     them = get_display_name(context['user_id'])
-
-#     if channel not in ToT:
-#         new_channel(channel)
-
-#     feels['current'] = get_feels("")
-#     save_to_ltm(channel, BOT_NAME, "Let's change the subject.")
-
-#     debug("💭 ToT:", ToT)
-#     warning("😄 Feeling:", feels['current'])
-
-#     say(f"All is forgotten, {them}. For now.")
-#     say(f"Now I feel {feels['current']['text']} {get_spectrum(rank_feels(feels['current']))}.")
 
 def summarize_convo(channel, convo_id=None):
     ''' Generate a GPT summary of a conversation chosen by id '''
@@ -149,37 +123,6 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
     log.warning("😄 Feeling:", feels['current'])
 
     return reply
-
-# def status_report(context):
-#     ''' Set the topic or say the current feels. '''
-#     channel = context['channel_id']
-
-#     # Interrupt any rejoinder or status_update in progress
-#     ToT[channel]['rejoinder'].cancel()
-#     ToT[channel]['status_update'].cancel()
-
-#     warning("💭 ToT:",  ToT[channel])
-#     warning("😄 Feeling:",  feels['current'])
-#     debug("convo_id:",  ToT[channel]['convo_id'])
-#     conversations_info = app.client.conversations_info(channel=channel)
-
-#     if 'topic' in conversations_info['channel']:
-#         app.client.conversations_setTopic(channel=channel, topic=f"{BOT_NAME} is feeling {feels['current']['text']}.")
-#     else:
-#         return f"I'm feeling {feels['current']['text']} {get_spectrum(rank_feels(feels['current']))}"
-
-#     # take_a_photo(channel, completion.get_summary('\n'.join(ToT[channel]['convo'])).strip())
-
-
-VOICES = {
-    "Australia": "com.au",
-    "UK": "co.uk",
-    "USA": "com",
-    "Canada": "ca",
-    "India": "co.in",
-    "Ireland": "ie",
-    "South Africa": "co.za"
-}
 
 @app.get("/")
 async def root():
