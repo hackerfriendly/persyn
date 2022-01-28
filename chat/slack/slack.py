@@ -327,7 +327,11 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                                 for chunk in resp.iter_content():
                                     f.write(chunk)
                             media = twitter.media_upload(fname)
-                            twitter.update_status(blk['alt_text'], media_ids=[media.media_id])
+                            if len(blk['alt_text']) > 277:
+                                caption = blk['alt_text'][:277] + '...'
+                            else:
+                                caption = blk['alt_text']
+                            twitter.update_status(caption, media_ids=[media.media_id])
                         log.info(f"🐦 Uploaded {blk['image_url']}")
                     except requests.exceptions.RequestException as err:
                         log.error(f"🐦 Could not post {blk['image_url']}: {err}")
