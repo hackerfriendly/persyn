@@ -45,6 +45,7 @@ log = ColorLog()
 # These are all defined in config/*.conf
 BOT_NAME = os.environ["BOT_NAME"]
 BOT_ID = os.environ["BOT_ID"]
+BOT_VOICE = os.environ.get('BOT_VOICE', 'USA')
 
 # Minimum completion reply quality. Lower numbers get more dark + sleazy.
 MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
@@ -109,6 +110,7 @@ def get_reply(channel, msg, speaker_id, speaker_name):
 
     if msg != '...':
         ltm.save_convo(channel, msg, speaker_id, speaker_name)
+        tts(msg)
 
     last_message = ltm.get_last_message(channel)
 
@@ -127,12 +129,12 @@ def get_reply(channel, msg, speaker_id, speaker_name):
 
     # Load summaries and conversation
     convo = ltm.load_convo(channel)
-    nl = '\n'
+    newline = '\n'
 
     prompt = f"""{prefix}
 It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
-{nl.join(convo)}
+{newline.join(convo)}
 {BOT_NAME}:"""
 
     log.info(prompt)
@@ -141,7 +143,7 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
         convo=convo
     )
     ltm.save_convo(channel, reply, speaker_id=BOT_ID, speaker_name=BOT_NAME)
-
+    tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
 
     log.warning("😄 Feeling:", feels['current'])
