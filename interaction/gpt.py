@@ -95,6 +95,47 @@ class GPT():
         except TypeError:
             return ''
 
+    def validate_choice(self, text, convo):
+        '''
+        Filter and potentially alter text to fit.
+        '''
+        # Skip blanks
+        if not text:
+            self.stats.update(['blank'])
+            return None
+        # No urls
+        if 'http' in text:
+            self.stats.update(['URL'])
+            return None
+        if text in ['…', '...', '..', '.']:
+            self.stats.update(['…'])
+            return None
+        if self.has_forbidden(text):
+            self.stats.update(['forbidden'])
+            return None
+        # Skip prompt bleed-through
+        if self.bleed_through(text):
+            self.stats.update(['prompt bleed-through'])
+            return None
+        # Don't repeat yourself for the last three sentences in convo
+        if text in ' '.join(convo[:3]):
+            self.stats.update(['repetition'])
+            return None
+        # Fix unbalanced symbols
+        for symbol in r'(){}[]<>':
+            if text.count(symbol) % 2:
+                text = text.replace(symbol, '')
+        for symbol in r'"*_':
+            if text.count(symbol) % 2:
+                if text.startswith(symbol):
+                    text = text + symbol
+                elif text.endswith(symbol):
+                    text = symbol + text
+                else:
+                    text = text.replace(symbol, '')
+
+        return text
+
     def score_choices(self, choices, convo):
         '''
         Filter potential responses for quality, sentimentm and profanity.
@@ -105,30 +146,9 @@ class GPT():
         nouns_in_convo = {word.lemma_ for word in self.nlp(' '.join(convo)) if word.pos_ == "NOUN"}
 
         for choice in choices:
-            # Only consider the first line
-            text = self.truncate(choice['text'])
+            text = self.validate_choice(self.truncate(choice['text']), convo)
 
-            # Skip blanks
             if not text:
-                self.stats.update(['blank'])
-                continue
-            # No urls
-            if 'http' in text:
-                self.stats.update(['URL'])
-                continue
-            if text in ['…', '...', '..', '.']:
-                self.stats.update(['…'])
-                continue
-            if self.has_forbidden(text):
-                self.stats.update(['forbidden'])
-                continue
-            # Skip prompt bleed-through
-            if self.bleed_through(text):
-                self.stats.update(['prompt bleed-through'])
-                continue
-            # Don't repeat yourself
-            if text in ' '.join(convo[:3]):
-                self.stats.update(['repetition'])
                 continue
 
             log.debug(f"text: {text}")
