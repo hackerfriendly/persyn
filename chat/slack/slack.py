@@ -105,7 +105,9 @@ def take_a_photo(channel, prompt, engine=None, model=None):
 
 def get_reply(channel, msg, speaker_id=None, speaker_name=None):
     ''' Ask interact for an appropriate response. '''
-    log.info(f"[{channel}] {speaker_name}: {msg}")
+    if msg != '...':
+        log.info(f"[{channel}] {speaker_name}: {msg}")
+
     req = {
         "service": SLACK_SERVICE,
         "channel": channel,
@@ -124,11 +126,12 @@ def get_reply(channel, msg, speaker_id=None, speaker_name=None):
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
     return reply
 
-def get_summary(channel):
+def get_summary(channel, save=False):
     ''' Ask interact for a channel summary. '''
     req = {
         "service": SLACK_SERVICE,
-        "channel": channel
+        "channel": channel,
+        "save": save
     }
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
@@ -241,7 +244,7 @@ def catch_all(say, context):
     # Interrupt any rejoinder in progress
     reminders[channel]['rejoinder'].cancel()
 
-    speaker_id = get_speaker_id(context['user_id'])
+    speaker_id = context['user_id']
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(context['matches'][0]).strip()
 

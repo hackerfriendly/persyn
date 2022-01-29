@@ -104,8 +104,11 @@ class GPT():
             self.stats.update(['blank'])
             return None
         # No urls
-        if 'http' in text:
+        if 'http' in text or '.com/' in text:
             self.stats.update(['URL'])
+            return None
+        if '/r/' in text:
+            self.stats.update(['Reddit'])
             return None
         if text in ['…', '...', '..', '.']:
             self.stats.update(['…'])

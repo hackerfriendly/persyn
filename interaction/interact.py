@@ -66,7 +66,7 @@ ltm = LongTermMemory(
     verify_certs=False
 )
 
-def summarize_convo(service, channel, convo_id=None):
+def summarize_convo(service, channel, convo_id=None, save=True):
     ''' Generate a GPT summary of a conversation chosen by id '''
     if not convo_id:
         last_message = ltm.get_last_message(service, channel)
@@ -79,7 +79,8 @@ def summarize_convo(service, channel, convo_id=None):
         summarizer="To briefly summarize this conversation, ",
         max_tokens=200
     )
-    ltm.save_summary(service, channel, convo_id, summary)
+    if save:
+        ltm.save_summary(service, channel, convo_id, summary)
     return summary
 
 def get_reply(service, channel, msg, speaker_id, speaker_name):
@@ -156,9 +157,10 @@ async def handle_reply(
 async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: Optional[str] = Query(None, min_length=36, max_length=36)
+    convo_id: Optional[str] = Query(None, min_length=36, max_length=36),
+    save: Optional[bool] = Query(True)
     ):
     ''' Return the reply '''
     return {
-        "summary": summarize_convo(service, channel, convo_id)
+        "summary": summarize_convo(service, channel, convo_id, save)
     }
