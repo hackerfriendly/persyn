@@ -37,7 +37,7 @@ def test_save_convo():
     for i in range(2):
         assert ltm.save_convo("my_service", f"channel_loop_{i}", "message_loop_a", "speaker_id", "speaker_name") is True
         for j in range(3):
-            assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_b{j}", speaker_id="speaker_id") is False
+            assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_b{j}", entity_id="speaker_id") is False
             assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_c{j}", speaker_name="speaker_name") is False
             assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_d{j}") is False
 

@@ -144,8 +144,6 @@ def help_me(say, context): # pylint: disable=unused-argument
     ''' TODO: These should really be / commands. '''
     say(f"""Commands:
   `...`: Let {BOT_NAME} keep talking without interrupting
-  `forget it`: Clear the conversation history for this channel
-  `status`: How is {BOT_NAME} feeling right now?
   `summary`: Explain it all to me in a single sentence.
   :camera: : Generate a picture summarizing this conversation
   :camera: _prompt_ : Generate a picture of _prompt_
@@ -243,7 +241,7 @@ def catch_all(say, context):
     # Interrupt any rejoinder in progress
     reminders[channel]['rejoinder'].cancel()
 
-    speaker_id = context['user_id']
+    speaker_id = get_speaker_id(context['user_id'])
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(context['matches'][0]).strip()
 

@@ -4,7 +4,6 @@ interact.py
 A REST API for tying together all of the other components.
 '''
 import datetime as dt
-import uuid
 import os
 
 from typing import Optional
@@ -24,6 +23,9 @@ from feels import get_feels
 
 # Long and short term memory
 from memory import LongTermMemory
+
+# Entity IDs
+from entities import EntityMapper
 
 # Time handling
 from chrono import natural_time
@@ -46,6 +48,9 @@ feels = {'current': get_feels("")}
 
 # GPT-3 for completion
 completion = GPT(bot_name=BOT_NAME, bot_id=BOT_ID, min_score=MINIMUM_QUALITY_SCORE)
+
+# Entity mapper
+em = EntityMapper(BOT_ID)
 
 # FastAPI
 app = FastAPI()
@@ -79,8 +84,10 @@ def summarize_convo(service, channel, convo_id=None):
 
 def get_reply(service, channel, msg, speaker_id, speaker_name):
     ''' Get the best reply for the given channel. '''
+    entity_id = em.name_to_id(service, channel, speaker_id)
+
     if msg != '...':
-        ltm.save_convo(service, channel, msg, speaker_id, speaker_name)
+        ltm.save_convo(service, channel, msg, entity_id, speaker_name)
         tts(msg)
 
     last_message = ltm.get_last_message(service, channel)
@@ -108,12 +115,11 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 {newline.join(convo)}
 {BOT_NAME}:"""
 
-    log.info(prompt)
     reply = completion.get_best_reply(
         prompt=prompt,
         convo=convo
     )
-    ltm.save_convo(service, channel, reply, speaker_id=BOT_ID, speaker_name=BOT_NAME)
+    ltm.save_convo(service, channel, reply, entity_id=BOT_ID, speaker_name=BOT_NAME)
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
 

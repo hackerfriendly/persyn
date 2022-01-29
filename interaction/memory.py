@@ -117,7 +117,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"load_summaries(): {ret}")
         return ret
 
-    def save_convo(self, service, channel, msg, speaker_id=None, speaker_name=None):
+    def save_convo(self, service, channel, msg, entity_id=None, speaker_name=None):
         '''
         Save a line of conversation to ElasticSearch.
         If the conversation interval has elapsed, start a new convo.
@@ -127,7 +127,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         convo_id = uuid.uuid4()
 
         if not speaker_name:
-            speaker_name = speaker_id
+            speaker_name = entity_id
 
         cur_ts = get_cur_ts()
         last_message = self.get_last_message(service, channel)
@@ -146,7 +146,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "service": service,
             "channel": channel,
             "speaker": speaker_name,
-            "speaker_id": speaker_id,
+            "speaker_id": entity_id,
             "msg": msg,
             "elapsed": elapsed(prev_ts, cur_ts),
             "convo_id": convo_id
