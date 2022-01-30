@@ -5,6 +5,7 @@ A REST API for tying together all of the other components.
 '''
 import datetime as dt
 import os
+import random
 
 from typing import Optional
 
@@ -83,6 +84,22 @@ def summarize_convo(service, channel, convo_id=None, save=True):
         ltm.save_summary(service, channel, convo_id, summary)
     return summary
 
+def choose_reply(prompt, convo):
+    ''' Choose the best reply from a list of possibilities '''
+    scored = completion.get_replies(
+        prompt=prompt,
+        convo=convo
+    )
+
+    for item in sorted(scored.items()):
+        log.warning(f"{item[0]:0.2f}:", item[1])
+
+    idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
+    reply = scored[idx]
+    log.info(f"✅ Choice: {idx:0.2f}", reply)
+
+    return reply
+
 def get_reply(service, channel, msg, speaker_id, speaker_name):
     ''' Get the best reply for the given channel. '''
     entity_id = em.name_to_id(service, channel, speaker_id)
@@ -116,10 +133,8 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 {newline.join(convo)}
 {BOT_NAME}:"""
 
-    reply = completion.get_best_reply(
-        prompt=prompt,
-        convo=convo
-    )
+    reply = choose_reply(prompt, convo)
+
     ltm.save_convo(service, channel, reply, entity_id=BOT_ID, speaker_name=BOT_NAME)
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')

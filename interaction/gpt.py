@@ -1,6 +1,5 @@
 ''' GPT-3 completion engine '''
 import os
-import random
 import re
 
 from collections import Counter
@@ -38,8 +37,11 @@ class GPT():
         # Strictly forbidden words
         self.forbidden = ['Elsa', 'Arendelle', 'Kristoff', 'Olaf', 'Frozen']
 
-    def get_best_reply(self, prompt, convo, stop=None, temperature=0.9, max_tokens=200):
-        ''' Given a text prompt and recent conversation, send the prompt to GPT3 and return a simple text response. '''
+    def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=200):
+        '''
+        Given a text prompt and recent conversation, send the prompt to GPT3
+        and return a list of possible replies.
+        '''
         response = openai.Completion.create(
             engine=self.engine,
             prompt=prompt,
@@ -54,21 +56,13 @@ class GPT():
 
         # Choose a response based on the most positive sentiment.
         scored = self.score_choices(response.choices, convo)
-
         if not scored:
             self.stats.update(['replies exhausted'])
             return ':shrug:'
 
-        for item in sorted(scored.items()):
-            log.warning(f"{item[0]:0.2f}:", item[1])
-
-        idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
-        reply = scored[idx]
-
-        log.info(f"✅ Choice: {idx:0.2f}", reply)
         log.warning(f"📊 Stats: {self.stats}")
 
-        return reply
+        return scored
 
     def truncate(self, text):
         '''
