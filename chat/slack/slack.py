@@ -103,7 +103,7 @@ def take_a_photo(channel, prompt, engine=None, model=None):
     log.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
     return reply.status_code
 
-def get_reply(channel, msg, speaker_id=None, speaker_name=None):
+def get_reply(channel, msg, speaker_name=None, speaker_id=None):
     ''' Ask interact for an appropriate response. '''
     if msg != '...':
         log.info(f"[{channel}] {speaker_name}: {msg}")
@@ -112,8 +112,8 @@ def get_reply(channel, msg, speaker_id=None, speaker_name=None):
         "service": SLACK_SERVICE,
         "channel": channel,
         "msg": msg,
-        "speaker_id": speaker_id,
-        "speaker_name": speaker_name
+        "speaker_name": speaker_name,
+        "speaker_id": speaker_id
     }
     try:
         response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/reply/", params=req)
@@ -252,7 +252,7 @@ def catch_all(say, context):
     # if random.random() < 0.05:
     #     return
 
-    the_reply = get_reply(channel, msg, speaker_id, speaker_name)
+    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
     if the_reply == ":shrug:":
         return
@@ -289,7 +289,7 @@ def handle_app_mention_events(body, client, say): # pylint: disable=unused-argum
     if channel not in reminders:
         new_channel(channel)
 
-    say(get_reply(channel, msg, speaker_id, speaker_name))
+    say(get_reply(channel, msg, speaker_name, speaker_id))
 
 @app.event("reaction_added")
 def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument

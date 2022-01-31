@@ -25,9 +25,6 @@ from feels import get_feels
 # Long and short term memory
 from memory import LongTermMemory
 
-# Entity IDs
-from entities import EntityMapper
-
 # Time handling
 from chrono import natural_time
 
@@ -48,17 +45,15 @@ MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
 feels = {'current': get_feels("")}
 
 # GPT-3 for completion
-completion = GPT(bot_name=BOT_NAME, bot_id=BOT_ID, min_score=MINIMUM_QUALITY_SCORE)
-
-# Entity mapper
-em = EntityMapper(BOT_ID)
+completion = GPT(bot_name=BOT_NAME, min_score=MINIMUM_QUALITY_SCORE)
 
 # FastAPI
 app = FastAPI()
 
 # Elasticsearch memory
 ltm = LongTermMemory(
-    bot_id=os.environ['BOT_ID'],
+    bot_name=BOT_NAME,
+    bot_id=BOT_ID,
     url=os.environ['ELASTIC_URL'],
     auth_name=os.environ["BOT_NAME"],
     auth_key=os.environ.get('ELASTIC_KEY', None),
@@ -69,6 +64,8 @@ ltm = LongTermMemory(
     conversation_interval=600, # New conversation every 10 minutes
     verify_certs=False
 )
+
+BOT_ENTITY_ID = ltm.uuid_to_entity(BOT_ID)
 
 def summarize_convo(service, channel, convo_id=None, save=True):
     ''' Generate a GPT summary of a conversation chosen by id '''
@@ -103,12 +100,10 @@ def choose_reply(prompt, convo):
 
     return reply
 
-def get_reply(service, channel, msg, speaker_id, speaker_name):
+def get_reply(service, channel, msg, speaker_name, speaker_id):
     ''' Get the best reply for the given channel. '''
-    entity_id = em.name_to_entity(service, channel, speaker_id)
-
     if msg != '...':
-        ltm.save_convo(service, channel, msg, entity_id, speaker_name)
+        ltm.save_convo(service, channel, msg, speaker_name, speaker_id)
         tts(msg)
 
     last_message = ltm.get_last_message(service, channel)
@@ -138,7 +133,7 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
     reply = choose_reply(prompt, convo)
 
-    ltm.save_convo(service, channel, reply, entity_id=BOT_ID, speaker_name=BOT_NAME)
+    ltm.save_convo(service, channel, reply, ltm.bot_name, ltm.bot_id)
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
 
@@ -168,7 +163,7 @@ async def handle_reply(
         )
 
     return {
-        "reply": get_reply(service, channel, msg, speaker_id, speaker_name)
+        "reply": get_reply(service, channel, msg, speaker_name, speaker_id)
     }
 
 @app.post("/summary/")

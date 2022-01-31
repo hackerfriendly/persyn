@@ -3,6 +3,7 @@ memory (elasticsearch) tests
 '''
 import os
 import datetime as dt
+import uuid
 
 from time import sleep
 
@@ -19,6 +20,7 @@ relation_index = f"{prefix}-test-relation-{now}"
 def test_save_convo():
     ''' Make some test data '''
     ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
         bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
@@ -31,24 +33,33 @@ def test_save_convo():
         verify_certs=False
     )
     # New convo
-    assert ltm.save_convo("my_service", "channel_a", "message_a", "speaker_id", "speaker_name") is True
+    assert ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id") is True
     # Continued convo
-    assert ltm.save_convo("my_service", "channel_a", "message_b", "speaker_id", "speaker_name") is False
+    assert ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id") is False
     # New convo again
     sleep(1.1)
-    assert ltm.save_convo("my_service", "channel_a", "message_c", "speaker_id", "speaker_name") is True
+    assert ltm.save_convo("my_service", "channel_a", "message_c", "speaker_name", "speaker_id") is True
 
     # All new convos, speaker name / id are optional
     for i in range(2):
-        assert ltm.save_convo("my_service", f"channel_loop_{i}", "message_loop_a", "speaker_id", "speaker_name") is True
+        assert ltm.save_convo("my_service", f"channel_loop_{i}", "message_loop_a", "speaker_name", "speaker_id") is True
         for j in range(3):
-            assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_b{j}", entity_id="speaker_id") is False
-            assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_c{j}", speaker_name="speaker_name") is False
+            assert ltm.save_convo(
+                "my_service",
+                f"channel_loop_{i}",
+                f"message_loop_b{j}",
+                speaker_id="speaker_id") is False
+            assert ltm.save_convo(
+                "my_service",
+                f"channel_loop_{i}",
+                f"message_loop_c{j}",
+                speaker_name="speaker_name") is False
             assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_d{j}") is False
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
     ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
         bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
@@ -81,6 +92,7 @@ def test_fetch_convo():
 def test_save_summaries():
     ''' Make some test data '''
     ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
         bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
@@ -99,6 +111,7 @@ def test_save_summaries():
 def test_load_summaries():
     ''' Retrieve previously saved summaries '''
     ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
         bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
@@ -123,6 +136,7 @@ def test_load_summaries():
 def test_fetch_convo_summarized():
     ''' Retrieve previously saved convo after an expired conversation_interval '''
     ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
         bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
@@ -139,7 +153,7 @@ def test_fetch_convo_summarized():
     assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary"]
 
     # new convo
-    assert ltm.save_convo("my_service", "channel_a", "message_another", "speaker_id_2", "speaker_name_2") is True
+    assert ltm.save_convo("my_service", "channel_a", "message_another", "speaker_name_2", "speaker_id") is True
 
     # contains the summary + new convo
     assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary", "speaker_name_2: message_another"]
@@ -147,6 +161,7 @@ def test_fetch_convo_summarized():
 def test_entities():
     ''' Exercise entity generation and lookup '''
     ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
         bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
@@ -160,15 +175,16 @@ def test_entities():
 
     service = "my_service"
     channel = "channel_a"
-    name = "test_name"
+    speaker_name = "test_name"
+    speaker_id = "test_id"
 
-    eid = ltm.name_to_entity(service, channel, name)
-    assert eid == "j7ExuMmwquXPGZHvpJofJZ"
+    eid = ltm.name_to_entity(service, channel, speaker_id)
+    assert eid == "j6GhcuBe5FAPRtNsdASut5"
 
     other_eids = set([
         ltm.name_to_entity(service, channel, "another_name"),
-        ltm.name_to_entity(service, "another_channel", name),
-        ltm.name_to_entity("another_service", channel, name),
+        ltm.name_to_entity(service, "another_channel", speaker_name),
+        ltm.name_to_entity("another_service", channel, speaker_name),
         ltm.name_to_entity("another_service", "another_channel", "another_name")
     ])
     # Every eid should be unique
@@ -180,16 +196,40 @@ def test_entities():
     assert not ltm.entity_to_name(eid)
 
     # Store it. Returns seconds since it was first stored.
-    assert ltm.save_entity(service, channel, name) == 0
+    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] == 0
+    assert ltm.save_entity(service, channel, speaker_name)[1] == 0
     sleep(1.1)
-    assert ltm.save_entity(service, channel, name) > 1
-    assert ltm.save_entity(service, channel, name) < 2
+    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] > 1
+    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] < 2
 
     # Should match
-    assert ltm.entity_to_name(eid) == name
+    assert ltm.entity_to_name(eid) == speaker_name
 
     # All fields
     doc = ltm.lookup_entity(eid)
     assert doc['service'] == service
     assert doc['channel'] == channel
-    assert doc['name'] == name
+    assert doc['speaker_name'] == speaker_name
+    assert doc['speaker_id'] == speaker_id
+
+def test_short_ids():
+    ''' shortuuid support '''
+    ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
+        bot_id=os.environ["BOT_ID"],
+        url=os.environ["ELASTIC_URL"],
+        auth_name=os.environ["BOT_NAME"],
+        auth_key=os.environ.get("ELASTIC_KEY", None),
+        convo_index=convo_index,
+        summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
+        verify_certs=False
+    )
+
+    random_uuid = uuid.uuid4()
+    entity_id = ltm.uuid_to_entity(random_uuid)
+    assert str(random_uuid) == ltm.entity_to_uuid(entity_id)
+
+    entity_id = ltm.uuid_to_entity(str(random_uuid))
+    assert str(random_uuid) == ltm.entity_to_uuid(entity_id)

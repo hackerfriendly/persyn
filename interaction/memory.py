@@ -20,6 +20,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
     def __init__(
         self,
+        bot_name,
         bot_id,
         url,
         auth_name,
@@ -32,7 +33,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         verify_certs=True,
         timeout=30
     ):
+        self.bot_name = bot_name
         self.bot_id = uuid.UUID(bot_id)
+        self.bot_entity_id = self.uuid_to_entity(bot_id)
         self.es = elasticsearch.Elasticsearch( # pylint: disable=invalid-name
             [url],
             http_auth=(auth_name, auth_key),
@@ -53,6 +56,16 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             except elasticsearch.exceptions.NotFoundError:
                 log.warning(f"Creating index {item[0]}")
                 self.es.index(index=item[1], document={'@timestamp': get_cur_ts()}, refresh='true') # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+                if item[0] == "entity":
+                    self.save_entity(
+                        service="self",
+                        channel="bootstrap",
+                        speaker_name=self.bot_name,
+                        speaker_id=self.bot_id,
+                        entity_id=self.bot_entity_id
+                    )
+                # if item[0] == "relation":
+                #     self.save_relationship(self.uuid_to_entity(bot_id), "has_name", self.bot_name)
 
     def load_convo(self, service, channel, lines=16, summaries=3):
         '''
@@ -124,7 +137,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"load_summaries(): {ret}")
         return ret
 
-    def save_convo(self, service, channel, msg, entity_id=None, speaker_name=None):
+    def save_convo(self, service, channel, msg, speaker_name=None, speaker_id=None):
         '''
         Save a line of conversation to ElasticSearch.
         If the conversation interval has elapsed, start a new convo.
@@ -133,8 +146,10 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         new_convo = True
         convo_id = su.encode(uuid.uuid4())
 
-        if not speaker_name:
-            speaker_name = entity_id
+        if speaker_id == self.bot_id:
+            entity_id = self.bot_entity_id
+        else:
+            entity_id, _ = self.save_entity(service, channel, speaker_name, speaker_id)
 
         cur_ts = get_cur_ts()
         last_message = self.get_last_message(service, channel)
@@ -153,7 +168,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "service": service,
             "channel": channel,
             "speaker": speaker_name,
-            "speaker_id": entity_id,
+            "speaker_id": speaker_id,
+            "entity_id": entity_id,
             "msg": msg,
             "elapsed": elapsed(prev_ts, cur_ts),
             "convo_id": convo_id
@@ -219,29 +235,45 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ''' Returns True if time elapsed between then and now is too long, otherwise False '''
         return elapsed(then, now or get_cur_ts()) > self.conversation_interval
 
-    def entity_key(self, service, channel, name): # pylint: disable=no-self-use
+    @staticmethod
+    def entity_key(service, channel, name):
         ''' Unique string for each service + channel + name '''
-        return f"{service.strip()}|{channel.strip()}|{name.strip()}"
+        return f"{str(service).strip()}|{str(channel).strip()}|{str(name).strip()}"
+
+    @staticmethod
+    def uuid_to_entity(the_uuid):
+        ''' Return the equivalent short ID (str) for a uuid '''
+        return str(su.encode(uuid.UUID(str(the_uuid))))
+
+    @staticmethod
+    def entity_to_uuid(entity_id):
+        ''' Return the equivalent UUID (str) for a uuid '''
+        return str(su.decode(entity_id))
 
     def name_to_entity(self, service, channel, name):
         ''' One distinct short UUID per bot_id + service + channel + name '''
-        return str(su.encode(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name))))
+        return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
 
-    def save_entity(self, service, channel, name):
+    def save_entity(self, service, channel, speaker_name, speaker_id=None, entity_id=None):
         '''
         If an entity is new, save it to Elasticscarch.
-        Returns the elapsed time since the entity was first stored.
+        Returns the entity_id and the elapsed time since the entity was first stored.
         '''
-        entity_id = self.name_to_entity(service, channel, name)
+        if not speaker_id:
+            speaker_name = speaker_id
+
+        if not entity_id:
+            entity_id = self.name_to_entity(service, channel, speaker_id)
         entity = self.lookup_entity(entity_id)
 
         if entity:
-            return elapsed(entity['@timestamp'], get_cur_ts())
+            return entity_id, elapsed(entity['@timestamp'], get_cur_ts())
 
         doc = {
             "service": service,
             "channel": channel,
-            "name": name,
+            "speaker_name": speaker_name,
+            "speaker_id": speaker_id,
             "entity_id": entity_id,
             "@timestamp": get_cur_ts()
         }
@@ -249,7 +281,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             index=self.index['entity'],
             document=doc
         )
-        return 0
+        return entity_id, 0
 
     def lookup_entity(self, entity_id):
         ''' Look up an entity_id in Elasticsearch. '''
@@ -270,5 +302,5 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ''' If the entity_id exists, return its name. '''
         entity = self.lookup_entity(entity_id)
         if entity:
-            return entity['name']
+            return entity['speaker_name']
         return []
