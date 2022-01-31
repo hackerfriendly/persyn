@@ -13,15 +13,20 @@ now = dt.datetime.now().isoformat().replace(':','.').lower()
 
 convo_index = f"{prefix}-test-conversations-{now}"
 summary_index = f"{prefix}-test-summary-{now}"
+entity_index = f"{prefix}-test-entity-{now}"
+relation_index = f"{prefix}-test-relation-{now}"
 
 def test_save_convo():
     ''' Make some test data '''
     ltm = LongTermMemory(
+        bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
         auth_key=os.environ.get("ELASTIC_KEY", None),
         convo_index=convo_index,
         summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
         conversation_interval=1,  # New conversation every second
         verify_certs=False
     )
@@ -44,11 +49,14 @@ def test_save_convo():
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
     ltm = LongTermMemory(
+        bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
         auth_key=os.environ.get("ELASTIC_KEY", None),
         convo_index=convo_index,
         summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
         verify_certs=False
     )
     assert len(ltm.load_convo("my_service", "channel_loop_0")) == 10
@@ -73,11 +81,14 @@ def test_fetch_convo():
 def test_save_summaries():
     ''' Make some test data '''
     ltm = LongTermMemory(
+        bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
         auth_key=os.environ.get("ELASTIC_KEY", None),
         convo_index=convo_index,
         summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
         verify_certs=False
     )
     assert ltm.save_summary("my_service", "channel_a", "convo_id", "my_nice_summary") is True
@@ -88,11 +99,14 @@ def test_save_summaries():
 def test_load_summaries():
     ''' Retrieve previously saved summaries '''
     ltm = LongTermMemory(
+        bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
         auth_key=os.environ.get("ELASTIC_KEY", None),
         convo_index=convo_index,
         summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
         verify_certs=False
     )
     # zero lines returns empty list
@@ -109,11 +123,14 @@ def test_load_summaries():
 def test_fetch_convo_summarized():
     ''' Retrieve previously saved convo after an expired conversation_interval '''
     ltm = LongTermMemory(
+        bot_id=os.environ["BOT_ID"],
         url=os.environ["ELASTIC_URL"],
         auth_name=os.environ["BOT_NAME"],
         auth_key=os.environ.get("ELASTIC_KEY", None),
         convo_index=convo_index,
         summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
         conversation_interval=1,
         verify_certs=False
     )
@@ -126,3 +143,53 @@ def test_fetch_convo_summarized():
 
     # contains the summary + new convo
     assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary", "speaker_name_2: message_another"]
+
+def test_entities():
+    ''' Exercise entity generation and lookup '''
+    ltm = LongTermMemory(
+        bot_id=os.environ["BOT_ID"],
+        url=os.environ["ELASTIC_URL"],
+        auth_name=os.environ["BOT_NAME"],
+        auth_key=os.environ.get("ELASTIC_KEY", None),
+        convo_index=convo_index,
+        summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
+        verify_certs=False
+    )
+
+    service = "my_service"
+    channel = "channel_a"
+    name = "test_name"
+
+    eid = ltm.name_to_entity(service, channel, name)
+    assert eid == "j7ExuMmwquXPGZHvpJofJZ"
+
+    other_eids = set([
+        ltm.name_to_entity(service, channel, "another_name"),
+        ltm.name_to_entity(service, "another_channel", name),
+        ltm.name_to_entity("another_service", channel, name),
+        ltm.name_to_entity("another_service", "another_channel", "another_name")
+    ])
+    # Every eid should be unique
+    assert len(other_eids) == 4
+    assert eid not in other_eids
+
+    # Does not exist in ltm yet
+    assert not ltm.lookup_entity(eid)
+    assert not ltm.entity_to_name(eid)
+
+    # Store it. Returns seconds since it was first stored.
+    assert ltm.save_entity(service, channel, name) == 0
+    sleep(1.1)
+    assert ltm.save_entity(service, channel, name) > 1
+    assert ltm.save_entity(service, channel, name) < 2
+
+    # Should match
+    assert ltm.entity_to_name(eid) == name
+
+    # All fields
+    doc = ltm.lookup_entity(eid)
+    assert doc['service'] == service
+    assert doc['channel'] == channel
+    assert doc['name'] == name

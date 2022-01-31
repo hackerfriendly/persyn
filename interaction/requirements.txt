@@ -10,3 +10,4 @@ alt-profanity-check
 flair
 spacy
 click
+shortuuid

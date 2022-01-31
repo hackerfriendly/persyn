@@ -58,11 +58,14 @@ app = FastAPI()
 
 # Elasticsearch memory
 ltm = LongTermMemory(
+    bot_id=os.environ['BOT_ID'],
     url=os.environ['ELASTIC_URL'],
     auth_name=os.environ["BOT_NAME"],
     auth_key=os.environ.get('ELASTIC_KEY', None),
     convo_index=os.environ.get('ELASTIC_CONVO_INDEX', 'bot-conversations-v0'),
     summary_index=os.environ.get('ELASTIC_SUMMARY_INDEX', 'bot-summaries-v0'),
+    entity_index=os.environ.get('ELASTIC_ENTITY_INDEX', 'bot-entities-v0'),
+    relation_index=os.environ.get('ELASTIC_RELATION_INDEX', 'bot-relationships-v0'),
     conversation_interval=600, # New conversation every 10 minutes
     verify_certs=False
 )
@@ -102,7 +105,7 @@ def choose_reply(prompt, convo):
 
 def get_reply(service, channel, msg, speaker_id, speaker_name):
     ''' Get the best reply for the given channel. '''
-    entity_id = em.name_to_id(service, channel, speaker_id)
+    entity_id = em.name_to_entity(service, channel, speaker_id)
 
     if msg != '...':
         ltm.save_convo(service, channel, msg, entity_id, speaker_name)

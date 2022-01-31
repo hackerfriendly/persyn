@@ -3,6 +3,7 @@ import uuid
 
 import urllib3
 import elasticsearch
+import shortuuid as su
 
 # Time
 from chrono import elapsed, get_cur_ts
@@ -19,15 +20,19 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
     def __init__(
         self,
+        bot_id,
         url,
         auth_name,
         auth_key,
         convo_index,
         summary_index,
+        entity_index,
+        relation_index,
         conversation_interval=600, # 10 minutes
         verify_certs=True,
         timeout=30
     ):
+        self.bot_id = uuid.UUID(bot_id)
         self.es = elasticsearch.Elasticsearch( # pylint: disable=invalid-name
             [url],
             http_auth=(auth_name, auth_key),
@@ -36,7 +41,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         )
         self.index = {
             "convo": convo_index,
-            "summary": summary_index
+            "summary": summary_index,
+            "entity": entity_index,
+            "relation": relation_index
         }
         self.conversation_interval = conversation_interval
 
@@ -124,7 +131,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Returns True if a new conversation was started, otherwise False.
         '''
         new_convo = True
-        convo_id = uuid.uuid4()
+        convo_id = su.encode(uuid.uuid4())
 
         if not speaker_name:
             speaker_name = entity_id
@@ -211,3 +218,57 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     def time_to_move_on(self, then, now=None):
         ''' Returns True if time elapsed between then and now is too long, otherwise False '''
         return elapsed(then, now or get_cur_ts()) > self.conversation_interval
+
+    def entity_key(self, service, channel, name): # pylint: disable=no-self-use
+        ''' Unique string for each service + channel + name '''
+        return f"{service.strip()}|{channel.strip()}|{name.strip()}"
+
+    def name_to_entity(self, service, channel, name):
+        ''' One distinct short UUID per bot_id + service + channel + name '''
+        return str(su.encode(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name))))
+
+    def save_entity(self, service, channel, name):
+        '''
+        If an entity is new, save it to Elasticscarch.
+        Returns the elapsed time since the entity was first stored.
+        '''
+        entity_id = self.name_to_entity(service, channel, name)
+        entity = self.lookup_entity(entity_id)
+
+        if entity:
+            return elapsed(entity['@timestamp'], get_cur_ts())
+
+        doc = {
+            "service": service,
+            "channel": channel,
+            "name": name,
+            "entity_id": entity_id,
+            "@timestamp": get_cur_ts()
+        }
+        self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['entity'],
+            document=doc
+        )
+        return 0
+
+    def lookup_entity(self, entity_id):
+        ''' Look up an entity_id in Elasticsearch. '''
+        entity = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['entity'],
+            query={
+                "term": {"entity_id.keyword": entity_id}
+            },
+            size=1
+        )['hits']['hits']
+
+        if entity:
+            return entity[0]['_source']
+
+        return []
+
+    def entity_to_name(self, entity_id):
+        ''' If the entity_id exists, return its name. '''
+        entity = self.lookup_entity(entity_id)
+        if entity:
+            return entity['name']
+        return []
