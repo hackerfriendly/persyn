@@ -30,7 +30,7 @@ def test_save_convo():
         entity_index=entity_index,
         relation_index=relation_index,
         conversation_interval=1,  # New conversation every second
-        verify_certs=False
+        verify_certs=True
     )
     # New convo
     assert ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id") is True
@@ -68,7 +68,7 @@ def test_fetch_convo():
         summary_index=summary_index,
         entity_index=entity_index,
         relation_index=relation_index,
-        verify_certs=False
+        verify_certs=True
     )
     assert len(ltm.load_convo("my_service", "channel_loop_0")) == 10
     assert len(ltm.load_convo("my_service", "channel_loop_0", lines=3)) == 3
@@ -101,7 +101,7 @@ def test_save_summaries():
         summary_index=summary_index,
         entity_index=entity_index,
         relation_index=relation_index,
-        verify_certs=False
+        verify_certs=True
     )
     assert ltm.save_summary("my_service", "channel_a", "convo_id", "my_nice_summary") is True
     assert ltm.save_summary("my_service", "channel_b", "convo_id_2", "my_other_nice_summary") is True
@@ -120,7 +120,7 @@ def test_load_summaries():
         summary_index=summary_index,
         entity_index=entity_index,
         relation_index=relation_index,
-        verify_certs=False
+        verify_certs=True
     )
     # zero lines returns empty list
     assert ltm.load_summaries("my_service", "channel_a", 0) == [] # pylint: disable=use-implicit-booleaness-not-comparison
@@ -146,7 +146,7 @@ def test_fetch_convo_summarized():
         entity_index=entity_index,
         relation_index=relation_index,
         conversation_interval=1,
-        verify_certs=False
+        verify_certs=True
     )
     sleep(1.1)
     # contains only the summary
@@ -170,7 +170,7 @@ def test_entities():
         summary_index=summary_index,
         entity_index=entity_index,
         relation_index=relation_index,
-        verify_certs=False
+        verify_certs=True
     )
 
     service = "my_service"
@@ -224,7 +224,7 @@ def test_short_ids():
         summary_index=summary_index,
         entity_index=entity_index,
         relation_index=relation_index,
-        verify_certs=False
+        verify_certs=True
     )
 
     random_uuid = uuid.uuid4()
@@ -233,3 +233,20 @@ def test_short_ids():
 
     entity_id = ltm.uuid_to_entity(str(random_uuid))
     assert str(random_uuid) == ltm.entity_to_uuid(entity_id)
+
+def test_cleanup():
+    ''' Delete indices '''
+    ltm = LongTermMemory(
+        bot_name=os.environ["BOT_NAME"],
+        bot_id=os.environ["BOT_ID"],
+        url=os.environ["ELASTIC_URL"],
+        auth_name=os.environ["BOT_NAME"],
+        auth_key=os.environ.get("ELASTIC_KEY", None),
+        convo_index=convo_index,
+        summary_index=summary_index,
+        entity_index=entity_index,
+        relation_index=relation_index,
+        verify_certs=True
+    )
+    for i in [convo_index, summary_index, entity_index, relation_index]:
+        ltm.es.indices.delete(index=i, ignore=[400, 404])
