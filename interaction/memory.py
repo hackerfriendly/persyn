@@ -1,7 +1,6 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 import uuid
 
-import urllib3
 import elasticsearch
 import shortuuid as su
 
@@ -13,8 +12,62 @@ from color_logging import ColorLog
 
 log = ColorLog()
 
-# Disable SSL warnings for Elastic
-urllib3.disable_warnings()
+class ShortTermMemory():
+    ''' Wrapper class for in-process short term conversational memory. '''
+    def __init__(self, conversation_interval):
+        self.convo = {}
+        self.conversation_interval = conversation_interval
+
+    def exists(self, service, channel):
+        ''' True if a channel already exists, else False '''
+        return service in self.convo and channel in self.convo[service]
+
+    def create(self, service, channel):
+        ''' Create a new empty channel. Erases existing channel if any. '''
+        if not self.exists(service, channel):
+            if service not in self.convo:
+                self.convo[service] = {}
+            if channel not in self.convo[service]:
+                self.convo[service][channel] = {}
+        self.convo[service][channel]['ts'] = get_cur_ts()
+        self.convo[service][channel]['convo'] = []
+
+    def clear(self, service, channel):
+        ''' Clear a channel. '''
+        if not self.exists(service, channel):
+            return
+        self.convo[service][channel]['ts'] = get_cur_ts()
+        self.convo[service][channel]['convo'].clear()
+
+    def expired(self, service, channel):
+        ''' True if time elapsed since last update is > conversation_interval, else False '''
+        if not self.exists(service, channel):
+            return True
+        return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
+
+    def append(self, service, channel, line):
+        ''' Append a line to a channel. If the current channel expired, clear it first. '''
+        if not self.exists(service, channel):
+            self.create(service, channel)
+        self.convo[service][channel]['ts'] = get_cur_ts()
+        self.convo[service][channel]['convo'].append(line)
+
+    def fetch(self, service, channel):
+        ''' Fetch the current convo '''
+        if not self.exists(service, channel):
+            self.create(service, channel)
+        return self.convo[service][channel]['convo']
+
+    def last(self, service, channel):
+        ''' Fetch the last message from this convo (if any) '''
+        if not self.exists(service, channel):
+            return None
+
+        last = self.fetch(service, channel)
+        if last:
+            return last[-1]
+
+        return None
 
 class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
@@ -49,6 +102,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "relation": relation_index
         }
         self.conversation_interval = conversation_interval
+        self.stm=ShortTermMemory(conversation_interval)
 
         for item in self.index.items():
             try:
@@ -174,7 +228,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "elapsed": elapsed(prev_ts, cur_ts),
             "convo_id": convo_id
         }
-        _id = self.es.index(index=self.index['convo'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        _id = self.es.index(index=self.index['convo'], document=doc, refresh='false')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 
         log.debug("doc:", _id)
         return new_convo
@@ -190,12 +244,15 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "channel": channel,
             "@timestamp": get_cur_ts()
         }
-        _id = self.es.index(index=self.index['summary'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        _id = self.es.index(index=self.index['summary'], document=doc, refresh='false')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
         log.debug("doc:", _id)
         return True
 
     def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
+        if not self.stm.expired(service, channel):
+            return self.stm.last(service, channel)
+# rjf
         try:
             return self.es.search( # pylint: disable=unexpected-keyword-arg
                 index=self.index['convo'],

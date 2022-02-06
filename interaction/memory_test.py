@@ -7,7 +7,7 @@ import uuid
 
 from time import sleep
 
-from memory import LongTermMemory
+from memory import LongTermMemory, ShortTermMemory
 
 prefix = os.environ['BOT_NAME'].lower()
 now = dt.datetime.now().isoformat().replace(':','.').lower()
@@ -16,6 +16,40 @@ convo_index = f"{prefix}-test-conversations-{now}"
 summary_index = f"{prefix}-test-summary-{now}"
 entity_index = f"{prefix}-test-entity-{now}"
 relation_index = f"{prefix}-test-relation-{now}"
+
+def test_stm():
+    ''' Exercise the short term memory '''
+    stm = ShortTermMemory(conversation_interval=0.1)
+
+    source = 'source1'
+    channel = 'channel1'
+
+    assert not stm.exists(source, channel)
+    assert stm.expired(source, channel)
+    stm.create(source, channel)
+    assert stm.exists(source, channel)
+    assert not stm.expired(source, channel)
+
+    assert not stm.exists("another", channel)
+    assert not stm.exists(source, "different")
+
+    stm.append(source, channel, "foo")
+    assert stm.last(source, channel) == "foo"
+
+    stm.append(source, channel, "bar")
+    assert stm.last(source, channel) == "bar"
+
+    assert stm.fetch(source, channel) == ["foo", "bar"]
+
+    sleep(0.2)
+    assert stm.expired(source, channel)
+
+    stm.append(source, channel, "bar")
+    assert stm.last(source, channel) == "bar"
+
+    stm.clear(source, channel)
+    assert not stm.expired(source, channel)
+    assert stm.last(source, channel) is None
 
 def test_save_convo():
     ''' Make some test data '''
@@ -249,4 +283,4 @@ def test_cleanup():
         verify_certs=True
     )
     for i in [convo_index, summary_index, entity_index, relation_index]:
-        ltm.es.indices.delete(index=i, ignore=[400, 404])
+        ltm.es.indices.delete(index=i, ignore=[400, 404]) # pylint: disable=unexpected-keyword-arg
