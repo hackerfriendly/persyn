@@ -62,7 +62,7 @@ ltm = LongTermMemory(
     entity_index=os.environ.get('ELASTIC_ENTITY_INDEX', 'bot-entities-v0'),
     relation_index=os.environ.get('ELASTIC_RELATION_INDEX', 'bot-relationships-v0'),
     conversation_interval=600, # New conversation every 10 minutes
-    verify_certs=False
+    verify_certs=True
 )
 
 BOT_ENTITY_ID = ltm.uuid_to_entity(BOT_ID)
