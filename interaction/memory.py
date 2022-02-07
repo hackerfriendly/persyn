@@ -13,7 +13,7 @@ from color_logging import ColorLog
 log = ColorLog()
 
 class Recall(): # pylint: disable=too-many-arguments
-    ''' Total Recall: stm + ltm '''
+    ''' Total Recall: stm + ltm. '''
     def __init__(
         self,
         bot_name,
@@ -24,6 +24,7 @@ class Recall(): # pylint: disable=too-many-arguments
         index_prefix=None,
         conversation_interval=600, # 10 minutes
         verify_certs=True,
+        version="v0",
         timeout=30
     ):
         self.bot_name = bot_name
@@ -37,9 +38,35 @@ class Recall(): # pylint: disable=too-many-arguments
             auth_name,
             auth_key,
             index_prefix=index_prefix,
+            version=version,
             verify_certs=verify_certs,
             timeout=timeout
         )
+
+    def load(self, service, channel, summaries=3):
+        ''' Return some summaries and the contents of the stm '''
+        the_summaries = self.ltm.load_summaries(service, channel, summaries)
+
+        if self.stm.expired(service, channel):
+            return the_summaries
+
+        return the_summaries + self.stm.fetch(service, channel)
+
+    def save(self, service, channel, msg, speaker_name, speaker_id):
+        ''' Save to stm and ltm. Clears stm if it expired. '''
+        if self.stm.expired(service, channel):
+            self.stm.clear(service, channel)
+
+        convo_id = self.stm.append(service, channel, f"{speaker_name}: {msg}")
+        self.ltm.save_convo(service, channel, msg, speaker_name, speaker_id, convo_id)
+        return True
+
+    def summary(self, service, channel, summary):
+        ''' Save a summary. Clears stm. '''
+        convo_id = self.stm.convo_id(service, channel)
+        self.stm.clear(service, channel)
+        self.ltm.save_summary(service, channel, convo_id, summary)
+        return True
 
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
@@ -79,7 +106,10 @@ class ShortTermMemory():
         return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
 
     def append(self, service, channel, line):
-        ''' Append a line to a channel. If the current channel expired, clear it first. '''
+        '''
+        Append a line to a channel. If the current channel expired, clear it first.
+        Returns the convo_id.
+        '''
         if not self.exists(service, channel):
             self.create(service, channel)
         if self.expired(service, channel):
@@ -87,6 +117,8 @@ class ShortTermMemory():
 
         self.convo[service][channel]['ts'] = get_cur_ts()
         self.convo[service][channel]['convo'].append(line)
+
+        return self.convo_id(service, channel)
 
     def fetch(self, service, channel):
         ''' Fetch the current convo, if any '''
@@ -272,7 +304,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug("doc:", _id)
         return convo_id, cur_ts
 
-    def save_summary(self, service, channel, convo_id, summary, refresh=False):
+    def save_summary(self, service, channel, convo_id, summary, refresh=True):
         '''
         Save a conversation summary to ElasticSearch.
         '''
@@ -284,11 +316,11 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "channel": channel,
             "@timestamp": cur_ts
         }
-        _id = self.es.index(
+        _id = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
             index=self.index['summary'],
             document=doc,
             refresh='true' if refresh else 'false'
-        )["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        )["_id"]
 
         log.debug("doc:", _id)
         return cur_ts
