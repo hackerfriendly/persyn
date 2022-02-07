@@ -269,6 +269,9 @@ def test_recall():
     # time passes...
     sleep(0.6)
 
+    # expired
+    assert recall.expired(service, channel)
+
     # only summaries
     assert recall.load(service, channel) == ["my_nice_summary", "this_is_another_summary"]
 

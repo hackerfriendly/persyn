@@ -68,6 +68,10 @@ class Recall(): # pylint: disable=too-many-arguments
         self.ltm.save_summary(service, channel, convo_id, summary)
         return True
 
+    def expired(self, service, channel):
+        ''' True if this conversation has expired, else False '''
+        return self.stm.expired(service, channel)
+
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
     def __init__(self, conversation_interval):
