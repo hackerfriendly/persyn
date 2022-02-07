@@ -9,13 +9,19 @@ from time import sleep
 
 from memory import LongTermMemory, ShortTermMemory
 
-prefix = os.environ['BOT_NAME'].lower()
+prefix = f"{os.environ['BOT_NAME'].lower()}-test"
 now = dt.datetime.now().isoformat().replace(':','.').lower()
 
-convo_index = f"{prefix}-test-conversations-{now}"
-summary_index = f"{prefix}-test-summary-{now}"
-entity_index = f"{prefix}-test-entity-{now}"
-relation_index = f"{prefix}-test-relation-{now}"
+ltm = LongTermMemory(
+    bot_name=os.environ["BOT_NAME"],
+    bot_id=os.environ["BOT_ID"],
+    url=os.environ["ELASTIC_URL"],
+    auth_name=os.environ["BOT_NAME"],
+    auth_key=os.environ.get("ELASTIC_KEY", None),
+    index_prefix=prefix,
+    version=now,
+    verify_certs=True
+)
 
 def test_stm():
     ''' Exercise the short term memory '''
@@ -24,15 +30,18 @@ def test_stm():
     source = 'source1'
     channel = 'channel1'
 
+    # start fresh
     assert not stm.exists(source, channel)
     assert stm.expired(source, channel)
     stm.create(source, channel)
     assert stm.exists(source, channel)
     assert not stm.expired(source, channel)
 
+    # source and channel are distinct
     assert not stm.exists("another", channel)
     assert not stm.exists(source, "different")
 
+    # add some lines
     stm.append(source, channel, "foo")
     assert stm.last(source, channel) == "foo"
 
@@ -41,69 +50,72 @@ def test_stm():
 
     assert stm.fetch(source, channel) == ["foo", "bar"]
 
+    convo_id = stm.convo_id(source, channel)
+    assert convo_id
+
+    # convo change
     sleep(0.2)
     assert stm.expired(source, channel)
+    # expiration does not clear id
+    assert stm.convo_id(source, channel) == convo_id
 
+    # append does clear id
     stm.append(source, channel, "bar")
     assert stm.last(source, channel) == "bar"
+    new_id = stm.convo_id(source, channel)
+    assert new_id != convo_id
 
+    # explicit clear
     stm.clear(source, channel)
     assert not stm.expired(source, channel)
+    assert stm.convo_id(source, channel) != new_id
     assert stm.last(source, channel) is None
 
 def test_save_convo():
     ''' Make some test data '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        conversation_interval=1,  # New conversation every second
-        verify_certs=True
-    )
+
     # New convo
-    assert ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id") is True
+    cid1, ts1 = ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id")
+    assert cid1
+    assert ts1
     # Continued convo
-    assert ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id") is False
-    # New convo again
-    sleep(1.1)
-    assert ltm.save_convo("my_service", "channel_a", "message_c", "speaker_name", "speaker_id") is True
+    cid2, ts2 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id=cid1)
+    assert cid1 == cid2
+    assert ts2
+    # New convo
+    cid3, ts3 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id="foo")
+    assert cid3 == "foo"
+    assert ts3
 
     # All new convos, speaker name / id are optional
+
     for i in range(2):
-        assert ltm.save_convo("my_service", f"channel_loop_{i}", "message_loop_a", "speaker_name", "speaker_id") is True
+        cid0, ts0 = ltm.save_convo("my_service", f"channel_loop_{i}", "message_loop_a", "speaker_name", "speaker_id", convo_id=None)
         for j in range(3):
-            assert ltm.save_convo(
+            cid1, ts1 = ltm.save_convo(
                 "my_service",
                 f"channel_loop_{i}",
                 f"message_loop_b{j}",
-                speaker_id="speaker_id") is False
-            assert ltm.save_convo(
+                speaker_id="speaker_id",
+                convo_id=cid0)
+            assert cid1 == cid0
+
+            cid2, ts2 = ltm.save_convo(
                 "my_service",
                 f"channel_loop_{i}",
                 f"message_loop_c{j}",
-                speaker_name="speaker_name") is False
-            assert ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_d{j}") is False
+                speaker_name="speaker_name",
+                convo_id=cid0)
+            assert cid1 == cid2
+            assert ts1 != ts2
+
+            # Assert refresh on the last msg so we can fetch later
+            cid3, ts3 = ltm.save_convo("my_service", f"channel_loop_{i}", f"message_loop_d{j}", convo_id=cid1, refresh=True)
+            assert cid1 == cid3
+            assert ts1 != ts3
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        verify_certs=True
-    )
     assert len(ltm.load_convo("my_service", "channel_loop_0")) == 10
     assert len(ltm.load_convo("my_service", "channel_loop_0", lines=3)) == 3
     # First message (whole convo)
@@ -125,37 +137,15 @@ def test_fetch_convo():
 
 def test_save_summaries():
     ''' Make some test data '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        verify_certs=True
-    )
-    assert ltm.save_summary("my_service", "channel_a", "convo_id", "my_nice_summary") is True
-    assert ltm.save_summary("my_service", "channel_b", "convo_id_2", "my_other_nice_summary") is True
-    assert ltm.save_summary("my_service", "channel_b", "convo_id_3", "my_middle_nice_summary") is True
-    assert ltm.save_summary("my_service", "channel_b", "convo_id_4", "my_final_nice_summary") is True
+
+    assert ltm.save_summary("my_service", "channel_a", "convo_id", "my_nice_summary")
+    assert ltm.save_summary("my_service", "channel_b", "convo_id_2", "my_other_nice_summary")
+    assert ltm.save_summary("my_service", "channel_b", "convo_id_3", "my_middle_nice_summary")
+    assert ltm.save_summary("my_service", "channel_b", "convo_id_4", "my_final_nice_summary", refresh=True)
 
 def test_load_summaries():
     ''' Retrieve previously saved summaries '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        verify_certs=True
-    )
+
     # zero lines returns empty list
     assert ltm.load_summaries("my_service", "channel_a", 0) == [] # pylint: disable=use-implicit-booleaness-not-comparison
     # saved above
@@ -167,45 +157,20 @@ def test_load_summaries():
         "my_final_nice_summary"
     ]
 
-def test_fetch_convo_summarized():
-    ''' Retrieve previously saved convo after an expired conversation_interval '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        conversation_interval=1,
-        verify_certs=True
-    )
-    sleep(1.1)
-    # contains only the summary
-    assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary"]
+# def test_fetch_convo_summarized():
+#     ''' Retrieve previously saved convo after an expired conversation_interval '''
 
-    # new convo
-    assert ltm.save_convo("my_service", "channel_a", "message_another", "speaker_name_2", "speaker_id") is True
+#     # contains only the summary
+#     assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary"]
 
-    # contains the summary + new convo
-    assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary", "speaker_name_2: message_another"]
+#     # new convo
+#     assert ltm.save_convo("my_service", "channel_a", "message_another", "speaker_name_2", "speaker_id", refresh=True)
+
+#     # contains the summary + new convo
+#     assert ltm.load_convo("my_service", "channel_a") == ["my_nice_summary", "speaker_name_2: message_another"]
 
 def test_entities():
     ''' Exercise entity generation and lookup '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        verify_certs=True
-    )
 
     service = "my_service"
     channel = "channel_a"
@@ -248,19 +213,6 @@ def test_entities():
 
 def test_short_ids():
     ''' shortuuid support '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        verify_certs=True
-    )
-
     random_uuid = uuid.uuid4()
     entity_id = ltm.uuid_to_entity(random_uuid)
     assert str(random_uuid) == ltm.entity_to_uuid(entity_id)
@@ -270,17 +222,5 @@ def test_short_ids():
 
 def test_cleanup():
     ''' Delete indices '''
-    ltm = LongTermMemory(
-        bot_name=os.environ["BOT_NAME"],
-        bot_id=os.environ["BOT_ID"],
-        url=os.environ["ELASTIC_URL"],
-        auth_name=os.environ["BOT_NAME"],
-        auth_key=os.environ.get("ELASTIC_KEY", None),
-        convo_index=convo_index,
-        summary_index=summary_index,
-        entity_index=entity_index,
-        relation_index=relation_index,
-        verify_certs=True
-    )
-    for i in [convo_index, summary_index, entity_index, relation_index]:
-        ltm.es.indices.delete(index=i, ignore=[400, 404]) # pylint: disable=unexpected-keyword-arg
+    for i in ltm.index:
+        ltm.es.indices.delete(index=ltm.index[i], ignore=[400, 404]) # pylint: disable=unexpected-keyword-arg
