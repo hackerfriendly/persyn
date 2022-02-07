@@ -63,6 +63,8 @@ class Recall(): # pylint: disable=too-many-arguments
 
     def summary(self, service, channel, summary):
         ''' Save a summary. Clears stm. '''
+        if not summary:
+            return False
         convo_id = self.stm.convo_id(service, channel)
         self.stm.clear(service, channel)
         self.ltm.save_summary(service, channel, convo_id, summary)
@@ -71,6 +73,10 @@ class Recall(): # pylint: disable=too-many-arguments
     def expired(self, service, channel):
         ''' True if this conversation has expired, else False '''
         return self.stm.expired(service, channel)
+
+    def forget(self, service, channel):
+        self.stm.clear(service, channel)
+        return True
 
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
@@ -308,6 +314,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug("doc:", _id)
         return convo_id, cur_ts
 
+    # TODO: set refresh=False after separate summary thread is implemented.
     def save_summary(self, service, channel, convo_id, summary, refresh=True):
         '''
         Save a conversation summary to ElasticSearch.

@@ -142,6 +142,36 @@ def get_summary(channel, save=False):
 
     return reply.json()['summary']
 
+def get_status(channel):
+    ''' Ask interact for status. '''
+    req = {
+        "service": SLACK_SERVICE,
+        "channel": channel,
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/status/", params=req)
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not get_reply(): {err}")
+        return ":shrug:"
+
+    return reply.json()['status']
+
+def forget_it(channel):
+    ''' There is no antimemetics division. '''
+    req = {
+        "service": SLACK_SERVICE,
+        "channel": channel,
+    }
+    try:
+        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/amnesia/", params=req)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not forget_it(): {err}")
+        return ":shrug:"
+
+    return ":exploding_head:"
+
 @app.message(re.compile(r"^help$", re.I))
 def help_me(say, context): # pylint: disable=unused-argument
     ''' TODO: These should really be / commands. '''
@@ -213,6 +243,12 @@ def summarize(say, context):
     channel = context['channel_id']
     say(get_summary(channel))
 
+@app.message(re.compile(r"^status$", re.I))
+def summarize(say, context):
+    ''' Say a condensed summary of this channel '''
+    channel = context['channel_id']
+    say(get_status(channel))
+
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
     if channel not in reminders:
@@ -248,10 +284,6 @@ def catch_all(say, context):
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(context['matches'][0]).strip()
 
-    # 5% of the time, say nothing (for now).
-    # if random.random() < 0.05:
-    #     return
-
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
     if the_reply == ":shrug:":
@@ -259,16 +291,25 @@ def catch_all(say, context):
 
     say(the_reply)
 
+    if the_reply.endswith('…') or the_reply.endswith('...'):
+        say_something_later(
+            say,
+            channel,
+            context,
+            when=1
+        )
+    return
+
     interval = None
     # Long response
     if random.random() < 0.1:
-        interval = [9,12]
+        interval = [7,10]
     # Medium response
     elif random.random() < 0.2:
-        interval = [6,8]
+        interval = [4,6]
     # Quick response
     elif random.random() < 0.3:
-        interval = [4,5]
+        interval = [2,3]
 
     if interval:
         say_something_later(
@@ -296,13 +337,10 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
     '''
     Handle reactions: post images to Twitter.
     '''
-    if not BASEURL:
-        log.error("Twitter posting is not enabled in the config.")
-        return
-
+    channel = body['event']['item']['channel']
     try:
         result = app.client.conversations_history(
-            channel=body['event']['item']['channel'],
+            channel=channel,
             inclusive=True,
             oldest=body['event']['item']['ts'],
             limit=1
@@ -312,12 +350,24 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
         for msg in messages:
             # only post on the first reaction
             if 'reactions' in msg and len(msg['reactions']) == 1:
-                print(msg['reactions'][0]['name'])
-                if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign']:
-                    log.warning("🐦 Not posting:", {msg['reactions'][0]['name']})
-                    return
+                if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign', 'hand']:
+                    if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
+                        log.warning("🐦 Not posting:", {msg['reactions'][0]['name']})
+                        return
+                    log.warning("🤯 All is forgotten.")
+                    return forget_it(channel)
+                try:
+                    response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/amnesia/", params=req)
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as err:
+                    log.critical(f"🤖 Could not get_reply(): {err}")
+                    return ":shrug:"
 
                 if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
+                    if not BASEURL:
+                        log.error("Twitter posting is not enabled in the config.")
+                        return
+
                     blk = msg['blocks'][0]
                     if not blk['image_url'].startswith(BASEURL):
                         log.warning("🐦 Not my image, so not posting it to Twitter.")
@@ -340,7 +390,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                     except requests.exceptions.RequestException as err:
                         log.error(f"🐦 Could not post {blk['image_url']}: {err}")
                 else:
-                    log.error(f"🐦 Non-image posting not implemented yet: {msg['text']}")
+                    log.error(f"🐦 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
 
     except SlackApiError as err:
         print(f"Error: {err}")

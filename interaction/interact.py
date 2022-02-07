@@ -3,13 +3,12 @@ interact.py
 
 A REST API for tying together all of the other components.
 '''
-import datetime as dt
 import os
 import random
 
 from typing import Optional
 
-import humanize
+# import humanize
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -23,7 +22,7 @@ from voice import tts
 from feels import get_feels
 
 # Long and short term memory
-from memory import LongTermMemory
+from memory import Recall
 
 # Time handling
 from chrono import natural_time
@@ -51,37 +50,34 @@ completion = GPT(bot_name=BOT_NAME, min_score=MINIMUM_QUALITY_SCORE)
 app = FastAPI()
 
 # Elasticsearch memory
-ltm = LongTermMemory(
+recall = Recall(
     bot_name=BOT_NAME,
     bot_id=BOT_ID,
     url=os.environ['ELASTIC_URL'],
     auth_name=os.environ["BOT_NAME"],
     auth_key=os.environ.get('ELASTIC_KEY', None),
-    convo_index=os.environ.get('ELASTIC_CONVO_INDEX', 'bot-conversations-v0'),
-    summary_index=os.environ.get('ELASTIC_SUMMARY_INDEX', 'bot-summaries-v0'),
-    entity_index=os.environ.get('ELASTIC_ENTITY_INDEX', 'bot-entities-v0'),
-    relation_index=os.environ.get('ELASTIC_RELATION_INDEX', 'bot-relationships-v0'),
-    conversation_interval=600, # New conversation every 10 minutes
+    index_prefix=os.environ.get('ELASTIC_INDEX_PREFIX', BOT_NAME.lower()),
+    conversation_interval=600, # ten minutes
     verify_certs=True
 )
 
-BOT_ENTITY_ID = ltm.uuid_to_entity(BOT_ID)
-
-def summarize_convo(service, channel, convo_id=None, save=True):
-    ''' Generate a GPT summary of a conversation chosen by id '''
-    if not convo_id:
-        last_message = ltm.get_last_message(service, channel)
-        if not last_message:
-            return ""
-        convo_id = last_message['_source']['convo_id']
+def summarize_convo(service, channel, save=True):
+    '''
+    Generate a GPT summary of the current conversation for this channel.
+    If save == True, save it to long term memory.
+    Returns the text summary.
+    '''
+    convo = recall.load(service, channel, summaries=0)
+    if not convo:
+        return ""
 
     summary = completion.get_summary(
-        text='\n'.join(ltm.get_convo_by_id(convo_id)),
+        text='\n'.join(convo),
         summarizer="To briefly summarize this conversation, ",
         max_tokens=200
     )
     if save:
-        ltm.save_summary(service, channel, convo_id, summary)
+        recall.summary(service, channel, summary)
     return summary
 
 def choose_reply(prompt, convo):
@@ -102,27 +98,20 @@ def choose_reply(prompt, convo):
 
 def get_reply(service, channel, msg, speaker_name, speaker_id):
     ''' Get the best reply for the given channel. '''
+    if recall.expired(service, channel):
+        recall.summary(service, channel, summarize_convo(service, channel))
+
     if msg != '...':
-        ltm.save_convo(service, channel, msg, speaker_name, speaker_id)
+        recall.save(service, channel, msg, speaker_name, speaker_id)
         tts(msg)
 
-    last_message = ltm.get_last_message(service, channel)
-
-    if last_message:
-        # Have we moved on?
-        if ltm.time_to_move_on(last_message['_source']['@timestamp']):
-            # Summarize the previous conversation for later.
-            # TODO: move this to a separate thread. No need to wait for summaries here.
-            summarize_convo(service, channel, last_message['_source']['convo_id'])
-
-        then = dt.datetime.fromisoformat(last_message['_source']['@timestamp']).replace(tzinfo=None)
-        delta = f"They last spoke {humanize.naturaltime(dt.datetime.now() - then)}."
-        prefix = f"This is a conversation between {BOT_NAME} and friends. {delta}"
+    convo = recall.load(service, channel, summaries=0)
+    if convo:
+        prefix = f"{BOT_NAME} is talking with friends."
     else:
         prefix = f"{BOT_NAME} has something to say."
 
     # Load summaries and conversation
-    convo = ltm.load_convo(service, channel)
     newline = '\n'
 
     prompt = f"""{prefix}
@@ -133,13 +122,25 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
     reply = choose_reply(prompt, convo)
 
-    ltm.save_convo(service, channel, reply, ltm.bot_name, ltm.bot_id)
+    recall.save(service, channel, reply, BOT_NAME, BOT_ID)
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
 
     log.warning("😄 Feeling:", feels['current'])
 
     return reply
+
+def get_status(service, channel):
+    ''' status report '''
+    newline = '\n'
+    return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+
+{newline.join(recall.load(service, channel, summaries=3))}
+'''
+
+def amnesia(service, channel):
+    ''' forget it '''
+    return recall.forget(service, channel)
 
 @app.get("/")
 async def root():
@@ -170,10 +171,29 @@ async def handle_reply(
 async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: Optional[str] = Query(None, min_length=36, max_length=36),
     save: Optional[bool] = Query(True)
     ):
     ''' Return the reply '''
     return {
-        "summary": summarize_convo(service, channel, convo_id, save)
+        "summary": summarize_convo(service, channel, save)
+    }
+
+@app.post("/status/")
+async def handle_status(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    ):
+    ''' Return the reply '''
+    return {
+        "status": get_status(service, channel)
+    }
+
+@app.post("/amnesia/")
+async def handle_amnesia(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    ):
+    ''' Return the reply '''
+    return {
+        "amnesia": amnesia(service, channel)
     }
