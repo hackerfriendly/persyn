@@ -3,12 +3,11 @@ gtts.py
 
 A REST API for generating Persyn voices via Google TTS.
 '''
-from io import BytesIO
-from multiprocessing import Process, Queue
 from subprocess import run, CalledProcessError
 from typing import Optional
+from io import BytesIO
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from gtts import gTTS
 
 app = FastAPI()
@@ -23,51 +22,27 @@ VOICES = {
     "South Africa": "co.za"
 }
 
-class Speaker(Process):
-    ''' Queue processor '''
-    def __init__(self, inq):
-        super().__init__()
-        self.inq = inq
+def speak(voice, text):
+    ''' Say the magic words '''
+    try:
+        print(f"({voice}):", text)
+        tts = gTTS(text, lang='en', tld=VOICES[voice])
+        mp3 = BytesIO()
+        tts.write_to_fp(mp3)
+        run(
+            ["mpg123", "-"],
+            input=mp3.getvalue(),
+            shell=False,
+            check=False,
+            capture_output=True
+        )
+        mp3.close()
 
-    @staticmethod
-    def speak(voice, text):
-        ''' Say the magic words '''
-        try:
-            print(f"({voice}):", text)
-            tts = gTTS(text, lang='en', tld=VOICES[voice])
-            mp3 = BytesIO()
-            tts.write_to_fp(mp3)
-            run(
-                ["mpg123", "-"],
-                input=mp3.getvalue(),
-                shell=False,
-                check=False,
-                capture_output=True,
-                timeout=60
-            )
-            mp3.close()
-
-        except CalledProcessError as procerr:
-            raise HTTPException(
-                status_code=500,
-                detail="Could not play audio, see console for error."
-            ) from procerr
-
-    def run(self):
-        ''' speak speak '''
-        while True:
-            data = self.inq.get()
-            if data is None:
-                break
-
-            (voice, text) = data
-            self.speak(voice, text)
-
-### main ###
-
-voiceq = Queue()
-speaker = Speaker(voiceq)
-speaker.start()
+    except CalledProcessError as procerr:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not play audio, see console for error."
+        ) from procerr
 
 @app.get("/")
 async def root():
@@ -84,6 +59,7 @@ async def voices():
 
 @app.post("/say/")
 async def say(
+    background_tasks: BackgroundTasks,
     text: str = Query(..., min_length=1, max_length=5000),
     voice: Optional[str] = Query("USA", max_length=32)
     ):
@@ -111,7 +87,11 @@ async def say(
             "reason": "empty text"
         }
 
-    voiceq.put([voice, text.strip()])
+    background_tasks.add_task(
+        speak,
+        voice=voice,
+        text=text.strip()
+    )
 
     return {
         "voice": voice,
