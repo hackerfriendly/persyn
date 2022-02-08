@@ -99,7 +99,7 @@ def choose_reply(prompt, convo):
 def get_reply(service, channel, msg, speaker_name, speaker_id):
     ''' Get the best reply for the given channel. '''
     if recall.expired(service, channel):
-        recall.summary(service, channel, summarize_convo(service, channel))
+        summarize_convo(service, channel, save=True)
 
     if msg != '...':
         recall.save(service, channel, msg, speaker_name, speaker_id)
