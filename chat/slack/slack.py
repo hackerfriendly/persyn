@@ -140,7 +140,8 @@ def get_summary(channel, save=False):
         log.critical(f"🤖 Could not get_reply(): {err}")
         return ":shrug:"
 
-    return reply.json()['summary']
+    log.warning(f"∑ {reply.json()['summary']}")
+    return reply.json()['summary'] or ":shrug:"
 
 def get_status(channel):
     ''' Ask interact for status. '''
@@ -244,7 +245,7 @@ def summarize(say, context):
     say(get_summary(channel))
 
 @app.message(re.compile(r"^status$", re.I))
-def summarize(say, context):
+def status(say, context):
     ''' Say a condensed summary of this channel '''
     channel = context['channel_id']
     say(get_status(channel))
@@ -298,7 +299,7 @@ def catch_all(say, context):
             context,
             when=1
         )
-    return
+        return
 
     interval = None
     # Long response
@@ -355,13 +356,15 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                         log.warning("🐦 Not posting:", {msg['reactions'][0]['name']})
                         return
                     log.warning("🤯 All is forgotten.")
-                    return forget_it(channel)
+                    forget_it(channel)
+                    return
                 try:
+                    req = { "service": SLACK_SERVICE, "channel": channel }
                     response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/amnesia/", params=req)
                     response.raise_for_status()
                 except requests.exceptions.RequestException as err:
                     log.critical(f"🤖 Could not get_reply(): {err}")
-                    return ":shrug:"
+                    return
 
                 if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                     if not BASEURL:
@@ -393,7 +396,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                     log.error(f"🐦 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
 
     except SlackApiError as err:
-        print(f"Error: {err}")
+        log.error(f"Error: {err}")
 
 @app.event("reaction_removed")
 def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argument
