@@ -1,7 +1,6 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 import uuid
 
-import urllib3
 import elasticsearch
 import shortuuid as su
 
@@ -13,8 +12,146 @@ from color_logging import ColorLog
 
 log = ColorLog()
 
-# Disable SSL warnings for Elastic
-urllib3.disable_warnings()
+class Recall(): # pylint: disable=too-many-arguments
+    ''' Total Recall: stm + ltm. '''
+    def __init__(
+        self,
+        bot_name,
+        bot_id,
+        url,
+        auth_name,
+        auth_key,
+        index_prefix=None,
+        conversation_interval=600, # 10 minutes
+        verify_certs=True,
+        version="v0",
+        timeout=30
+    ):
+        self.bot_name = bot_name
+        self.bot_id = uuid.UUID(bot_id)
+
+        self.stm = ShortTermMemory(conversation_interval)
+        self.ltm = LongTermMemory(
+            bot_name,
+            bot_id,
+            url,
+            auth_name,
+            auth_key,
+            index_prefix=index_prefix,
+            version=version,
+            verify_certs=verify_certs,
+            timeout=timeout
+        )
+
+    def load(self, service, channel, summaries=3):
+        ''' Return some summaries and the contents of the stm '''
+        the_summaries = self.ltm.load_summaries(service, channel, summaries)
+
+        if self.stm.expired(service, channel):
+            return the_summaries
+
+        return the_summaries + self.stm.fetch(service, channel)
+
+    def save(self, service, channel, msg, speaker_name, speaker_id):
+        ''' Save to stm and ltm. Clears stm if it expired. '''
+        if self.stm.expired(service, channel):
+            self.stm.clear(service, channel)
+
+        convo_id = self.stm.append(service, channel, f"{speaker_name}: {msg}")
+        self.ltm.save_convo(service, channel, msg, speaker_name, speaker_id, convo_id)
+        return True
+
+    def summary(self, service, channel, summary):
+        ''' Save a summary. Clears stm. '''
+        if not summary:
+            return False
+        convo_id = self.stm.convo_id(service, channel)
+        self.stm.clear(service, channel)
+        self.ltm.save_summary(service, channel, convo_id, summary)
+        return True
+
+    def expired(self, service, channel):
+        ''' True if this conversation has expired, else False '''
+        return self.stm.expired(service, channel)
+
+    def forget(self, service, channel):
+        self.stm.clear(service, channel)
+        return True
+
+class ShortTermMemory():
+    ''' Wrapper class for in-process short term conversational memory. '''
+    def __init__(self, conversation_interval):
+        self.convo = {}
+        self.conversation_interval = conversation_interval
+
+    def _new(self, service, channel):
+        ''' Immediately initialize a new channel without sanity checking '''
+        self.convo[service][channel]['ts'] = get_cur_ts()
+        self.convo[service][channel]['convo'] = []
+        self.convo[service][channel]['id'] = su.encode(uuid.uuid4())
+
+    def exists(self, service, channel):
+        ''' True if a channel already exists, else False '''
+        return service in self.convo and channel in self.convo[service]
+
+    def create(self, service, channel):
+        ''' Create a new empty channel. Erases existing channel if any. '''
+        if not self.exists(service, channel):
+            if service not in self.convo:
+                self.convo[service] = {}
+            if channel not in self.convo[service]:
+                self.convo[service][channel] = {}
+        self._new(service, channel)
+
+    def clear(self, service, channel):
+        ''' Clear a channel. '''
+        if not self.exists(service, channel):
+            return
+        self._new(service, channel)
+
+    def expired(self, service, channel):
+        ''' True if time elapsed since last update is > conversation_interval, else False '''
+        if not self.exists(service, channel):
+            return True
+        return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
+
+    def append(self, service, channel, line):
+        '''
+        Append a line to a channel. If the current channel expired, clear it first.
+        Returns the convo_id.
+        '''
+        if not self.exists(service, channel):
+            self.create(service, channel)
+        if self.expired(service, channel):
+            self.clear(service, channel)
+
+        self.convo[service][channel]['ts'] = get_cur_ts()
+        self.convo[service][channel]['convo'].append(line)
+
+        return self.convo_id(service, channel)
+
+    def fetch(self, service, channel):
+        ''' Fetch the current convo, if any '''
+        if not self.exists(service, channel):
+            return None
+        return self.convo[service][channel]['convo']
+
+    def convo_id(self, service, channel):
+        ''' Return the convo id, if any '''
+        if not self.exists(service, channel):
+            return None
+        return self.convo[service][channel]['id']
+
+    def last(self, service, channel):
+        ''' Fetch the last message from this convo (if any) '''
+        if not self.exists(service, channel):
+            return None
+
+        last = self.fetch(service, channel)
+        if last:
+            return last[-1]
+
+        return None
 
 class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
@@ -25,30 +162,30 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         url,
         auth_name,
         auth_key,
-        convo_index,
-        summary_index,
-        entity_index,
-        relation_index,
-        conversation_interval=600, # 10 minutes
+        index_prefix=None,
         verify_certs=True,
-        timeout=30
+        timeout=30,
+        version="v0"
     ):
         self.bot_name = bot_name
         self.bot_id = uuid.UUID(bot_id)
         self.bot_entity_id = self.uuid_to_entity(bot_id)
+        self.index_prefix = index_prefix or bot_name.lower()
+        self.version = version
+
         self.es = elasticsearch.Elasticsearch( # pylint: disable=invalid-name
             [url],
             http_auth=(auth_name, auth_key),
             verify_certs=verify_certs,
             timeout=timeout
         )
+
         self.index = {
-            "convo": convo_index,
-            "summary": summary_index,
-            "entity": entity_index,
-            "relation": relation_index
+            "convo": f"{self.index_prefix}-conversations-{self.version}",
+            "summary": f"{self.index_prefix}-summaries-{self.version}",
+            "entity": f"{self.index_prefix}-entities-{self.version}",
+            "relation": f"{self.index_prefix}-relationships-{self.version}"
         }
-        self.conversation_interval = conversation_interval
 
         for item in self.index.items():
             try:
@@ -70,7 +207,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     def load_convo(self, service, channel, lines=16, summaries=3):
         '''
         Return a list of lines from the conversation index for this channel.
-        If the conversation interval has elapsed, load summaries instead.
         '''
         convo_history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
@@ -96,9 +232,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         convo_id = convo_history[0]['_source']['convo_id']
         ret = self.load_summaries(service, channel, summaries)
-
-        if self.time_to_move_on(convo_history[0]['_source']['@timestamp']):
-            return ret
 
         for line in convo_history[::-1]:
             src = line['_source']
@@ -137,32 +270,30 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"load_summaries(): {ret}")
         return ret
 
-    def save_convo(self, service, channel, msg, speaker_name=None, speaker_id=None):
+    def save_convo(
+        self,
+        service,
+        channel,
+        msg,
+        speaker_name=None,
+        speaker_id=None,
+        convo_id=None,
+        prev_ts=get_cur_ts(),
+        refresh=False
+    ):
         '''
-        Save a line of conversation to ElasticSearch.
-        If the conversation interval has elapsed, start a new convo.
-        Returns True if a new conversation was started, otherwise False.
+        Save a line of conversation to ElasticSearch. Returns the convo_id and current timestamp.
         '''
-        new_convo = True
-        convo_id = su.encode(uuid.uuid4())
+        if not convo_id:
+            convo_id = su.encode(uuid.uuid4())
 
+        # Save speaker entity
         if speaker_id == self.bot_id:
             entity_id = self.bot_entity_id
         else:
             entity_id, _ = self.save_entity(service, channel, speaker_name, speaker_id)
 
         cur_ts = get_cur_ts()
-        last_message = self.get_last_message(service, channel)
-
-        if last_message:
-            prev_ts = last_message['_source']['@timestamp']
-
-            if not self.time_to_move_on(prev_ts, cur_ts):
-                new_convo = False
-                convo_id = last_message['_source']['convo_id']
-        else:
-            prev_ts = cur_ts
-
         doc = {
             "@timestamp": cur_ts,
             "service": service,
@@ -171,28 +302,39 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "speaker_id": speaker_id,
             "entity_id": entity_id,
             "msg": msg,
-            "elapsed": elapsed(prev_ts, cur_ts),
-            "convo_id": convo_id
+            "convo_id": convo_id,
+            "elapsed": elapsed(prev_ts, cur_ts)
         }
-        _id = self.es.index(index=self.index['convo'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        _id = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['convo'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )["_id"]
 
         log.debug("doc:", _id)
-        return new_convo
+        return convo_id, cur_ts
 
-    def save_summary(self, service, channel, convo_id, summary):
+    # TODO: set refresh=False after separate summary thread is implemented.
+    def save_summary(self, service, channel, convo_id, summary, refresh=True):
         '''
         Save a conversation summary to ElasticSearch.
         '''
+        cur_ts = get_cur_ts()
         doc = {
             "convo_id": convo_id,
             "summary": summary,
             "service": service,
             "channel": channel,
-            "@timestamp": get_cur_ts()
+            "@timestamp": cur_ts
         }
-        _id = self.es.index(index=self.index['summary'], document=doc, refresh='true')["_id"] # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        _id = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['summary'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )["_id"]
+
         log.debug("doc:", _id)
-        return True
+        return cur_ts
 
     def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
@@ -230,10 +372,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         log.debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
-
-    def time_to_move_on(self, then, now=None):
-        ''' Returns True if time elapsed between then and now is too long, otherwise False '''
-        return elapsed(then, now or get_cur_ts()) > self.conversation_interval
 
     @staticmethod
     def entity_key(service, channel, name):

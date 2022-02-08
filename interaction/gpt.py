@@ -32,10 +32,12 @@ class GPT():
         self.nlp = spacy.load("en_core_web_lg")
         openai.api_key = api_key
 
-        # Strictly forbidden words
+        # TODO: track requests per unit time, and throttle if too many
+
+        # TODO: strictly forbidden words shouldn't be hard coded here
         self.forbidden = ['Elsa', 'Arendelle', 'Kristoff', 'Olaf', 'Frozen']
 
-    def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=200):
+    def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=150):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
