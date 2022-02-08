@@ -242,7 +242,7 @@ def photo_summary(say, context): # pylint: disable=unused-argument
 def summarize(say, context):
     ''' Say a condensed summary of this channel '''
     channel = context['channel_id']
-    say(get_summary(channel))
+    say("💭 " + get_summary(channel))
 
 @app.message(re.compile(r"^status$", re.I))
 def status(say, context):

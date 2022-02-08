@@ -227,7 +227,7 @@ class GPT():
             except ValueError:
                 pass
 
-        log.warning("get_summary():", reply)
+        log.warning("gpt get_summary():", reply)
         return reply
 
     def has_forbidden(self, text):
