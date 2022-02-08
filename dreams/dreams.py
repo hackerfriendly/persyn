@@ -220,10 +220,15 @@ async def generate(
     if not model:
         model = 'default'
 
+    prompt = prompt.strip().replace('\n', ' ')
+
+    if not prompt:
+        prompt = "Untitled"
+
     background_tasks.add_task(
         engines[engine],
         channel=channel,
-        prompt=prompt.strip(),
+        prompt=prompt,
         model=models[engine][model],
         image_id=image_id
     )
