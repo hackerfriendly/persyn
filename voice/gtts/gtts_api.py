@@ -6,7 +6,6 @@ A REST API for generating Persyn voices via Google TTS.
 from io import BytesIO
 from multiprocessing import Process, Queue
 from subprocess import run, CalledProcessError
-from time import sleep
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -63,7 +62,6 @@ class Speaker(Process):
 
             (voice, text) = data
             self.speak(voice, text)
-            sleep(1)
 
 ### main ###
 
