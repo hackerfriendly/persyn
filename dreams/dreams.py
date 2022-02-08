@@ -220,7 +220,7 @@ async def generate(
     if not model:
         model = 'default'
 
-    prompt = prompt.strip().replace('\n', ' ')
+    prompt = prompt.strip().replace('\n', ' ').replace(':', ' ')
 
     if not prompt:
         prompt = "Untitled"
