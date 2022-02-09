@@ -23,19 +23,16 @@ class GPT():
         bot_name,
         min_score=0.0,
         api_key=os.getenv('OPENAI_API_KEY'),
-        engine=os.environ.get('OPENAI_MODEL', 'text-davinci-001')
+        engine=os.environ.get('OPENAI_MODEL', 'text-davinci-001'),
+        forbidden=None
         ):
         self.bot_name = bot_name
         self.min_score = min_score
         self.engine = engine
+        self.forbidden = forbidden or []
         self.stats = Counter()
         self.nlp = spacy.load("en_core_web_lg")
         openai.api_key = api_key
-
-        # TODO: track requests per unit time, and throttle if too many
-
-        # TODO: strictly forbidden words shouldn't be hard coded here
-        self.forbidden = ['Elsa', 'Arendelle', 'Kristoff', 'Olaf', 'Frozen']
 
     def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=150):
         '''
@@ -114,8 +111,8 @@ class GPT():
         if self.bleed_through(text):
             self.stats.update(['prompt bleed-through'])
             return None
-        # Don't repeat yourself for the last three sentences in convo
-        if text in ' '.join(convo[:3]):
+        # Don't repeat yourself for the last three sentences
+        if text in ' '.join(convo):
             self.stats.update(['repetition'])
             return None
 
@@ -235,6 +232,8 @@ class GPT():
 
     def has_forbidden(self, text):
         ''' Returns True if any forbidden word appears in text '''
+        if not self.forbidden:
+            return False
         return bool(re.search(fr'\b({"|".join(self.forbidden)})\b', text))
 
     def bleed_through(self, text):
