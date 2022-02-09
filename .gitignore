@@ -9,3 +9,4 @@ dreams/vqgan/models/
 dreams/vqgan/taming-transformers/
 dreams/vqgan/taming/
 *~
+.ipynb_checkpoints/
