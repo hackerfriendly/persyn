@@ -87,6 +87,9 @@ def choose_reply(prompt, convo):
         convo=convo
     )
 
+    if not scored:
+        return ":shrug:"
+
     for item in sorted(scored.items()):
         log.warning(f"{item[0]:0.2f}:", item[1])
 
