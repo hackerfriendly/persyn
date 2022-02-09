@@ -58,6 +58,7 @@ def new_channel(channel):
     ''' Initialize a new channel. '''
     reminders[channel] = {
         'rejoinder': th.Timer(0, log.warning, ["New channel:", channel]),
+        'count': 0
     }
     reminders[channel]['rejoinder'].start()
 
@@ -242,11 +243,7 @@ def photo_summary(say, context): # pylint: disable=unused-argument
 @app.message(re.compile(r"^summary(\!)?$", re.I))
 def summarize(say, context):
     ''' Say a condensed summary of this channel '''
-    if context['matches'][0]:
-        save = True
-    else:
-        save = False
-
+    save = bool(context['matches'][0])
     channel = context['channel_id']
     say("💭 " + get_summary(channel, save))
 
@@ -266,6 +263,13 @@ def say_something_later(say, channel, context, when, what=None):
     if what:
         reminders[channel]['rejoinder'] = th.Timer(when, say, [what])
     else:
+        # Only 3 autoreplies max
+        if reminders[channel]['count'] >= 3:
+            reminders[channel]['count'] = 0
+            return
+
+        reminders[channel]['count'] = reminders[channel]['count'] + 1
+
         # yadda yadda yadda
         yadda = {
             'channel_id': channel,
