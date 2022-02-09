@@ -179,6 +179,7 @@ def help_me(say, context): # pylint: disable=unused-argument
     say(f"""Commands:
   `...`: Let {BOT_NAME} keep talking without interrupting
   `summary`: Explain it all to me in a single sentence.
+  `status`: Say exactly what is on {BOT_NAME}'s mind.
   :camera: : Generate a picture summarizing this conversation
   :camera: _prompt_ : Generate a picture of _prompt_
   :selfie: Take a selfie
@@ -238,17 +239,22 @@ def photo_summary(say, context): # pylint: disable=unused-argument
     )
     take_a_photo(channel, get_summary(channel))
 
-@app.message(re.compile(r"^summary$", re.I))
+@app.message(re.compile(r"^summary(\!)?$", re.I))
 def summarize(say, context):
     ''' Say a condensed summary of this channel '''
+    if context['matches'][0]:
+        save = True
+    else:
+        save = False
+
     channel = context['channel_id']
-    say("💭 " + get_summary(channel))
+    say("💭 " + get_summary(channel, save))
 
 @app.message(re.compile(r"^status$", re.I))
 def status(say, context):
     ''' Say a condensed summary of this channel '''
     channel = context['channel_id']
-    say(get_status(channel))
+    say("\n".join([f"> {line}" for line in get_status(channel).split("\n")]))
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''

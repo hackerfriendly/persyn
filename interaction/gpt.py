@@ -23,7 +23,7 @@ class GPT():
         bot_name,
         min_score=0.0,
         api_key=os.getenv('OPENAI_API_KEY'),
-        engine=os.environ.get('OPENAI_MODEL', 'davinci')
+        engine=os.environ.get('OPENAI_MODEL', 'text-davinci-001')
         ):
         self.bot_name = bot_name
         self.min_score = min_score
@@ -195,6 +195,9 @@ class GPT():
                 continue
 
             scored[score] = text
+
+        if not scored:
+            return {}
 
         # weights are assumed to be positive. 0 == no chance, so add 1.
         min_score = abs(min(list(scored))) + 1

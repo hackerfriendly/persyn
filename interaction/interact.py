@@ -132,7 +132,7 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 def get_status(service, channel):
     ''' status report '''
-    newline = '\n'
+    newline = '\n\n'
     return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 {newline.join(recall.load(service, channel, summaries=3))}

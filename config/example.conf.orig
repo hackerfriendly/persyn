@@ -5,56 +5,57 @@
 
 # My name.
 export BOT_NAME='Persyn'
+# Every bot gets its own GUID
+export BOT_ID='8b0a5f5a-8957-11ec-a21c-c76072da4cc7'
+# Default tts voice
+export BOT_VOICE='US'
 
 # Slack credentials. Required. See chat/README.md for details.
 export SLACK_APP_TOKEN='xapp-...'
 export SLACK_BOT_TOKEN='xoxb-...'
 
-# Long Term Memory support. Optional, but recommended.
-
-# export ELASTIC_URL='https://...:9200'
-# export ELASTIC_USER=${BOT_NAME}
-# export ELASTIC_KEY='...'
-# export ELASTIC_CONVO_INDEX='bot-conversations-v0'
-# export ELASTIC_SUMMARY_INDEX='bot-summaries-v0'
+# Long Term Memory support. Required.
+export ELASTIC_URL='http://localhost:9200'
+export ELASTIC_USER=${BOT_NAME}
+export ELASTIC_KEY='...'
+export ELASTIC_INDEX_PREFIX='bot'
 
 # OpenAI (GPT3). Required, and it costs $. Sign up at https://openai.com/api/
 export OPENAI_API_KEY=''
-
-# The default OpenAI model. At the moment, pricing is as follows (per 1k tokens in the prompt or response).
+# The default model. At the moment, pricing is as follows (per 1k tokens in the prompt or response).
 # Bigger models are more coherent but much more pricey:
 #
-# davinci: $0.06
-#   curie: $0.006
-# babbage: $0.0012
-#     ada: $0.0008
-#
-export OPENAI_MODEL='davinci'
+# text-davinci-001: $0.06
+#   text-curie-001: $0.006
+# text-babbage-001: $0.0012
+#     text-ada-001: $0.0008
+export OPENAI_MODEL='text-davinci-001'
+
+# Personality server (interact.py)
+export INTERACT_SERVER_HOST='localhost'
+export INTERACT_SERVER_PORT=8003
+export INTERACT_SERVER_URL="http://${INTERACT_SERVER_HOST}:${INTERACT_SERVER_PORT}"
 
 # Dream image server (dreams.py). Optional.
-
 # export DREAM_SERVER_HOST='localhost'
 # export DREAM_SERVER_PORT=8001
 # export DREAM_SERVER_URL="http://${DREAM_SERVER_HOST}:${DREAM_SERVER_PORT}"
 
-# Image base URL, scp upload destination, and additional scp options (if any)
+# Voice server (gtts_api.py). Optional.
+# export GTTS_SERVER_HOST='localhost'
+# export GTTS_SERVER_PORT=8002
+# export GTTS_SERVER_URL="http://${GTTS_SERVER_HOST}:${GTTS_SERVER_PORT}"
 
+# Image base URL, scp upload destination, and additional scp options (if any)
 # export BASEURL="https://example.com/images"
 # export SCPDEST="user@example.com:my_site/images/"
 # export SCPOPTS="-i /path/to/ssh/key"
 
 # Twitter support. Posts generated images to Twitter. Optional.
-
 # export TWITTER_CONSUMER_KEY=""
 # export TWITTER_CONSUMER_SECRET=""
 # export TWITTER_ACCESS_TOKEN=""
 # export TWITTER_ACCESS_TOKEN_SECRET=""
-
-# If TWITTER_AUTOPOST is set, automatically post images to Twitter.
-# If not, require an emoji reaction on Slack before posting.
-# Use with caution, images may be horrifically offensive.
-
-# export TWITTER_AUTOPOST=1
 
 # Offline huggingface models. Comment out to allow online model updates.
 export TRANSFORMERS_OFFLINE=1
