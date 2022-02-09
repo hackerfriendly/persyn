@@ -55,7 +55,7 @@ class GPT():
         scored = self.score_choices(response.choices, convo)
         if not scored:
             self.stats.update(['replies exhausted'])
-            return ':shrug:'
+            return None
 
         log.warning(f"📊 Stats: {self.stats}")
 

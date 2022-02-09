@@ -69,7 +69,7 @@ def summarize_convo(service, channel, save=True):
     '''
     convo = recall.load(service, channel, summaries=0)
     if not convo:
-        return ""
+        return '\n'.join(recall.load(service, channel, summaries=1))
 
     summary = completion.get_summary(
         text='\n'.join(convo),
@@ -82,6 +82,8 @@ def summarize_convo(service, channel, save=True):
 
 def choose_reply(prompt, convo):
     ''' Choose the best reply from a list of possibilities '''
+
+    # TODO: If no replies survive, try again?
     scored = completion.get_replies(
         prompt=prompt,
         convo=convo
