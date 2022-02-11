@@ -27,11 +27,11 @@ log = ColorLog()
 BOT_NAME = os.environ["BOT_NAME"]
 BOT_ID = os.environ["BOT_ID"]
 
-IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "vqgan", "stylegan2"]
+IMAGE_ENGINES = ["v-diffusion-pytorch-cfg"]#, "vqgan", "stylegan2"]
 IMAGE_MODELS = {
     "stylegan2": ["ffhq", "car", "cat", "church", "horse", "waifu"]
 }
-IMAGE_ENGINE_WEIGHTS = [0.4, 0.4, 0.2]
+IMAGE_ENGINE_WEIGHTS = [1]#[0.4, 0.4, 0.2]
 
 # Twitter
 twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
@@ -236,7 +236,7 @@ def photo_summary(say, context): # pylint: disable=unused-argument
         channel,
         context,
         when=60,
-        what=f"_{BOT_NAME} takes a picture of this conversation._ It will take a few minutes to develop."
+        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
     take_a_photo(channel, get_summary(channel))
 
@@ -329,6 +329,8 @@ def catch_all(say, context):
             context,
             when=random.randint(interval[0], interval[1])
         )
+    else:
+        take_a_photo(channel, get_summary(channel))
 
 @app.event("app_mention")
 def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
