@@ -20,7 +20,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 app = FastAPI()
 
 # Maximum iterations
-DEFAULT_STEPS = 1000
+DEFAULT_STEPS = 50
 
 # Every GPU device that can be used for image generation
 GPUS = {
