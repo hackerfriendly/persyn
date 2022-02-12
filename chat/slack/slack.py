@@ -330,7 +330,8 @@ def catch_all(say, context):
             when=random.randint(interval[0], interval[1])
         )
     else:
-        take_a_photo(channel, get_summary(channel))
+        reminders[channel]['rejoinder'].cancel()
+        reminders[channel]['rejoinder'] = th.Timer(20, take_a_photo, [channel, get_summary(channel)])
 
 @app.event("app_mention")
 def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
