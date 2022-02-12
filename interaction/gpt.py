@@ -241,7 +241,8 @@ class GPT():
         for line in (
             "This is a conversation between",
             f"{self.bot_name} is feeling",
-            "I am feeling"
+            "I am feeling",
+            "I'm feeling"
         ):
             if line in text:
                 return True
