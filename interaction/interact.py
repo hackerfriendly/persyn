@@ -40,6 +40,9 @@ BOT_VOICE = os.environ.get('BOT_VOICE', 'USA')
 # Minimum completion reply quality. Lower numbers get more dark + sleazy.
 MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
 
+# Temperature. 0.0 == repetitive, 1.0 == chaos
+TEMPERATURE = float(os.environ.get('TEMPERATURE', 0.99))
+
 # How are we feeling today?
 feels = {'current': get_feels("")}
 
@@ -86,7 +89,8 @@ def choose_reply(prompt, convo):
     # TODO: If no replies survive, try again?
     scored = completion.get_replies(
         prompt=prompt,
-        convo=convo
+        convo=convo,
+        temperature=TEMPERATURE
     )
 
     if not scored:
