@@ -114,11 +114,8 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         recall.save(service, channel, msg, speaker_name, speaker_id)
         tts(msg)
 
-    convo = recall.load(service, channel, summaries=0)
-    if convo:
-        prefix = f"{BOT_NAME} is talking with friends."
-    else:
-        prefix = f"{BOT_NAME} has something to say."
+    convo = recall.load(service, channel, summaries=3)
+    prefix = "" # TODO: more contextual motivations go here
 
     # Load summaries and conversation
     newline = '\n'
