@@ -70,9 +70,9 @@ def summarize_convo(service, channel, save=True):
     If save == True, save it to long term memory.
     Returns the text summary.
     '''
-    convo = recall.load(service, channel, summaries=0)
+    summaries, convo = recall.load(service, channel, summaries=1)
     if not convo:
-        return '\n'.join(recall.load(service, channel, summaries=1))
+        return '\n'.join(summaries)
 
     summary = completion.get_summary(
         text='\n'.join(convo),
@@ -114,15 +114,16 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         recall.save(service, channel, msg, speaker_name, speaker_id)
         tts(msg)
 
-    convo = recall.load(service, channel, summaries=3)
+    summaries, convo = recall.load(service, channel, summaries=3)
+    narration = [f"Narrator: {line}" for line in summaries]
     prefix = "" # TODO: more contextual motivations go here
 
     # Load summaries and conversation
     newline = '\n'
 
-    prompt = f"""{prefix}
-It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+    prompt = f"""{prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
+{newline.join(narration)}
 {newline.join(convo)}
 {BOT_NAME}:"""
 
@@ -138,10 +139,14 @@ It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 def get_status(service, channel):
     ''' status report '''
-    newline = '\n\n'
+    paragraph = '\n\n'
+    newline = '\n'
+    summaries, convo = recall.load(service, channel, summaries=3)
     return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
-{newline.join(recall.load(service, channel, summaries=3))}
+{paragraph.join(summaries)}
+
+{newline.join(convo)}
 '''
 
 def amnesia(service, channel):
