@@ -121,7 +121,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     # Load summaries and conversation
     newline = '\n'
 
-    prompt = f"""{prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+    prompt = f"""Narrator: {prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 {newline.join(narration)}
 {newline.join(convo)}
