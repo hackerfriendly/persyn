@@ -101,6 +101,7 @@ def vdiff_cfg(channel, prompt, model, image_id):
             '--size', '512', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             '--model', model,
+            '--style', 'random',
             prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
