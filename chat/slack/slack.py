@@ -299,7 +299,7 @@ def catch_all(say, context):
 
     speaker_id = context['user_id']
     speaker_name = get_display_name(speaker_id)
-    msg = substitute_names(context['matches'][0]).strip()
+    msg = substitute_names(' '.join(context['matches'])).strip()
 
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
