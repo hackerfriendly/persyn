@@ -46,7 +46,7 @@ class Recall(): # pylint: disable=too-many-arguments
     def load(self, service, channel, summaries=3):
         ''' Return some summaries and the contents of the stm '''
         the_summaries = self.ltm.load_summaries(service, channel, summaries)
-        return the_summaries + self.stm.fetch(service, channel)
+        return the_summaries, self.stm.fetch(service, channel)
 
     def save(self, service, channel, msg, speaker_name, speaker_id):
         ''' Save to stm and ltm. Clears stm if it expired. '''
