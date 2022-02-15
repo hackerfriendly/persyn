@@ -67,9 +67,9 @@ def get_display_name(user_id):
     if user_id not in known_users:
         users_info = app.client.users_info(user=user_id)['user']
         try:
-            known_users[user_id] = users_info['profile']['first_name']
+            known_users[user_id] = users_info['profile']['first_name'] or users_info['profile']['display_name']
         except KeyError:
-            known_users[user_id] = users_info['profile']['display_name']
+            known_users[user_id] = users_info['profile']['display_name'] or user_id
 
     return known_users[user_id]
 
@@ -104,7 +104,7 @@ def take_a_photo(channel, prompt, engine=None, model=None):
     log.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
     return reply.status_code
 
-def get_reply(channel, msg, speaker_name=None, speaker_id=None):
+def get_reply(channel, msg, speaker_name, speaker_id):
     ''' Ask interact for an appropriate response. '''
     if msg != '...':
         log.info(f"[{channel}] {speaker_name}: {msg}")
@@ -120,7 +120,7 @@ def get_reply(channel, msg, speaker_name=None, speaker_id=None):
         response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/reply/", params=req)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not get_reply(): {err}")
+        log.critical(f"🤖 Could not post /reply/ to interact: {err}")
         return ":shrug:"
 
     reply = response.json()['reply']
@@ -138,7 +138,7 @@ def get_summary(channel, save=False):
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not get_reply(): {err}")
+        log.critical(f"🤖 Could not post /summary/ to interact: {err}")
         return ":shrug:"
 
     summary = reply.json()['summary']
@@ -160,7 +160,7 @@ def get_status(channel):
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/status/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not get_reply(): {err}")
+        log.critical(f"🤖 Could not post /status/ to interact: {err}")
         return ":shrug:"
 
     return reply.json()['status']
@@ -379,7 +379,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                     response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/amnesia/", params=req)
                     response.raise_for_status()
                 except requests.exceptions.RequestException as err:
-                    log.critical(f"🤖 Could not get_reply(): {err}")
+                    log.critical(f"🤖 Could not post /amnesia/ to interact: {err}")
                     return
 
                 if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
