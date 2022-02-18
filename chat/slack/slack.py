@@ -27,11 +27,12 @@ log = ColorLog()
 BOT_NAME = os.environ["BOT_NAME"]
 BOT_ID = os.environ["BOT_ID"]
 
-IMAGE_ENGINES = ["v-diffusion-pytorch-cfg"] # "vqgan", "stylegan2"
+IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip"] # "vqgan", "stylegan2"
 IMAGE_MODELS = {
-    "stylegan2": ["ffhq", "waifu", "cat"] #, "car", "church", "horse"
+    "stylegan2": ["ffhq", "waifu", "cat"], #, "car", "church", "horse"
+    "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
+    "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"]
 }
-IMAGE_ENGINE_WEIGHTS = [1] #[0.4, 0.4, 0.2]
 
 # Twitter
 twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
@@ -82,27 +83,20 @@ def substitute_names(text):
 def take_a_photo(channel, prompt, engine=None, model=None):
     ''' Pick an image engine and generate a photo '''
     if not engine:
-        engine = random.choices(
-            IMAGE_ENGINES,
-            weights=IMAGE_ENGINE_WEIGHTS
-        )[0]
+        engine = random.choice(IMAGE_ENGINES)
 
-    if engine == "stylegan2":
-        req = {
-            "engine": engine,
-            "channel": channel,
-            "prompt": prompt,
-            "model": model or random.choice(IMAGE_MODELS["stylegan2"])
-        }
-    else:
-        req = {
-            "engine": engine,
-            "channel": channel,
-            "prompt": prompt
-        }
+    req = {
+        "engine": engine,
+        "channel": channel,
+        "prompt": prompt,
+        "model": model or random.choice(IMAGE_MODELS[engine])
+    }
     reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
-    log.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
-    return reply.status_code
+    if reply.ok:
+        log.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
+    else:
+        log.error(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
+    return reply.ok
 
 def get_reply(channel, msg, speaker_name, speaker_id):
     ''' Ask interact for an appropriate response. '''
@@ -207,7 +201,24 @@ def picture(say, context): # pylint: disable=unused-argument
         when=60,
         what=f"*{BOT_NAME} takes a picture of _{prompt}_* It will take a few minutes to develop."
     )
-    take_a_photo(channel, prompt)
+    take_a_photo(channel, prompt, engine="v-diffusion-pytorch-cfg")
+
+@app.message(re.compile(r"^:paperclip:(.+)$"))
+def clip_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with CLIP, it'll last longer '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    say(f"OK, {them}.\n_{BOT_NAME} takes out an old fashioned camera and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=60,
+        what=f"*{BOT_NAME} takes a picture of _{prompt}_* It will take a few minutes to develop."
+    )
+    take_a_photo(channel, prompt, engine="v-diffusion-pytorch-clip")
 
 @app.message(re.compile(r"^:selfie:$"))
 def selfie(say, context): # pylint: disable=unused-argument
@@ -244,7 +255,23 @@ def photo_summary(say, context): # pylint: disable=unused-argument
         when=60,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel))
+    take_a_photo(channel, get_summary(channel), engine="v-diffusion-pytorch-cfg")
+
+@app.message(re.compile(r"^:paperclip:$"))
+def photo_clip_summary(say, context): # pylint: disable=unused-argument
+    ''' Take a CLIP photo of this conversation '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+
+    say(f"OK, {them}.\n_{BOT_NAME} takes out an old fashioned camera and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=60,
+        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
+    )
+    take_a_photo(channel, get_summary(channel), engine="v-diffusion-pytorch-clip")
 
 @app.message(re.compile(r"^summary(\!)?$", re.I))
 def summarize(say, context):
