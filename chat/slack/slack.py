@@ -58,10 +58,12 @@ known_users = {}
 def new_channel(channel):
     ''' Initialize a new channel. '''
     reminders[channel] = {
-        'rejoinder': th.Timer(0, log.warning, ["New channel:", channel]),
+        'rejoinder': th.Timer(0, log.warning, ["New channel rejoinder:", channel]),
+        'summarizer': th.Timer(1, log.warning, ["New channel summarizer:", channel]),
         'count': 0
     }
     reminders[channel]['rejoinder'].start()
+    reminders[channel]['summarizer'].start()
 
 def get_display_name(user_id):
     """ Return the user's first name if available, otherwise the display name """
@@ -313,6 +315,20 @@ def say_something_later(say, channel, context, when, what=None):
 
     reminders[channel]['rejoinder'].start()
 
+def summarize_later(channel, when=600):
+    '''
+    Summarize the train of thought later. When is in seconds.
+
+    Every time this thread executes, a new convo summary is saved. Only one
+    can run at a time.
+    '''
+    if channel not in reminders:
+        new_channel(channel)
+
+    reminders[channel]['summarizer'].cancel()
+    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True])
+    reminders[channel]['summarizer'].start()
+
 @app.message(re.compile(r"(.*)", re.I))
 def catch_all(say, context):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
@@ -334,6 +350,7 @@ def catch_all(say, context):
         return
 
     say(the_reply)
+    summarize_later(channel)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
