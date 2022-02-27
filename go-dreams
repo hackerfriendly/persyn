@@ -4,7 +4,7 @@ cd $(dirname $0)/dreams
 . env/bin/activate
 
 # for nvcc
-export PATH=$PATH:/usr/local/cuda-11.0/bin/
+export PATH=$PATH:/usr/local/cuda-11.6/bin/
 
 while :; do
 	figlet -f slant -w 100 Dreams starting up | lolcat -a -d 5

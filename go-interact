@@ -3,8 +3,8 @@ cd $(dirname $0)/interaction
 
 . env/bin/activate
 
-# flair sentiment analysis and Tacotron2 TTS on the 1070
-export CUDA_VISIBLE_DEVICES=2
+# flair sentiment analysis
+export CUDA_VISIBLE_DEVICES=1
 
 # for nvcc
 export PATH=$PATH:/usr/local/cuda-11.0/bin/
