@@ -146,6 +146,16 @@ def stylegan2(channel, prompt, model, image_id):
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
+def latent_diffusion(channel, prompt, model, image_id): # pylint: disable=unused-argument
+    ''' https://github.com/hackerfriendly/latent-diffusion '''
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cmd = [
+            f'{SCRIPT_PATH}/latent-diffusion/go-ld',
+            f'{tmpdir}/{image_id}.jpg',
+            prompt[:250]
+        ]
+        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+
 @app.get("/")
 async def root():
     ''' Hi there! '''
@@ -173,7 +183,8 @@ async def generate(
         'v-diffusion-pytorch-cfg': vdiff_cfg,
         'v-diffusion-pytorch-clip': vdiff_clip,
         'vqgan': vqgan,
-        'stylegan2': stylegan2
+        'stylegan2': stylegan2,
+        'latent-diffusion': latent_diffusion
     }
 
     models = {
@@ -200,6 +211,9 @@ async def generate(
             'yfcc_1': {'name': 'yfcc_1', 'steps': 300},
             'yfcc_2': {'name': 'yfcc_2', 'steps': 300},
             'default': {'name': 'yfcc_2', 'steps': 300}
+        },
+        'latent-diffusion': {
+            'default': {'name': 'text2img-large'}
         }
     }
 
@@ -223,7 +237,7 @@ async def generate(
     if not prompt:
         prompt = "Untitled"
 
-    if engine in ['stylegan2']:
+    if engine in ['stylegan2', 'latent-diffusion']:
         background_tasks.add_task(
             engines[engine],
             channel=channel,
