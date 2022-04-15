@@ -31,7 +31,8 @@ IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip"] # "vqgan
 IMAGE_MODELS = {
     "stylegan2": ["ffhq", "waifu", "cat"], #, "car", "church", "horse"
     "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
-    "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"]
+    "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"],
+    "latent-diffusion": ["default"]
 }
 
 # Twitter
@@ -184,7 +185,9 @@ def help_me(say, context): # pylint: disable=unused-argument
   `summary`: Explain it all to me in a single sentence.
   `status`: Say exactly what is on {BOT_NAME}'s mind.
   :camera: : Generate a picture summarizing this conversation
-  :camera: _prompt_ : Generate a picture of _prompt_
+  :eye: _prompt_ : Generate a picture of _prompt_ using latent-diffusion
+  :camera: _prompt_ : Generate a picture of _prompt_ using v-diffusion-pytorch-cfg
+  :paperclip: _prompt_ : Generate a picture of _prompt_ using clip guided diffusion
   :selfie: Take a selfie
 """)
 
@@ -249,15 +252,15 @@ def photo_summary(say, context): # pylint: disable=unused-argument
     them = get_display_name(context['user_id'])
     channel = context['channel_id']
 
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a camera and frames the scene_")
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
     say_something_later(
         say,
         channel,
         context,
-        when=60,
+        when=20,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel), engine="v-diffusion-pytorch-cfg")
+    take_a_photo(channel, get_summary(channel), engine="latent-diffusion")
 
 @app.message(re.compile(r"^:paperclip:$"))
 def photo_clip_summary(say, context): # pylint: disable=unused-argument
@@ -274,6 +277,39 @@ def photo_clip_summary(say, context): # pylint: disable=unused-argument
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
     take_a_photo(channel, get_summary(channel), engine="v-diffusion-pytorch-clip")
+
+@app.message(re.compile(r"^:eye:$"))
+def photo_ld_summary(say, context): # pylint: disable=unused-argument
+    ''' Take a CLIP photo of this conversation '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=20,
+        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
+    )
+    take_a_photo(channel, get_summary(channel), engine="latent-diffusion")
+
+@app.message(re.compile(r"^:eye:(.+)$"))
+def ld_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with CLIP, it'll last longer '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=20,
+        what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
+    )
+    take_a_photo(channel, prompt, engine="latent-diffusion")
 
 @app.message(re.compile(r"^summary(\!)?$", re.I))
 def summarize(say, context):

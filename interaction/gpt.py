@@ -45,8 +45,8 @@ class GPT():
             temperature=temperature,
             max_tokens=max_tokens,
             n=8,
-            frequency_penalty=0.8,
-            presence_penalty=0.6,
+            frequency_penalty=1.2,
+            presence_penalty=0.8,
             stop=stop
         )
         log.info(f"🧠 Prompt: {prompt}")
