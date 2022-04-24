@@ -1,7 +1,7 @@
 '''
 interact.py
 
-A REST API for tying together all of the other components.
+A REST API for the limbic system.
 '''
 import os
 import random
@@ -9,6 +9,8 @@ import random
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
+
+import wikipedia
 
 # Prompt completion
 from gpt import GPT
@@ -154,13 +156,33 @@ def amnesia(service, channel):
 def extract_nouns(text):
     ''' return a list of all nouns (except pronouns) in text '''
     nlp = completion.nlp(text)
-    nouns = {n.text.strip() for n in nlp.noun_chunks for t in n if t.pos_ != 'PRON'}
+    nouns = {n.text.strip() for n in nlp.noun_chunks if n.text.strip() != BOT_NAME for t in n if t.pos_ != 'PRON'}
     return list(nouns)
 
 def extract_entities(text):
     ''' return a list of all entities in text '''
     nlp = completion.nlp(text)
-    return list({n.text.strip() for n in nlp.ents})
+    return list({n.text.strip() for n in nlp.ents if n.text.strip() != BOT_NAME})
+
+def daydream(service, channel):
+    ''' status report '''
+    paragraph = '\n\n'
+    newline = '\n'
+    summaries, convo = recall.load(service, channel, summaries=5)
+
+    reply = []
+    # TODO: random choice of top 3 HERE
+    entities = extract_entities(paragraph.join(summaries) + newline.join(convo))
+
+    for entity in entities:
+        try:
+            hits = wikipedia.search(entity)
+            if hits:
+                reply.append(wikipedia.summary(hits, sentences=3))
+        except wikipedia.exceptions.WikipediaException:
+            continue
+
+    return reply
 
 @app.get("/")
 async def root():
@@ -235,4 +257,14 @@ async def handle_entities(
     ''' Return the reply '''
     return {
         "entities": extract_entities(text)
+    }
+
+@app.post("/daydream/")
+async def handle_daydream(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    ):
+    ''' Return the reply '''
+    return {
+        "daydream": daydream(service, channel)
     }

@@ -27,7 +27,7 @@ log = ColorLog()
 BOT_NAME = os.environ["BOT_NAME"]
 BOT_ID = os.environ["BOT_ID"]
 
-IMAGE_ENGINES = ["v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip"] # "vqgan", "stylegan2"
+IMAGE_ENGINES = ["latent-diffusion", "v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip"] # "vqgan", "stylegan2"
 IMAGE_MODELS = {
     "stylegan2": ["ffhq", "waifu", "cat"], #, "car", "church", "horse"
     "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
@@ -47,6 +47,7 @@ BASEURL = os.environ.get('BASEURL', None)
 app = App(token=os.environ['SLACK_BOT_TOKEN'])
 # Saved to the service field in ltm
 SLACK_SERVICE = app.client.auth_test().data['url']
+log.warning(f"SLACK_SERVICE: {SLACK_SERVICE}")
 
 # Reminders: container for delayed response threads
 reminders = {}
@@ -180,6 +181,21 @@ def get_entities(text):
     speakers = [BOT_NAME, "Narrator"] + list(known_users.values())
     return [e for e in reply.json()['entities'] if e not in speakers]
 
+def get_daydream(channel):
+    ''' Ask interact to daydream about this channel. '''
+    req = {
+        "service": SLACK_SERVICE,
+        "channel": channel,
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/daydream/", params=req)
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /daydream/ to interact: {err}")
+        return []
+
+    return reply.json()['daydream']
+
 def get_status(channel):
     ''' Ask interact for status. '''
     req = {
@@ -219,6 +235,7 @@ def help_me(say, context): # pylint: disable=unused-argument
   `status`: Say exactly what is on {BOT_NAME}'s mind.
   `nouns`: Some nouns worth thinking about.
   `entities`: Proper entities floating through {BOT_NAME}'s mind.
+  `daydream`: Let {BOT_NAME}'s mind wander on the convo.
 
   *Image generation:*
   :eye: _prompt_ : Generate a picture of _prompt_ using latent-diffusion
@@ -392,15 +409,23 @@ def status(say, context):
 
 @app.message(re.compile(r"^nouns$", re.I))
 def nouns(say, context):
-    ''' Say a condensed summary of this channel '''
+    ''' Say the nouns mentioned on this channel '''
     channel = context['channel_id']
     say("> " + ", ".join(get_nouns(get_status(channel))))
 
 @app.message(re.compile(r"^entities$", re.I))
 def entities(say, context):
-    ''' Say a condensed summary of this channel '''
+    ''' Say the entities mentioned on this channel '''
     channel = context['channel_id']
     say("> " + ", ".join(get_entities(get_status(channel))))
+
+@app.message(re.compile(r"^daydream$", re.I))
+def daydream(say, context):
+    ''' Let your mind wander '''
+    channel = context['channel_id']
+    for idea in get_daydream(channel):
+        get_reply(channel, idea, BOT_NAME, BOT_ID)
+        say("💭")
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
