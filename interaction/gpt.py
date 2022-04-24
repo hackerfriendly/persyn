@@ -84,7 +84,7 @@ class GPT():
 
             return ' '.join(reply)
         except TypeError:
-            return ''
+            return reply
 
     def validate_choice(self, text, convo):
         '''
