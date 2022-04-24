@@ -124,7 +124,7 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
     return reply
 
-def get_summary(channel, save=False):
+def get_summary(channel, save=False, photo=False):
     ''' Ask interact for a channel summary. '''
     req = {
         "service": SLACK_SERVICE,
@@ -142,7 +142,8 @@ def get_summary(channel, save=False):
     log.warning(f"∑ {reply.json()['summary']}")
 
     if summary:
-        take_a_photo(channel, summary)
+        if photo:
+            take_a_photo(channel, summary, engine="latent-diffusion")
         return summary
 
     return ":shrug:"
@@ -381,7 +382,7 @@ def say_something_later(say, channel, context, when, what=None):
 
     reminders[channel]['rejoinder'].start()
 
-def summarize_later(channel, when=600):
+def summarize_later(channel, when=300):
     '''
     Summarize the train of thought later. When is in seconds.
 
@@ -392,7 +393,7 @@ def summarize_later(channel, when=600):
         new_channel(channel)
 
     reminders[channel]['summarizer'].cancel()
-    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True])
+    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True])
     reminders[channel]['summarizer'].start()
 
 @app.message(re.compile(r"(.*)", re.I))
