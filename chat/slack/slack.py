@@ -71,9 +71,10 @@ def get_display_name(user_id):
     if user_id not in known_users:
         users_info = app.client.users_info(user=user_id)['user']
         try:
-            known_users[user_id] = users_info['profile']['first_name'] or users_info['profile']['display_name']
+            profile = users_info['profile']
+            known_users[user_id] = profile.get('first_name') or profile.get('display_name') or profile.get('real_name')
         except KeyError:
-            known_users[user_id] = users_info['profile']['display_name'] or user_id
+            known_users[user_id] = user_id
 
     return known_users[user_id]
 
