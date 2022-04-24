@@ -150,6 +150,36 @@ def get_summary(channel, save=False, photo=False, max_tokens=200):
 
     return ":shrug:"
 
+def get_nouns(text):
+    ''' Ask interact for all the nouns in text, excluding the speakers. '''
+    req = {
+        "text": text
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/nouns/", params=req)
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /nouns/ to interact: {err}")
+        return []
+
+    speakers = [BOT_NAME, "Narrator"] + list(known_users.values())
+    return [e for e in reply.json()['nouns'] if e not in speakers]
+
+def get_entities(text):
+    ''' Ask interact for all the entities in text, excluding the speakers. '''
+    req = {
+        "text": text
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/entities/", params=req)
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /entities/ to interact: {err}")
+        return []
+
+    speakers = [BOT_NAME, "Narrator"] + list(known_users.values())
+    return [e for e in reply.json()['entities'] if e not in speakers]
+
 def get_status(channel):
     ''' Ask interact for status. '''
     req = {
@@ -183,11 +213,14 @@ def forget_it(channel):
 @app.message(re.compile(r"^help$", re.I))
 def help_me(say, context): # pylint: disable=unused-argument
     ''' TODO: These should really be / commands. '''
-    say(f"""Commands:
+    say(f"""*Commands:*
   `...`: Let {BOT_NAME} keep talking without interrupting
   `summary`: Explain it all to me in a single sentence.
   `status`: Say exactly what is on {BOT_NAME}'s mind.
-  :camera: : Generate a picture summarizing this conversation
+  `nouns`: Some nouns worth thinking about.
+  `entities`: Proper entities floating through {BOT_NAME}'s mind.
+
+  *Image generation:*
   :eye: _prompt_ : Generate a picture of _prompt_ using latent-diffusion
   :camera: _prompt_ : Generate a picture of _prompt_ using v-diffusion-pytorch-cfg
   :paperclip: _prompt_ : Generate a picture of _prompt_ using clip guided diffusion
@@ -283,7 +316,7 @@ def photo_summary(say, context): # pylint: disable=unused-argument
         when=20,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel, max_tokens=5), engine="latent-diffusion")
+    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="latent-diffusion")
 
 @app.message(re.compile(r"^:paperclip:$"))
 def photo_clip_summary(say, context): # pylint: disable=unused-argument
@@ -299,7 +332,7 @@ def photo_clip_summary(say, context): # pylint: disable=unused-argument
         when=60,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel, max_tokens=5), engine="v-diffusion-pytorch-clip")
+    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="v-diffusion-pytorch-clip")
 
 @app.message(re.compile(r"^:eye:$"))
 def photo_ld_summary(say, context): # pylint: disable=unused-argument
@@ -315,7 +348,7 @@ def photo_ld_summary(say, context): # pylint: disable=unused-argument
         when=20,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel, max_tokens=5), engine="latent-diffusion")
+    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="latent-diffusion")
 
 @app.message(re.compile(r"^:eye:(.+)$"))
 def ld_picture(say, context): # pylint: disable=unused-argument
@@ -356,6 +389,18 @@ def status(say, context):
     ''' Say a condensed summary of this channel '''
     channel = context['channel_id']
     say("\n".join([f"> {line}" for line in get_status(channel).split("\n")]))
+
+@app.message(re.compile(r"^nouns$", re.I))
+def nouns(say, context):
+    ''' Say a condensed summary of this channel '''
+    channel = context['channel_id']
+    say("> " + ", ".join(get_nouns(get_status(channel))))
+
+@app.message(re.compile(r"^entities$", re.I))
+def entities(say, context):
+    ''' Say a condensed summary of this channel '''
+    channel = context['channel_id']
+    say("> " + ", ".join(get_entities(get_status(channel))))
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
@@ -535,4 +580,5 @@ if __name__ == "__main__":
         handler.start()
     # Exit gracefully on ^C (so the wrapper script while loop continues)
     except KeyboardInterrupt as kbderr:
+        print()
         raise SystemExit(0) from kbderr

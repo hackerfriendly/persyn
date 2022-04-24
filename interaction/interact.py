@@ -8,8 +8,6 @@ import random
 
 from typing import Optional
 
-# import humanize
-
 from fastapi import FastAPI, HTTPException, Query
 
 # Prompt completion
@@ -153,6 +151,17 @@ def amnesia(service, channel):
     ''' forget it '''
     return recall.forget(service, channel)
 
+def extract_nouns(text):
+    ''' return a list of all nouns (except pronouns) in text '''
+    nlp = completion.nlp(text)
+    nouns = {n.text.strip() for n in nlp.noun_chunks for t in n if t.pos_ != 'PRON'}
+    return list(nouns)
+
+def extract_entities(text):
+    ''' return a list of all entities in text '''
+    nlp = completion.nlp(text)
+    return list({n.text.strip() for n in nlp.ents})
+
 @app.get("/")
 async def root():
     ''' Hi there! '''
@@ -208,4 +217,22 @@ async def handle_amnesia(
     ''' Return the reply '''
     return {
         "amnesia": amnesia(service, channel)
+    }
+
+@app.post("/nouns/")
+async def handle_nouns(
+    text: str = Query(..., min_length=1, max_length=16384),
+    ):
+    ''' Return the reply '''
+    return {
+        "nouns": extract_nouns(text)
+    }
+
+@app.post("/entities/")
+async def handle_entities(
+    text: str = Query(..., min_length=1, max_length=16384),
+    ):
+    ''' Return the reply '''
+    return {
+        "entities": extract_entities(text)
     }
