@@ -64,7 +64,7 @@ recall = Recall(
     verify_certs=True
 )
 
-def summarize_convo(service, channel, save=True):
+def summarize_convo(service, channel, save=True, max_tokens=200):
     '''
     Generate a GPT summary of the current conversation for this channel.
     If save == True, save it to long term memory.
@@ -77,7 +77,7 @@ def summarize_convo(service, channel, save=True):
     summary = completion.get_summary(
         text='\n'.join(convo),
         summarizer="To briefly summarize this conversation, ",
-        max_tokens=200
+        max_tokens=max_tokens
     )
     if save:
         recall.summary(service, channel, summary)
@@ -142,7 +142,7 @@ def get_status(service, channel):
     paragraph = '\n\n'
     newline = '\n'
     summaries, convo = recall.load(service, channel, summaries=3)
-    return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+    return f'''Narrator: It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 {paragraph.join(summaries)}
 
@@ -182,11 +182,12 @@ async def handle_reply(
 async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    save: Optional[bool] = Query(True)
+    save: Optional[bool] = Query(True),
+    max_tokens: Optional[int] = Query(200),
     ):
     ''' Return the reply '''
     return {
-        "summary": summarize_convo(service, channel, save)
+        "summary": summarize_convo(service, channel, save, max_tokens)
     }
 
 @app.post("/status/")

@@ -125,12 +125,13 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
     return reply
 
-def get_summary(channel, save=False, photo=False):
+def get_summary(channel, save=False, photo=False, max_tokens=200):
     ''' Ask interact for a channel summary. '''
     req = {
         "service": SLACK_SERVICE,
         "channel": channel,
-        "save": save
+        "save": save,
+        "max_tokens": max_tokens
     }
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
@@ -282,7 +283,7 @@ def photo_summary(say, context): # pylint: disable=unused-argument
         when=20,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel), engine="latent-diffusion")
+    take_a_photo(channel, get_summary(channel, max_tokens=5), engine="latent-diffusion")
 
 @app.message(re.compile(r"^:paperclip:$"))
 def photo_clip_summary(say, context): # pylint: disable=unused-argument
@@ -298,7 +299,7 @@ def photo_clip_summary(say, context): # pylint: disable=unused-argument
         when=60,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel), engine="v-diffusion-pytorch-clip")
+    take_a_photo(channel, get_summary(channel, max_tokens=5), engine="v-diffusion-pytorch-clip")
 
 @app.message(re.compile(r"^:eye:$"))
 def photo_ld_summary(say, context): # pylint: disable=unused-argument
@@ -314,7 +315,7 @@ def photo_ld_summary(say, context): # pylint: disable=unused-argument
         when=20,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel), engine="latent-diffusion")
+    take_a_photo(channel, get_summary(channel, max_tokens=5), engine="latent-diffusion")
 
 @app.message(re.compile(r"^:eye:(.+)$"))
 def ld_picture(say, context): # pylint: disable=unused-argument
