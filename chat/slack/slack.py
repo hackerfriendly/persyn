@@ -194,11 +194,12 @@ def help_me(say, context): # pylint: disable=unused-argument
 @app.message(re.compile(r"^:camera:(.+)$"))
 def picture(say, context): # pylint: disable=unused-argument
     ''' Take a picture, it'll last longer '''
-    them = get_display_name(context['user_id'])
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
     channel = context['channel_id']
     prompt = context['matches'][0].strip()
 
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a camera and frames the scene_")
+    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a camera and frames the scene_")
     say_something_later(
         say,
         channel,
@@ -208,14 +209,24 @@ def picture(say, context): # pylint: disable=unused-argument
     )
     take_a_photo(channel, prompt, engine="v-diffusion-pytorch-cfg")
 
+    msg = f'I wonder what "{prompt}" looks like.'
+    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+
+    if the_reply == ":shrug:":
+        return
+
+    say(the_reply)
+    summarize_later(channel)
+
 @app.message(re.compile(r"^:paperclip:(.+)$"))
 def clip_picture(say, context): # pylint: disable=unused-argument
     ''' Take a picture with CLIP, it'll last longer '''
-    them = get_display_name(context['user_id'])
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
     channel = context['channel_id']
     prompt = context['matches'][0].strip()
 
-    say(f"OK, {them}.\n_{BOT_NAME} takes out an old fashioned camera and frames the scene_")
+    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out an old fashioned camera and frames the scene_")
     say_something_later(
         say,
         channel,
@@ -224,6 +235,15 @@ def clip_picture(say, context): # pylint: disable=unused-argument
         what=f"*{BOT_NAME} takes a picture of _{prompt}_* It will take a few minutes to develop."
     )
     take_a_photo(channel, prompt, engine="v-diffusion-pytorch-clip")
+
+    msg = f'I wonder what "{prompt}" looks like.'
+    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+
+    if the_reply == ":shrug:":
+        return
+
+    say(the_reply)
+    summarize_later(channel)
 
 @app.message(re.compile(r"^:selfie:$"))
 def selfie(say, context): # pylint: disable=unused-argument
@@ -296,12 +316,13 @@ def photo_ld_summary(say, context): # pylint: disable=unused-argument
 
 @app.message(re.compile(r"^:eye:(.+)$"))
 def ld_picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture with CLIP, it'll last longer '''
-    them = get_display_name(context['user_id'])
+    ''' Take a picture with CompVis latent diffusion, it'll be better '''
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
     channel = context['channel_id']
     prompt = context['matches'][0].strip()
 
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
+    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
     say_something_later(
         say,
         channel,
@@ -310,6 +331,15 @@ def ld_picture(say, context): # pylint: disable=unused-argument
         what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
     )
     take_a_photo(channel, prompt, engine="latent-diffusion")
+
+    msg = f'I wonder what "{prompt}" looks like.'
+    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+
+    if the_reply == ":shrug:":
+        return
+
+    say(the_reply)
+    summarize_later(channel)
 
 @app.message(re.compile(r"^summary(\!)?$", re.I))
 def summarize(say, context):
@@ -397,24 +427,15 @@ def catch_all(say, context):
         )
         return
 
-    interval = None
-    # Long response
-    if random.random() < 0.1:
-        interval = [7,10]
-    # Medium response
-    elif random.random() < 0.2:
-        interval = [4,6]
-    # Quick response
-    elif random.random() < 0.3:
-        interval = [2,3]
-
-    if interval:
+    # 5% chance of random interjection later
+    if random.random() < 0.05:
         say_something_later(
             say,
             channel,
             context,
-            when=random.randint(interval[0], interval[1])
+            when=random.randint(2, 5)
         )
+
 
 @app.event("app_mention")
 def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
@@ -443,8 +464,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
             limit=1
         )
 
-        messages = result.get('messages', [])
-        for msg in messages:
+        for msg in result.get('messages', []):
             # only post on the first reaction
             if 'reactions' in msg and len(msg['reactions']) == 1:
                 if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign', 'hand']:
