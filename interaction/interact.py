@@ -106,7 +106,7 @@ def choose_reply(prompt, convo):
     return reply
 
 def get_reply(service, channel, msg, speaker_name, speaker_id):
-    ''' Get the best reply for the given channel. '''
+    ''' Get the best reply for the given channel. Saves to recall memory. '''
     if recall.expired(service, channel):
         summarize_convo(service, channel, save=True)
 
@@ -115,13 +115,13 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         tts(msg)
 
     summaries, convo = recall.load(service, channel, summaries=3)
-    narration = [f"Narrator: {line}" for line in summaries]
+    narration = [line for line in summaries]
     prefix = "" # TODO: more contextual motivations go here
 
     # Load summaries and conversation
     newline = '\n'
 
-    prompt = f"""Narrator: {prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+    prompt = f"""{prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 {newline.join(narration)}
 {newline.join(convo)}
@@ -130,6 +130,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     reply = choose_reply(prompt, convo)
 
     recall.save(service, channel, reply, BOT_NAME, BOT_ID)
+
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
 
@@ -142,7 +143,7 @@ def get_status(service, channel):
     paragraph = '\n\n'
     newline = '\n'
     summaries, convo = recall.load(service, channel, summaries=3)
-    return f'''Narrator: It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+    return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 {paragraph.join(summaries)}
 
@@ -168,21 +169,38 @@ def daydream(service, channel):
     ''' status report '''
     paragraph = '\n\n'
     newline = '\n'
-    summaries, convo = recall.load(service, channel, summaries=5)
+    summaries, convo = recall.load(service, channel, summaries=10)
 
-    reply = []
-    # TODO: random choice of top 3 HERE
+    reply = {}
     entities = extract_entities(paragraph.join(summaries) + newline.join(convo))
 
-    for entity in entities:
+    # TODO: Wikipedia is slow. Cache these.
+    for entity in random.sample(entities, k=3):
         try:
             hits = wikipedia.search(entity)
             if hits:
-                reply.append(wikipedia.summary(hits, sentences=3))
+                wiki = wikipedia.summary(hits, sentences=3)
+                reply[entity] = completion.get_summary(
+                    text=f"This Wikipeda article:\n{wiki}",
+                    summarizer="Can be summarized as: ",
+                    max_tokens=100
+                )
         except wikipedia.exceptions.WikipediaException:
             continue
 
+    log.warning("💭 daydream entities:")
+    log.warning(reply)
     return reply
+
+def inject_idea(service, channel, idea):
+    ''' Directly inject an idea into recall memory. '''
+    if recall.expired(service, channel):
+        summarize_convo(service, channel, save=True)
+
+    recall.save(service, channel, idea, f"{BOT_NAME} thinks", BOT_ID)
+
+    log.warning("🤔 Thinking:", idea)
+    return "🤔"
 
 @app.get("/")
 async def root():
@@ -267,4 +285,17 @@ async def handle_daydream(
     ''' Return the reply '''
     return {
         "daydream": daydream(service, channel)
+    }
+
+@app.post("/inject/")
+async def handle_inject(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    idea: str = Query(..., min_length=1, max_length=16384),
+    ):
+    ''' Inject an idea into the stream of consciousness '''
+    inject_idea(service, channel, idea)
+
+    return {
+        "status": get_status(service, channel)
     }

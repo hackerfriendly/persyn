@@ -85,6 +85,10 @@ def substitute_names(text):
         text = re.sub(f'<@{user_id}>', get_display_name(user_id), text)
     return text
 
+def speakers():
+    ''' Everyone speaking in any channel '''
+    return [BOT_NAME] + list(known_users.values())
+
 def take_a_photo(channel, prompt, engine=None, model=None):
     ''' Pick an image engine and generate a photo '''
     if not engine:
@@ -163,8 +167,7 @@ def get_nouns(text):
         log.critical(f"🤖 Could not post /nouns/ to interact: {err}")
         return []
 
-    speakers = [BOT_NAME, "Narrator"] + list(known_users.values())
-    return [e for e in reply.json()['nouns'] if e not in speakers]
+    return [e for e in reply.json()['nouns'] if e not in speakers()]
 
 def get_entities(text):
     ''' Ask interact for all the entities in text, excluding the speakers. '''
@@ -178,8 +181,7 @@ def get_entities(text):
         log.critical(f"🤖 Could not post /entities/ to interact: {err}")
         return []
 
-    speakers = [BOT_NAME, "Narrator"] + list(known_users.values())
-    return [e for e in reply.json()['entities'] if e not in speakers]
+    return [e for e in reply.json()['entities'] if e not in speakers()]
 
 def get_daydream(channel):
     ''' Ask interact to daydream about this channel. '''
@@ -210,6 +212,22 @@ def get_status(channel):
         return ":shrug:"
 
     return reply.json()['status']
+
+def inject_idea(channel, idea):
+    ''' Directly inject an idea into the stream of consciousness. '''
+    req = {
+        "service": SLACK_SERVICE,
+        "channel": channel,
+        "idea": idea
+    }
+    try:
+        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/inject/", params=req)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /inject/ to interact: {err}")
+        return ":shrug:"
+
+    return response.json()['status']
 
 def forget_it(channel):
     ''' There is no antimemetics division. '''
@@ -423,9 +441,15 @@ def entities(say, context):
 def daydream(say, context):
     ''' Let your mind wander '''
     channel = context['channel_id']
-    for idea in get_daydream(channel):
-        get_reply(channel, idea, BOT_NAME, BOT_ID)
-        say("💭")
+    ideas = get_daydream(channel)
+
+    for idea in ideas:
+        # skip anyone speaking in the channel
+        if idea in speakers():
+            continue
+
+        inject_idea(channel, ideas[idea])
+        say(f"💭 _{idea}: {ideas[idea]}_")
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''

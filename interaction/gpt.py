@@ -243,7 +243,6 @@ class GPT():
             f"{self.bot_name} is feeling",
             "I am feeling",
             "I'm feeling",
-            "Narrator:",
             f"{self.bot_name}:"
         ):
             if line in text:
