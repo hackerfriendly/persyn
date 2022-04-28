@@ -115,7 +115,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         tts(msg)
 
     summaries, convo = recall.load(service, channel, summaries=3)
-    narration = [line for line in summaries]
     prefix = "" # TODO: more contextual motivations go here
 
     # Load summaries and conversation
@@ -123,13 +122,27 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
 
     prompt = f"""{prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
-{newline.join(narration)}
+{newline.join(summaries)}
 {newline.join(convo)}
 {BOT_NAME}:"""
 
     reply = choose_reply(prompt, convo)
 
     recall.save(service, channel, reply, BOT_NAME, BOT_ID)
+
+    # Ruminate a bit
+    for entity in extract_entities(f"{msg}\n{reply}"):
+        try:
+            hits = wikipedia.search(entity)
+            if hits:
+                wiki = wikipedia.summary(random.choice(hits), sentences=3)
+                inject_idea(service, channel, completion.get_summary(
+                    text=f"This Wikipeda article:\n{wiki}",
+                    summarizer="Can be summarized as: ",
+                    max_tokens=100
+                ))
+        except wikipedia.exceptions.WikipediaException:
+            continue
 
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
@@ -166,7 +179,7 @@ def extract_entities(text):
     return list({n.text.strip() for n in nlp.ents if n.text.strip() != BOT_NAME})
 
 def daydream(service, channel):
-    ''' status report '''
+    ''' Chew on recent conversation '''
     paragraph = '\n\n'
     newline = '\n'
     summaries, convo = recall.load(service, channel, summaries=10)
