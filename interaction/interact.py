@@ -94,6 +94,15 @@ def choose_reply(prompt, convo):
     )
 
     if not scored:
+        log.warning("🤨 No surviving replies, try again.")
+        scored = completion.get_replies(
+            prompt=prompt,
+            convo=convo,
+            temperature=TEMPERATURE
+        )
+
+    if not scored:
+        log.warning("😩 No surviving replies, I give up.")
         return ":shrug:"
 
     for item in sorted(scored.items()):
@@ -114,11 +123,27 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         recall.save(service, channel, msg, speaker_name, speaker_id)
         tts(msg)
 
-    summaries, convo = recall.load(service, channel, summaries=3)
-    prefix = "" # TODO: more contextual motivations go here
+    # Ruminate a bit
+    for entity in extract_entities(msg):
+        try:
+            hits = wikipedia.search(entity)
+            if hits:
+                wiki = wikipedia.summary(random.choice(hits), sentences=3)
+                summary = completion.nlp(completion.get_summary(
+                    text=f"This Wikipeda article:\n{wiki}",
+                    summarizer="Can be summarized as: ",
+                    max_tokens=100
+                ))
+                # 2 sentences max please.
+                inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
+        except wikipedia.exceptions.WikipediaException:
+            continue
 
     # Load summaries and conversation
+    summaries, convo = recall.load(service, channel, summaries=2)
+
     newline = '\n'
+    prefix = "" # TODO: more contextual motivations go here
 
     prompt = f"""{prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
@@ -129,20 +154,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     reply = choose_reply(prompt, convo)
 
     recall.save(service, channel, reply, BOT_NAME, BOT_ID)
-
-    # Ruminate a bit
-    for entity in extract_entities(f"{msg}\n{reply}"):
-        try:
-            hits = wikipedia.search(entity)
-            if hits:
-                wiki = wikipedia.summary(random.choice(hits), sentences=3)
-                inject_idea(service, channel, completion.get_summary(
-                    text=f"This Wikipeda article:\n{wiki}",
-                    summarizer="Can be summarized as: ",
-                    max_tokens=100
-                ))
-        except wikipedia.exceptions.WikipediaException:
-            continue
 
     tts(reply, voice=BOT_VOICE)
     feels['current'] = get_feels(f'{prompt} {reply}')
@@ -155,7 +166,7 @@ def get_status(service, channel):
     ''' status report '''
     paragraph = '\n\n'
     newline = '\n'
-    summaries, convo = recall.load(service, channel, summaries=3)
+    summaries, convo = recall.load(service, channel, summaries=2)
     return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
 
 {paragraph.join(summaries)}
@@ -182,7 +193,7 @@ def daydream(service, channel):
     ''' Chew on recent conversation '''
     paragraph = '\n\n'
     newline = '\n'
-    summaries, convo = recall.load(service, channel, summaries=10)
+    summaries, convo = recall.load(service, channel, summaries=5)
 
     reply = {}
     entities = extract_entities(paragraph.join(summaries) + newline.join(convo))
@@ -193,11 +204,14 @@ def daydream(service, channel):
             hits = wikipedia.search(entity)
             if hits:
                 wiki = wikipedia.summary(hits, sentences=3)
-                reply[entity] = completion.get_summary(
+                summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipeda article:\n{wiki}",
                     summarizer="Can be summarized as: ",
                     max_tokens=100
-                )
+                ))
+                # 2 sentences max please.
+                reply[entity] = ' '.join([s.text for s in summary.sents][:2])
+
         except wikipedia.exceptions.WikipediaException:
             continue
 
