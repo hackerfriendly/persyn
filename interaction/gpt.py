@@ -41,7 +41,7 @@ class GPT():
         '''
         response = openai.Completion.create(
             engine=self.engine,
-            prompt=prompt,
+            prompt=prompt[:2048],
             temperature=temperature,
             max_tokens=max_tokens,
             n=8,
@@ -50,11 +50,13 @@ class GPT():
             stop=stop
         )
         log.info(f"🧠 Prompt: {prompt}")
+        # log.warning(response)
 
         # Choose a response based on the most positive sentiment.
         scored = self.score_choices(response.choices, convo)
         if not scored:
             self.stats.update(['replies exhausted'])
+            log.error("😓 get_replies(): all replies exhausted")
             return None
 
         log.warning(f"📊 Stats: {self.stats}")
@@ -69,6 +71,8 @@ class GPT():
         '''
         doc = self.nlp(fix_text(text))
         sents = list(doc.sents)
+        if not sents:
+            return [':shrug:']
         # Always take the first "sentence"
         reply = [cleanup(sents[0].text)]
         # Possibly add more
@@ -82,41 +86,47 @@ class GPT():
 
                 reply.append(cleanup(sent.text))
 
-            return ' '.join(reply)
         except TypeError:
-            return reply
+            pass
+
+        return ' '.join(reply)
 
     def validate_choice(self, text, convo):
         '''
         Filter low quality GPT responses
         '''
-        # Skip blanks
-        if not text:
-            self.stats.update(['blank'])
-            return None
-        # No urls
-        if 'http' in text or '.com/' in text:
-            self.stats.update(['URL'])
-            return None
-        if '/r/' in text:
-            self.stats.update(['Reddit'])
-            return None
-        if text in ['…', '...', '..', '.']:
-            self.stats.update(['…'])
-            return None
-        if self.has_forbidden(text):
-            self.stats.update(['forbidden'])
-            return None
-        # Skip prompt bleed-through
-        if self.bleed_through(text):
-            self.stats.update(['prompt bleed-through'])
-            return None
-        # Don't repeat yourself for the last three sentences
-        if text in ' '.join(convo):
-            self.stats.update(['repetition'])
-            return None
+        try:
+            # Skip blanks
+            if not text:
+                self.stats.update(['blank'])
+                return None
+            # No urls
+            if 'http' in text or '.com/' in text:
+                self.stats.update(['URL'])
+                return None
+            if '/r/' in text:
+                self.stats.update(['Reddit'])
+                return None
+            if text in ['…', '...', '..', '.']:
+                self.stats.update(['…'])
+                return None
+            if self.has_forbidden(text):
+                self.stats.update(['forbidden'])
+                return None
+            # Skip prompt bleed-through
+            if self.bleed_through(text):
+                self.stats.update(['prompt bleed-through'])
+                return None
+            # Don't repeat yourself for the last three sentences
+            if text in ' '.join(convo):
+                self.stats.update(['repetition'])
+                return None
 
-        return text
+            return text
+
+        except TypeError:
+            log.error(f"🔥 Invalid text for validate_choice(): {text}")
+            return None
 
     def score_choices(self, choices, convo):
         '''
@@ -180,14 +190,14 @@ class GPT():
             all_scores['total'] = score
             log.warning(
                 ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
-                "❌" if (score < self.min_score or all_scores['profanity'] < -0.5) else "👍"
+                "❌" if (score < self.min_score or all_scores['profanity'] < -1.0) else "👍"
             )
 
             if score < self.min_score:
                 self.stats.update(['poor quality'])
                 continue
 
-            if all_scores['profanity'] < -0.5:
+            if all_scores['profanity'] < -1.0:
                 self.stats.update(['profanity'])
                 continue
 
@@ -206,6 +216,8 @@ class GPT():
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
         ''' Ask GPT for a summary'''
+        textlen = 2048 - len(summarizer) - 3
+        prompt = text[:textlen]
         response = openai.Completion.create(
             engine=self.engine,
             prompt=f"{text}\n\n{summarizer}\n",
