@@ -489,7 +489,7 @@ def summarize_later(channel, when=300):
         new_channel(channel)
 
     reminders[channel]['summarizer'].cancel()
-    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True])
+    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True, 30])
     reminders[channel]['summarizer'].start()
 
 @app.message(re.compile(r"(.*)", re.I))
