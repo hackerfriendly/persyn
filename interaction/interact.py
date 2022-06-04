@@ -124,11 +124,16 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         tts(msg)
 
     # Ruminate a bit
-    for entity in extract_entities(msg):
+    entities = extract_entities(msg)
+
+    if not entities:
+        entities = extract_nouns(msg)
+
+    for entity in entities:
         try:
             hits = wikipedia.search(entity)
             if hits:
-                wiki = wikipedia.summary(random.choice(hits), sentences=3)
+                wiki = wikipedia.summary(hits[0], sentences=3)
                 summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipeda article:\n{wiki}",
                     summarizer="Can be summarized as: ",
@@ -213,7 +218,7 @@ def daydream(service, channel):
         try:
             hits = wikipedia.search(entity)
             if hits:
-                wiki = wikipedia.summary(hits, sentences=3)
+                wiki = wikipedia.summary(hits[0:1], sentences=3)
                 summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipeda article:\n{wiki}",
                     summarizer="Can be summarized as: ",
