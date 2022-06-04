@@ -24,12 +24,14 @@ class GPT():
         min_score=0.0,
         api_key=os.getenv('OPENAI_API_KEY'),
         engine=os.environ.get('OPENAI_MODEL', 'text-davinci-001'),
-        forbidden=None
+        forbidden=None,
+        max_prompt_length=2048
         ):
         self.bot_name = bot_name
         self.min_score = min_score
         self.engine = engine
         self.forbidden = forbidden or []
+        self.max_prompt_length = max_prompt_length
         self.stats = Counter()
         self.nlp = spacy.load("en_core_web_lg")
         openai.api_key = api_key
@@ -39,9 +41,12 @@ class GPT():
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
         '''
+        if len(prompt) > self.max_prompt_length:
+            log.warning(f"get_replies: text too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+
         response = openai.Completion.create(
             engine=self.engine,
-            prompt=prompt[:2048],
+            prompt=prompt[:self.max_prompt_length],
             temperature=temperature,
             max_tokens=max_tokens,
             n=8,
@@ -216,11 +221,15 @@ class GPT():
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
         ''' Ask GPT for a summary'''
-        textlen = 2048 - len(summarizer) - 3
-        prompt = text[:textlen]
+        prompt=f"{text}\n\n{summarizer}\n"
+        if len(prompt) > self.max_prompt_length:
+            log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length}")
+            textlen = self.max_prompt_length - len(summarizer) - 3
+            prompt = f"{text[:textlen]}\n\n{summarizer}\n"
+
         response = openai.Completion.create(
             engine=self.engine,
-            prompt=f"{text}\n\n{summarizer}\n",
+            prompt=prompt,
             max_tokens=max_tokens,
             top_p=0.1,
             frequency_penalty=0.8,

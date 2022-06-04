@@ -142,14 +142,14 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     # Load summaries and conversation
     summaries, convo = recall.load(service, channel, summaries=2)
 
-    newline = '\n'
-    prefix = "" # TODO: more contextual motivations go here
+    prompt = generate_prompt(summaries, convo)
 
-    prompt = f"""{prefix}It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
-
-{newline.join(summaries)}
-{newline.join(convo)}
-{BOT_NAME}:"""
+    # Is this just too much to think about?
+    if len(prompt) > completion.max_prompt_length:
+        log.warning("🥱 get_reply(): prompt too long, summarizing.")
+        summarize_convo(service, channel, save=True, max_tokens=50)
+        summaries, _ = recall.load(service, channel, summaries=3)
+        prompt = generate_prompt(summaries, convo[-3:])
 
     reply = choose_reply(prompt, convo)
 
@@ -161,6 +161,16 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     log.warning("😄 Feeling:", feels['current'])
 
     return reply
+
+def generate_prompt(summaries, convo):
+    ''' Generate the model prompt '''
+    newline = '\n'
+
+    return f"""It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+
+{newline.join(summaries)}
+{newline.join(convo)}
+{BOT_NAME}:"""
 
 def get_status(service, channel):
     ''' status report '''
