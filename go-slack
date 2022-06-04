@@ -8,7 +8,7 @@ export CUDA_VISIBLE_DEVICES=2
 
 while :; do
 	figlet -f slant -w 100 Slacker starting up | lolcat -a -d 5
-	. config/*.conf
+	. config/anna.conf
 	chat/slack/slack.py
 	sleep 1
 done

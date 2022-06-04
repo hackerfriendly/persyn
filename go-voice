@@ -1,4 +1,12 @@
 #!/bin/bash
+
+# icecast (will only run one instance)
+cd $(dirname $0)
+ices2 ices/anna.xml
+
+sudo amixer set PCM 100%
+
+# gtts
 cd $(dirname $0)/voice/gtts/
 
 . env/bin/activate

@@ -7,7 +7,7 @@ from subprocess import run, CalledProcessError
 from typing import Optional
 from io import BytesIO
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from gtts import gTTS
 
 app = FastAPI()
@@ -22,40 +22,8 @@ VOICES = {
     "South Africa": "co.za"
 }
 
-@app.get("/")
-async def root():
-    ''' Hi there! '''
-    return {"message": "Google Text To Speech server. Try /docs"}
-
-@app.get("/voices/")
-async def voices():
-    ''' List all available voices '''
-    return {
-        "voices": list(VOICES),
-        "success": True
-    }
-
-@app.post("/say/")
-async def say(
-    text: str = Query(..., min_length=1, max_length=5000),
-    voice: Optional[str] = Query("USA", max_length=32)):
-    ''' Generate with gTTS and pipe to audio. '''
-
-    if voice not in VOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid voice. Choose one of: {', '.join(list(VOICES))}"
-        )
-
-    if not any(c.isalnum() for c in text):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Text must contain at least one alphanumeric character."
-        )
-
-    # Simple filtering goes here
-    text = text.replace('*','')
-
+def speak(voice, text):
+    ''' Say the magic words '''
     try:
         print(f"({voice}):", text)
         tts = gTTS(text, lang='en', tld=VOICES[voice])
@@ -75,6 +43,55 @@ async def say(
             status_code=500,
             detail="Could not play audio, see console for error."
         ) from procerr
+
+@app.get("/")
+async def root():
+    ''' Hi there! '''
+    return {"message": "Google Text To Speech server. Try /docs"}
+
+@app.get("/voices/")
+async def voices():
+    ''' List all available voices '''
+    return {
+        "voices": list(VOICES),
+        "success": True
+    }
+
+@app.post("/say/")
+async def say(
+    background_tasks: BackgroundTasks,
+    text: str = Query(..., min_length=1, max_length=5000),
+    voice: Optional[str] = Query("USA", max_length=32)
+    ):
+    ''' Generate with gTTS and pipe to audio. '''
+
+    if voice not in VOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid voice. Choose one of: {', '.join(list(VOICES))}"
+        )
+
+    if not any(c.isalnum() for c in text):
+        raise HTTPException(
+            status_code=400,
+            detail="Text must contain at least one alphanumeric character."
+        )
+
+    # Simple filtering goes here
+    text = text.replace('*','')
+
+    if not text.strip():
+        return {
+            "voice": voice,
+            "success": False,
+            "reason": "empty text"
+        }
+
+    background_tasks.add_task(
+        speak,
+        voice=voice,
+        text=text.strip()
+    )
 
     return {
         "voice": voice,

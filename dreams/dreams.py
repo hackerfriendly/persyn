@@ -2,8 +2,6 @@
 dreams.py
 
 A REST API for generating chat bot hallucinations.
-
-Run with
 '''
 import json
 import os
@@ -20,9 +18,6 @@ import requests
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 
 app = FastAPI()
-
-# Maximum iterations
-DEFAULT_STEPS = 1000
 
 # Every GPU device that can be used for image generation
 GPUS = {
@@ -90,24 +85,25 @@ def process_prompt(cmd, channel, prompt, image_id, tmpdir):
     if channel:
         post_to_slack(channel, prompt, image_id)
 
-def vdiff_cfg(channel, prompt, model, image_id):
+def vdiff_cfg(channel, prompt, model, image_id, steps):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch classifier-free guidance '''
 
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/v-diffusion-pytorch/cfg_sample.py',
             '--out', f'{tmpdir}/{image_id}.jpg',
-            '--steps', f'{DEFAULT_STEPS}',
+            '--steps', f'{steps}',
             # Bigger is nice but quite slow (~40 minutes for 500 steps)
             # '--size', '768', '768',
             '--size', '512', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             '--model', model,
-            prompt
+            '--style', 'random',
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
-def vdiff_clip(channel, prompt, model, image_id):
+def vdiff_clip(channel, prompt, model, image_id, steps):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch '''
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -115,25 +111,25 @@ def vdiff_clip(channel, prompt, model, image_id):
             f'{SCRIPT_PATH}/v-diffusion-pytorch/clip_sample.py',
             '--out', f'{tmpdir}/{image_id}.jpg',
             '--model', model,
-            '--steps', f'{DEFAULT_STEPS}',
-            '--size', '512', '512',
+            '--steps', f'{steps}',
+            '--size', '384', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
-            prompt
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
-def vqgan(channel, prompt, model, image_id):
+def vqgan(channel, prompt, model, image_id, steps):
     ''' https://colab.research.google.com/drive/15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP '''
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/vqgan/vqgan.py',
             '--out', f'{tmpdir}/{image_id}.jpg',
-            '--steps', f'{DEFAULT_STEPS}',
+            '--steps', f'{steps}',
             '--size', '720', '480',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             '--vqgan-config', f'models/{model}.yaml',
             '--vqgan-checkpoint', f'models/{model}.ckpt',
-            prompt
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
@@ -147,6 +143,16 @@ def stylegan2(channel, prompt, model, image_id):
             str(random.randint(0, 2**32 - 1)),
             str(psi),
             f'{tmpdir}/{image_id}.jpg'
+        ]
+        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+
+def latent_diffusion(channel, prompt, model, image_id): # pylint: disable=unused-argument
+    ''' https://github.com/hackerfriendly/latent-diffusion '''
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cmd = [
+            f'{SCRIPT_PATH}/latent-diffusion/go-ld',
+            f'{tmpdir}/{image_id}.jpg',
+            prompt[:250]
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir)
 
@@ -177,58 +183,77 @@ async def generate(
         'v-diffusion-pytorch-cfg': vdiff_cfg,
         'v-diffusion-pytorch-clip': vdiff_clip,
         'vqgan': vqgan,
-        'stylegan2': stylegan2
+        'stylegan2': stylegan2,
+        'latent-diffusion': latent_diffusion
     }
 
     models = {
         'stylegan2': {
-            'ffhq': 'stylegan2-ffhq-config-f.pkl',
-            'car': 'stylegan2-car-config-f.pkl',
-            'cat': 'stylegan2-cat-config-f.pkl',
-            'church': 'stylegan2-church-config-f.pkl',
-            'horse': 'stylegan2-horse-config-f.pkl',
-            'waifu': '2020-01-11-skylion-stylegan2-animeportraits-networksnapshot-024664.pkl',
-            'default': 'stylegan2-ffhq-config-f.pkl'
+            'ffhq': {'name': 'stylegan2-ffhq-config-f.pkl'},
+            'car': {'name': 'stylegan2-car-config-f.pkl'},
+            'cat': {'name': 'stylegan2-cat-config-f.pkl'},
+            'church': {'name': 'stylegan2-church-config-f.pkl'},
+            'horse': {'name': 'stylegan2-horse-config-f.pkl'},
+            'waifu': {'name': '2020-01-11-skylion-stylegan2-animeportraits-networksnapshot-024664.pkl'},
+            'default': {'name': 'stylegan2-ffhq-config-f.pkl'}
         },
         'vqgan': {
-            'vqgan_imagenet_f16_1024': 'vqgan_imagenet_f16_1024',
-            'vqgan_imagenet_f16_16384': 'vqgan_imagenet_f16_16384',
-            'default': 'vqgan_imagenet_f16_16384'
+            'vqgan_imagenet_f16_1024': {'name': 'vqgan_imagenet_f16_1024', 'steps': 500},
+            'vqgan_imagenet_f16_16384': {'name': 'vqgan_imagenet_f16_16384', 'steps': 500},
+            'default': {'name': 'vqgan_imagenet_f16_16384', 'steps': 500}
         },
         'v-diffusion-pytorch-cfg': {
-            'cc12m_1': 'cc12m_1_cfg',
-            'default': 'cc12m_1_cfg'
+            'cc12m_1_cfg': {'name': 'cc12m_1_cfg', 'steps': 50},
+            'default': {'name': 'cc12m_1_cfg', 'steps': 50}
         },
         'v-diffusion-pytorch-clip': {
-            'cc12m_1': 'cc12m_1',
-            'yfcc_1': 'yfcc_1',
-            'yfcc_2': 'yfcc_2',
-            'default': 'yfcc_2'
+            'cc12m_1': {'name': 'cc12m_1', 'steps': 300},
+            'yfcc_1': {'name': 'yfcc_1', 'steps': 300},
+            'yfcc_2': {'name': 'yfcc_2', 'steps': 300},
+            'default': {'name': 'yfcc_2', 'steps': 300}
+        },
+        'latent-diffusion': {
+            'default': {'name': 'text2img-large'}
         }
     }
 
     if engine not in engines:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid engine. Choose one of: {', '.join(list(engines))}"
+            detail=f"Invalid engine {engine}. Choose one of: {', '.join(list(engines))}"
         )
 
     if model and model not in models[engine]:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model for {engine}. Choose one of: {', '.join(list(models[engine]))}"
+            detail=f"Invalid model {model} for {engine}. Choose one of: {', '.join(list(models[engine]))}"
         )
 
     if not model:
         model = 'default'
 
-    background_tasks.add_task(
-        engines[engine],
-        channel=channel,
-        prompt=prompt.strip(),
-        model=models[engine][model],
-        image_id=image_id
-    )
+    prompt = prompt.strip().replace('\n', ' ').replace(':', ' ')
+
+    if not prompt:
+        prompt = "Untitled"
+
+    if engine in ['stylegan2', 'latent-diffusion']:
+        background_tasks.add_task(
+            engines[engine],
+            channel=channel,
+            prompt=prompt,
+            model=models[engine][model]['name'],
+            image_id=image_id
+        )
+    else:
+        background_tasks.add_task(
+            engines[engine],
+            channel=channel,
+            prompt=prompt,
+            model=models[engine][model]['name'],
+            image_id=image_id,
+            steps=models[engine][model]['steps']
+        )
 
     return {
         "engine": engine,
