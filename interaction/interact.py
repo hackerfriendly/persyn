@@ -136,8 +136,8 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
                 wiki = wikipedia.summary(hits[0], sentences=3)
                 summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipeda article:\n{wiki}",
-                    summarizer="Can be summarized as: ",
-                    max_tokens=100
+                    summarizer="Can be briefly summarized as: ",
+                    max_tokens=75
                 ))
                 # 2 sentences max please.
                 inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
