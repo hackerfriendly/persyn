@@ -98,7 +98,9 @@ def take_a_photo(channel, prompt, engine=None, model=None):
         "engine": engine,
         "channel": channel,
         "prompt": prompt,
-        "model": model or random.choice(IMAGE_MODELS[engine])
+        "model": model or random.choice(IMAGE_MODELS[engine]),
+        "slack_bot_token": os.environ['SLACK_BOT_TOKEN'],
+        "bot_name": os.environ['BOT_NAME']
     }
     reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
     if reply.ok:
