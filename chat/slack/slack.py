@@ -71,6 +71,7 @@ def new_channel(channel):
     reminders[channel]['summarizer'].start()
 
 def is_bot(user_id):
+    """ Returns true if the user_id is a Slack bot """
     get_display_name(user_id)
     return known_bots[user_id]
 
