@@ -27,7 +27,7 @@ GPUS = {
 
 SCRIPT_PATH = Path(__file__).resolve().parent
 
-def post_to_slack(channel, prompt, image_id):
+def post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name):
     ''' Post the image URL to Slack '''
     blocks = [
         {
@@ -41,9 +41,9 @@ def post_to_slack(channel, prompt, image_id):
         }
     ]
     req = {
-        "token": os.environ['SLACK_BOT_TOKEN'],
+        "token": slack_bot_token,
         "channel": channel,
-        "username": os.environ['BOT_NAME'],
+        "username": bot_name,
         "text": prompt,
         "blocks": json.dumps(blocks)
     }
@@ -65,7 +65,7 @@ def wait_for_gpu():
         if GPUS[gpu]['lock'].acquire(timeout=1):
             return gpu
 
-def process_prompt(cmd, channel, prompt, image_id, tmpdir):
+def process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name):
     ''' Generate the image files, upload them, post to Slack, and clean up. '''
     try:
         gpu = wait_for_gpu()
@@ -83,9 +83,9 @@ def process_prompt(cmd, channel, prompt, image_id, tmpdir):
         return
 
     if channel:
-        post_to_slack(channel, prompt, image_id)
+        post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name)
 
-def vdiff_cfg(channel, prompt, model, image_id, steps):
+def vdiff_cfg(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch classifier-free guidance '''
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -101,9 +101,9 @@ def vdiff_cfg(channel, prompt, model, image_id, steps):
             '--style', 'random',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
 
-def vdiff_clip(channel, prompt, model, image_id, steps):
+def vdiff_clip(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch '''
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -116,9 +116,9 @@ def vdiff_clip(channel, prompt, model, image_id, steps):
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
 
-def vqgan(channel, prompt, model, image_id, steps):
+def vqgan(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
     ''' https://colab.research.google.com/drive/15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP '''
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
@@ -131,9 +131,9 @@ def vqgan(channel, prompt, model, image_id, steps):
             '--vqgan-checkpoint', f'models/{model}.ckpt',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
 
-def stylegan2(channel, prompt, model, image_id):
+def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
     ''' https://github.com/NVlabs/stylegan2 '''
     psi = random.uniform(0.6, 0.9)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -144,9 +144,9 @@ def stylegan2(channel, prompt, model, image_id):
             str(psi),
             f'{tmpdir}/{image_id}.jpg'
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
 
-def latent_diffusion(channel, prompt, model, image_id): # pylint: disable=unused-argument
+def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
@@ -154,7 +154,7 @@ def latent_diffusion(channel, prompt, model, image_id): # pylint: disable=unused
             f'{tmpdir}/{image_id}.jpg',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir)
+        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
 
 @app.get("/")
 async def root():
@@ -174,7 +174,9 @@ async def generate(
     background_tasks: BackgroundTasks,
     engine: str = 'v-diffusion-pytorch-cfg',
     model: str = None,
-    channel: str = None
+    channel: str = None,
+    slack_bot_token: str = None,
+    bot_name: str = None
     ):
     ''' Make an image and post it '''
     image_id = uuid.uuid4()
@@ -243,7 +245,9 @@ async def generate(
             channel=channel,
             prompt=prompt,
             model=models[engine][model]['name'],
-            image_id=image_id
+            image_id=image_id,
+            slack_bot_token=slack_bot_token,
+            bot_name=bot_name
         )
     else:
         background_tasks.add_task(
@@ -252,7 +256,9 @@ async def generate(
             prompt=prompt,
             model=models[engine][model]['name'],
             image_id=image_id,
-            steps=models[engine][model]['steps']
+            steps=models[engine][model]['steps'],
+            slack_bot_token=slack_bot_token,
+            bot_name=bot_name
         )
 
     return {

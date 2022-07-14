@@ -10,7 +10,7 @@ from color_logging import ColorLog
 log = ColorLog()
 
 # Voice support
-VOICE_SERVER = os.environ['GTTS_SERVER_URL']
+VOICE_SERVER = os.environ.get('GTTS_SERVER_URL', None)
 BOT_VOICE = os.environ.get('BOT_VOICE', 'UK')
 VOICES = []
 
