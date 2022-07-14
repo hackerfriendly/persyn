@@ -55,6 +55,9 @@ reminders = {}
 # Username cache
 known_users = {}
 
+# Known bots
+known_bots = {}
+
 # TODO: callback thread to poll(?) interact, or inbound API call for push notifications
 
 def new_channel(channel):
@@ -67,6 +70,10 @@ def new_channel(channel):
     reminders[channel]['rejoinder'].start()
     reminders[channel]['summarizer'].start()
 
+def is_bot(user_id):
+    get_display_name(user_id)
+    return known_bots[user_id]
+
 def get_display_name(user_id):
     """ Return the user's first name if available, otherwise the display name """
     if user_id not in known_users:
@@ -76,6 +83,9 @@ def get_display_name(user_id):
             known_users[user_id] = profile.get('first_name') or profile.get('display_name') or profile.get('real_name')
         except KeyError:
             known_users[user_id] = user_id
+
+    if user_id not in known_bots:
+        known_bots[user_id] = users_info['is_bot']
 
     return known_users[user_id]
 
@@ -508,6 +518,12 @@ def catch_all(say, context):
     speaker_id = context['user_id']
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(' '.join(context['matches'])).strip()
+
+    if is_bot(speaker_id):
+        log.warning(f'🤖 BOT DETECTED ({speaker_name})')
+        # 95% chance to just ignore them
+        if random.random() < 0.95:
+            return
 
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
