@@ -130,19 +130,24 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         entities = extract_nouns(msg)
 
     for entity in entities:
+        log.warning(f"ℹ️ look up {entity}")
         try:
-            hits = wikipedia.search(entity)
-            if hits:
-                wiki = wikipedia.summary(hits[0], sentences=3)
-                summary = completion.nlp(completion.get_summary(
-                    text=f"This Wikipeda article:\n{wiki}",
-                    summarizer="Can be briefly summarized as: ",
-                    max_tokens=75
-                ))
-                # 2 sentences max please.
-                inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
+            wiki = wikipedia.summary(entity, sentences=3)
+            log.warning("☑️ found it.")
+        except wikipedia.exceptions.DisambiguationError as ex:
+            wiki = wikipedia.summary(ex.options[0], sentences=3)
+            log.warning(f"❓disambiguating to {ex.options[0]}")
         except wikipedia.exceptions.WikipediaException:
             continue
+
+        if wiki:
+            summary = completion.nlp(completion.get_summary(
+                text=f"This Wikipeda article:\n{wiki}",
+                summarizer="Can be briefly summarized as: ",
+                max_tokens=75
+            ))
+            # 2 sentences max please.
+            inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
 
     # Load summaries and conversation
     summaries, convo = recall.load(service, channel, summaries=2)
