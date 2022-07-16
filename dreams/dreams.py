@@ -13,9 +13,9 @@ from pathlib import Path
 from subprocess import run, CalledProcessError
 from threading import Lock
 
-import requests
 import urllib
 import urllib.request
+import requests
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 
@@ -173,7 +173,6 @@ def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylin
         with tempfile.TemporaryDirectory() as tmpdir:
             gen = generations[0] # TODO: download everything in the batch
             imageurl = gen["generation"]["image_path"]
-            img_id = gen["id"]
 
             urllib.request.urlretrieve(imageurl, f"{tmpdir}/{image_id}.jpg")
             upload_files(Path(tmpdir).glob('*'))
