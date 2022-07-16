@@ -536,7 +536,7 @@ def say_something_later(say, channel, context, when, what=None):
 
     reminders[channel]['rejoinder'].start()
 
-def summarize_later(channel, when=180):
+def summarize_later(channel, when=None):
     '''
     Summarize the train of thought later. When is in seconds.
 
@@ -545,6 +545,9 @@ def summarize_later(channel, when=180):
     '''
     if channel not in reminders:
         new_channel(channel)
+
+    if not when:
+        when = 120 + random.randint(20,80)
 
     reminders[channel]['summarizer'].cancel()
     reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True, 50])
