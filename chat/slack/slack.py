@@ -32,7 +32,8 @@ IMAGE_MODELS = {
     "stylegan2": ["ffhq", "waifu", "cat"], #, "car", "church", "horse"
     "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
     "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"],
-    "latent-diffusion": ["default"]
+    "latent-diffusion": ["default"],
+    "dalle2": ["default"]
 }
 
 # Twitter
@@ -163,7 +164,7 @@ def get_summary(channel, save=False, photo=False, max_tokens=200):
 
     if summary:
         if photo:
-            take_a_photo(channel, summary, engine="latent-diffusion")
+            take_a_photo(channel, summary, engine="dalle2")
         return summary
 
     return ":shrug:"
@@ -269,6 +270,7 @@ def help_me(say, context): # pylint: disable=unused-argument
   `daydream`: Let {BOT_NAME}'s mind wander on the convo.
 
   *Image generation:*
+  :art: _prompt_ : Generate a picture of _prompt_ using DALLE-2
   :eye: _prompt_ : Generate a picture of _prompt_ using latent-diffusion
   :camera: _prompt_ : Generate a picture of _prompt_ using v-diffusion-pytorch-cfg
   :paperclip: _prompt_ : Generate a picture of _prompt_ using clip guided diffusion
@@ -382,6 +384,49 @@ def photo_clip_summary(say, context): # pylint: disable=unused-argument
     )
     take_a_photo(channel, get_summary(channel, max_tokens=30), engine="v-diffusion-pytorch-clip")
 
+@app.message(re.compile(r"^:art:$"))
+def photo_dalle_summary(say, context): # pylint: disable=unused-argument
+    ''' Take a DALLE2 photo of this conversation '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+
+    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=10,
+        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
+    )
+    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="dalle2")
+
+@app.message(re.compile(r"^:art:(.+)$"))
+def dalle_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with DALLE2 '''
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=10,
+        what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
+    )
+    take_a_photo(channel, prompt, engine="dalle2")
+
+    msg = f'I wonder what "{prompt}" looks like.'
+    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+
+    if the_reply == ":shrug:":
+        return
+
+    say(the_reply)
+    summarize_later(channel)
+
 @app.message(re.compile(r"^:eye:$"))
 def photo_ld_summary(say, context): # pylint: disable=unused-argument
     ''' Take a CLIP photo of this conversation '''
@@ -491,7 +536,7 @@ def say_something_later(say, channel, context, when, what=None):
 
     reminders[channel]['rejoinder'].start()
 
-def summarize_later(channel, when=300):
+def summarize_later(channel, when=180):
     '''
     Summarize the train of thought later. When is in seconds.
 

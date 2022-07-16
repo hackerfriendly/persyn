@@ -14,15 +14,19 @@ from subprocess import run, CalledProcessError
 from threading import Lock
 
 import requests
+import urllib
+import urllib.request
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+
+from dalle2 import Dalle2
 
 app = FastAPI()
 
 # Every GPU device that can be used for image generation
 GPUS = {
     "0": {"name": "TITAN X", "lock": Lock()},
-    "1": {"name": "TITAN X", "lock": Lock()}
+    # "1": {"name": "TITAN X", "lock": Lock()}
 }
 
 SCRIPT_PATH = Path(__file__).resolve().parent
@@ -146,6 +150,37 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
         ]
         process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
 
+def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
+    ''' https://openai.com/dall-e-2/ (pre-release) '''
+    with tempfile.TemporaryDirectory() as tmpdir:
+
+        token = os.environ.get('DALLE2_TOKEN', None)
+        if not token:
+            raise HTTPException(
+                status_code=400,
+                detail="No DALLE2_TOKEN defined. Check your config."
+            )
+
+        dalle = Dalle2(token)
+        generations = dalle.generate(prompt)
+
+        if not generations:
+            raise HTTPException(
+                status_code=400,
+                detail="No DALLE2 generations returned"
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = generations[0] # TODO: download everything in the batch
+            imageurl = gen["generation"]["image_path"]
+            img_id = gen["id"]
+
+            urllib.request.urlretrieve(imageurl, f"{tmpdir}/{image_id}.jpg")
+            upload_files(Path(tmpdir).glob('*'))
+
+        if channel:
+            post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name)
+
 def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -186,7 +221,8 @@ async def generate(
         'v-diffusion-pytorch-clip': vdiff_clip,
         'vqgan': vqgan,
         'stylegan2': stylegan2,
-        'latent-diffusion': latent_diffusion
+        'latent-diffusion': latent_diffusion,
+        'dalle2': dalle2
     }
 
     models = {
@@ -198,6 +234,9 @@ async def generate(
             'horse': {'name': 'stylegan2-horse-config-f.pkl'},
             'waifu': {'name': '2020-01-11-skylion-stylegan2-animeportraits-networksnapshot-024664.pkl'},
             'default': {'name': 'stylegan2-ffhq-config-f.pkl'}
+        },
+        'dalle2': {
+            'default': {'name': 'default'}
         },
         'vqgan': {
             'vqgan_imagenet_f16_1024': {'name': 'vqgan_imagenet_f16_1024', 'steps': 500},
@@ -239,7 +278,7 @@ async def generate(
     if not prompt:
         prompt = "Untitled"
 
-    if engine in ['stylegan2', 'latent-diffusion']:
+    if engine in ['stylegan2', 'latent-diffusion', 'dalle2']:
         background_tasks.add_task(
             engines[engine],
             channel=channel,

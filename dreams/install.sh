@@ -3,6 +3,9 @@ set -e
 
 virtualenv --python=python3.8 env --prompt='(dreams-env) '
 . env/bin/activate
+pip install --upgrade pip
+
+pip install -r requirements.txt
 
 # VQGAN by Katherine Crowson (https://github.com/crowsonkb, https://twitter.com/RiversHaveWings)
 cd vqgan/ && ./install.sh && cd -
