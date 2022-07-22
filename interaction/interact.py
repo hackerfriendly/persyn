@@ -135,9 +135,14 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
             wiki = wikipedia.summary(entity, sentences=3)
             log.warning("☑️ found it.")
         except wikipedia.exceptions.DisambiguationError as ex:
-            wiki = wikipedia.summary(ex.options[0], sentences=3)
+            try:
+                wiki = wikipedia.summary(ex.options[0], sentences=3)
+            except wikipedia.exceptions.PageError:
+                continue
             log.warning(f"❓disambiguating to {ex.options[0]}")
         except wikipedia.exceptions.WikipediaException:
+            continue
+        except wikipedia.exceptions.PageError:
             continue
 
         if wiki:
@@ -233,6 +238,10 @@ def daydream(service, channel):
                 reply[entity] = ' '.join([s.text for s in summary.sents][:2])
 
         except wikipedia.exceptions.WikipediaException:
+            continue
+        except wikipedia.exceptions.DisambiguationError:
+            continue
+        except wikipedia.exceptions.PageError:
             continue
 
     log.warning("💭 daydream entities:")
