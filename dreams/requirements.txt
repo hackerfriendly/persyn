@@ -1,1 +1,2 @@
 fastapi[all]
+dalle2>=1.0.7
