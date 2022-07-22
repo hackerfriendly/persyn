@@ -31,19 +31,21 @@ GPUS = {
 
 SCRIPT_PATH = Path(__file__).resolve().parent
 
-def post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name):
+def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
     ''' Post the image URL to Slack '''
-    blocks = [
-        {
-            "type": "image",
-            "title": {
-                "type": "plain_text",
-                "text": prompt
-            },
-            "image_url" : f"{os.environ['BASEURL']}/{image_id}.jpg",
-            "alt_text": prompt
-        }
-    ]
+    blocks = []
+    for image in images:
+        blocks.append(
+            {
+                "type": "image",
+                "title": {
+                    "type": "plain_text",
+                    "text": prompt
+                },
+                "image_url" : f"{os.environ['BASEURL']}/{image}",
+                "alt_text": prompt
+            }
+        )
     req = {
         "token": slack_bot_token,
         "channel": channel,
@@ -52,6 +54,7 @@ def post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name):
         "blocks": json.dumps(blocks)
     }
     reply = requests.post('https://slack.com/api/chat.postMessage', data=req)
+    # TODO: Multiple images in a single block w/ https://api.slack.com/messaging/files/remote
     print(reply.status_code, reply.text)
 
 def upload_files(files):
@@ -69,7 +72,7 @@ def wait_for_gpu():
         if GPUS[gpu]['lock'].acquire(timeout=1):
             return gpu
 
-def process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name):
+def process_prompt(cmd, channel, prompt, images, tmpdir, slack_bot_token, bot_name):
     ''' Generate the image files, upload them, post to Slack, and clean up. '''
     try:
         gpu = wait_for_gpu()
@@ -87,15 +90,16 @@ def process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_
         return
 
     if channel:
-        post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name)
+        post_to_slack(channel, prompt, images, slack_bot_token, bot_name)
 
 def vdiff_cfg(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch classifier-free guidance '''
 
+    image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/v-diffusion-pytorch/cfg_sample.py',
-            '--out', f'{tmpdir}/{image_id}.jpg',
+            '--out', f'{tmpdir}/{image}',
             '--steps', f'{steps}',
             # Bigger is nice but quite slow (~40 minutes for 500 steps)
             # '--size', '768', '768',
@@ -105,29 +109,31 @@ def vdiff_cfg(channel, prompt, model, image_id, steps, slack_bot_token, bot_name
             '--style', 'random',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
 def vdiff_clip(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch '''
 
+    image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/v-diffusion-pytorch/clip_sample.py',
-            '--out', f'{tmpdir}/{image_id}.jpg',
+            '--out', f'{tmpdir}/{image}',
             '--model', model,
             '--steps', f'{steps}',
             '--size', '384', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
 def vqgan(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
     ''' https://colab.research.google.com/drive/15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP '''
+    image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/vqgan/vqgan.py',
-            '--out', f'{tmpdir}/{image_id}.jpg',
+            '--out', f'{tmpdir}/{image}',
             '--steps', f'{steps}',
             '--size', '720', '480',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
@@ -135,10 +141,11 @@ def vqgan(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
             '--vqgan-checkpoint', f'models/{model}.ckpt',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
 def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
     ''' https://github.com/NVlabs/stylegan2 '''
+    image = f"{image_id}.jpg"
     psi = random.uniform(0.6, 0.9)
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
@@ -146,9 +153,9 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
             f'models/{model}',
             str(random.randint(0, 2**32 - 1)),
             str(psi),
-            f'{tmpdir}/{image_id}.jpg'
+            f'{tmpdir}/{image}'
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
 def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://openai.com/dall-e-2/ (pre-release) '''
@@ -170,25 +177,30 @@ def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylin
                 detail="No DALLE2 generations returned"
             )
 
+        images = []
         with tempfile.TemporaryDirectory() as tmpdir:
-            gen = generations[0] # TODO: download everything in the batch
-            imageurl = gen["generation"]["image_path"]
+            for i, gen in enumerate(generations):
+                image = f"{image_id}-{i}.jpg"
+                images.append(image)
 
-            urllib.request.urlretrieve(imageurl, f"{tmpdir}/{image_id}.jpg")
+                imageurl = gen["generation"]["image_path"]
+                urllib.request.urlretrieve(imageurl, f"{tmpdir}/{image}")
+
             upload_files(Path(tmpdir).glob('*'))
 
         if channel:
-            post_to_slack(channel, prompt, image_id, slack_bot_token, bot_name)
+            post_to_slack(channel, prompt, images, slack_bot_token, bot_name)
 
 def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
+    image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/latent-diffusion/go-ld',
-            f'{tmpdir}/{image_id}.jpg',
+            f'{tmpdir}/{image}',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, image_id, tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
 @app.get("/")
 async def root():
