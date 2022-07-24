@@ -33,14 +33,16 @@ SCRIPT_PATH = Path(__file__).resolve().parent
 
 def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
     ''' Post the image URL to Slack '''
+
+    # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
     blocks = []
-    for image in images:
+    for i, image in enumerate(images):
         blocks.append(
             {
                 "type": "image",
                 "title": {
                     "type": "plain_text",
-                    "text": prompt
+                    "text": prompt if i == 0 else " "
                 },
                 "image_url" : f"{os.environ['BASEURL']}/{image}",
                 "alt_text": prompt
@@ -54,7 +56,6 @@ def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
         "blocks": json.dumps(blocks)
     }
     reply = requests.post('https://slack.com/api/chat.postMessage', data=req)
-    # TODO: Multiple images in a single block w/ https://api.slack.com/messaging/files/remote
     print(reply.status_code, reply.text)
 
 def upload_files(files):

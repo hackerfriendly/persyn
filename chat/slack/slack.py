@@ -656,19 +656,22 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                         log.warning("🐦 Not my image, so not posting it to Twitter.")
                         return
                     try:
+                        if len(blk['alt_text']) > 277:
+                            caption = blk['alt_text'][:277] + '...'
+                        else:
+                            caption = blk['alt_text']
                         with tempfile.TemporaryDirectory() as tmpdir:
-                            resp = requests.get(blk['image_url'])
-                            resp.raise_for_status()
-                            fname = f"{tmpdir}/{blk['image_url'].split('/')[-1]}"
-                            with open(fname, "wb") as f:
-                                for chunk in resp.iter_content():
-                                    f.write(chunk)
-                            media = twitter.media_upload(fname)
-                            if len(blk['alt_text']) > 277:
-                                caption = blk['alt_text'][:277] + '...'
-                            else:
-                                caption = blk['alt_text']
-                            twitter.update_status(caption, media_ids=[media.media_id])
+                            media_ids = []
+                            for blk in msg['blocks']:
+                                resp = requests.get(blk['image_url'])
+                                resp.raise_for_status()
+                                fname = f"{tmpdir}/{blk['image_url'].split('/')[-1]}"
+                                with open(fname, "wb") as f:
+                                    for chunk in resp.iter_content():
+                                        f.write(chunk)
+                                media = twitter.media_upload(fname)
+                                media_ids.append(media.media_id)
+                            twitter.update_status(caption, media_ids=media_ids)
                         log.info(f"🐦 Uploaded {blk['image_url']}")
                     except requests.exceptions.RequestException as err:
                         log.error(f"🐦 Could not post {blk['image_url']}: {err}")
