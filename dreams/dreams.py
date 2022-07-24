@@ -29,6 +29,12 @@ GPUS = {
     # "1": {"name": "TITAN X", "lock": Lock()}
 }
 
+# Only two DALL-E prompts at a time.
+DALLE = {
+    "0": {"name": "DALLE-0", "lock": Lock()},
+    "1": {"name": "DALLE-1", "lock": Lock()}
+}
+
 SCRIPT_PATH = Path(__file__).resolve().parent
 
 def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
@@ -72,6 +78,13 @@ def wait_for_gpu():
         gpu = random.choice(list(GPUS))
         if GPUS[gpu]['lock'].acquire(timeout=1):
             return gpu
+
+def wait_for_dalle():
+    ''' Return the device name of first available DALLE slot. Blocks until one is available and sets the lock. '''
+    while True:
+        inst = random.choice(list(DALLE))
+        if DALLE[inst]['lock'].acquire(timeout=1):
+            return inst
 
 def process_prompt(cmd, channel, prompt, images, tmpdir, slack_bot_token, bot_name):
     ''' Generate the image files, upload them, post to Slack, and clean up. '''
@@ -160,7 +173,8 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
 
 def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://openai.com/dall-e-2/ (pre-release) '''
-    with tempfile.TemporaryDirectory() as tmpdir:
+    try:
+        inst = wait_for_dalle()
 
         token = os.environ.get('DALLE2_TOKEN', None)
         if not token:
@@ -191,6 +205,9 @@ def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylin
 
         if channel:
             post_to_slack(channel, prompt, images, slack_bot_token, bot_name)
+
+    finally:
+        DALLE[inst]['lock'].release()
 
 def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
