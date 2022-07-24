@@ -137,29 +137,25 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
         inject_idea(service, channel, summaries[0], "remembers")
 
     for entity in entities:
-        log.warning(f"ℹ️ look up {entity} on Wikipeda")
-        try:
-            wiki = wikipedia.summary(entity, sentences=3)
-            log.warning("☑️ found it.")
-        except wikipedia.exceptions.DisambiguationError as ex:
+        if random.random() < 0.5:
+            log.warning(f"ℹ️ look up {entity} on Wikipeda")
             try:
+                wiki = wikipedia.summary(entity, sentences=3)
+                log.warning("☑️ found it.")
+            except wikipedia.exceptions.DisambiguationError as ex:
                 wiki = wikipedia.summary(ex.options[0], sentences=3)
-            except wikipedia.exceptions.PageError:
+                log.warning(f"❓disambiguating to {ex.options[0]}")
+            except wikipedia.exceptions.WikipediaException:
                 continue
-            log.warning(f"❓disambiguating to {ex.options[0]}")
-        except wikipedia.exceptions.WikipediaException:
-            continue
-        except wikipedia.exceptions.PageError:
-            continue
 
-        if wiki:
-            summary = completion.nlp(completion.get_summary(
-                text=f"This Wikipeda article:\n{wiki}",
-                summarizer="Can be briefly summarized as: ",
-                max_tokens=75
-            ))
-            # 2 sentences max please.
-            inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
+            if wiki:
+                summary = completion.nlp(completion.get_summary(
+                    text=f"This Wikipeda article:\n{wiki}",
+                    summarizer="Can be briefly summarized as: ",
+                    max_tokens=75
+                ))
+                # 2 sentences max please.
+                inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
 
     # Load summaries and conversation
     summaries, convo = recall.load(service, channel, summaries=2)
@@ -245,10 +241,6 @@ def daydream(service, channel):
                 reply[entity] = ' '.join([s.text for s in summary.sents][:2])
 
         except wikipedia.exceptions.WikipediaException:
-            continue
-        except wikipedia.exceptions.DisambiguationError:
-            continue
-        except wikipedia.exceptions.PageError:
             continue
 
     log.warning("💭 daydream entities:")
