@@ -129,8 +129,15 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     if not entities:
         entities = extract_nouns(msg)
 
+    search_term = ' '.join(entities)
+    log.warning(f"ℹ️ look up '{search_term}' in summaries")
+
+    summaries = recall.remember(service, channel, search_term, summaries=1)
+    if summaries:
+        inject_idea(service, channel, summaries[0], "remembers")
+
     for entity in entities:
-        log.warning(f"ℹ️ look up {entity}")
+        log.warning(f"ℹ️ look up {entity} on Wikipeda")
         try:
             wiki = wikipedia.summary(entity, sentences=3)
             log.warning("☑️ found it.")
@@ -248,14 +255,14 @@ def daydream(service, channel):
     log.warning(reply)
     return reply
 
-def inject_idea(service, channel, idea):
+def inject_idea(service, channel, idea, verb="thinks"):
     ''' Directly inject an idea into recall memory. '''
     if recall.expired(service, channel):
         summarize_convo(service, channel, save=True)
 
-    recall.save(service, channel, idea, f"{BOT_NAME} thinks", BOT_ID)
+    recall.save(service, channel, idea, f"{BOT_NAME} {verb}", BOT_ID)
 
-    log.warning("🤔 Thinking:", idea)
+    log.warning(f"🤔 {verb}ing:", idea)
     return "🤔"
 
 @app.get("/")

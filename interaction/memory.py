@@ -75,6 +75,10 @@ class Recall(): # pylint: disable=too-many-arguments
         self.stm.clear(service, channel)
         return True
 
+    def remember(self, service, channel, search, summaries):
+        ''' Oh right. '''
+        return self.ltm.remember(service, channel, search, summaries)
+
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
     def __init__(self, conversation_interval):
@@ -172,9 +176,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         self.es = elasticsearch.Elasticsearch( # pylint: disable=invalid-name
             [url],
-            http_auth=(auth_name, auth_key),
+            basic_auth=(auth_name, auth_key),
             verify_certs=verify_certs,
-            timeout=timeout
+            request_timeout=timeout
         )
 
         self.index = {
@@ -368,6 +372,34 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             ret.append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
 
         log.debug(f"get_convo_by_id({convo_id}):", ret)
+        return ret
+
+    def remember(self, service, channel, search, summaries=1):
+        '''
+        Return a list of summaries matching the search term for this channel.
+        '''
+        ret = []
+
+        history = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['summary'],
+            query={
+                "bool": {
+                    "must": [
+                        {"match": {"service.keyword": service}},
+                        {"match": {"channel.keyword": channel}},
+                        {"match": {"summary": { "query": search}}}
+                    ]
+                }
+            },
+            sort=[{"@timestamp":{"order":"desc"}}],
+            size=summaries
+        )['hits']['hits']
+
+        for line in history[::-1]:
+            src = line['_source']
+            ret.append(src['summary'])
+
+        log.debug(f"recall(): {ret}")
         return ret
 
     @staticmethod
