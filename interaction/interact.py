@@ -254,7 +254,7 @@ def inject_idea(service, channel, idea, verb="thinks"):
 
     recall.save(service, channel, idea, f"{BOT_NAME} {verb}", BOT_ID)
 
-    log.warning(f"🤔 {verb}ing:", idea)
+    log.warning(f"🤔 {verb}:", idea)
     return "🤔"
 
 @app.get("/")
