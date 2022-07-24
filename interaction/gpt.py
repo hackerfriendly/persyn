@@ -25,7 +25,7 @@ class GPT():
         api_key=os.getenv('OPENAI_API_KEY'),
         engine=os.environ.get('OPENAI_MODEL', 'text-davinci-001'),
         forbidden=None,
-        max_prompt_length=2048
+        max_prompt_length=4000
         ):
         self.bot_name = bot_name
         self.min_score = min_score

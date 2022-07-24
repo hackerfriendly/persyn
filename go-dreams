@@ -8,7 +8,7 @@ export PATH=$PATH:/usr/local/cuda-11.6/bin/
 
 while :; do
 	figlet -f slant -w 100 Dreams starting up | lolcat -a -d 5
-	. ../config/*.conf
+	. ../config/dreams.conf
 	uvicorn dreams:app --port ${DREAM_SERVER_PORT} --host ${DREAM_SERVER_HOST}
 	sleep 1
 done
