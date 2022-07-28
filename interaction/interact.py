@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 
 import wikipedia
+from wikipedia.exceptions import (DisambiguationError, WikipediaException)
 
 # Prompt completion
 from gpt import GPT
@@ -114,7 +115,7 @@ def choose_reply(prompt, convo):
 
     return reply
 
-def get_reply(service, channel, msg, speaker_name, speaker_id):
+def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
     ''' Get the best reply for the given channel. Saves to recall memory. '''
     if recall.expired(service, channel):
         summarize_convo(service, channel, save=True)
@@ -122,6 +123,9 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     if msg != '...':
         recall.save(service, channel, msg, speaker_name, speaker_id)
         tts(msg)
+
+    # Load summaries and conversation
+    summaries, convo = recall.load(service, channel, summaries=2)
 
     # Ruminate a bit
     entities = extract_entities(msg)
@@ -132,9 +136,10 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
     search_term = ' '.join(entities)
     log.warning(f"ℹ️ look up '{search_term}' in summaries")
 
-    summaries = recall.remember(service, channel, search_term, summaries=1)
-    if summaries:
-        inject_idea(service, channel, summaries[0], "remembers")
+    memories = recall.remember(service, channel, search_term, summaries=4)
+    for memory in memories:
+        if memory not in summaries and f"{BOT_NAME} remembers: {memory}" not in convo:
+            inject_idea(service, channel, memory, "remembers")
 
     for entity in entities:
         if random.random() < 0.5:
@@ -142,10 +147,13 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
             try:
                 wiki = wikipedia.summary(entity, sentences=3)
                 log.warning("☑️ found it.")
-            except wikipedia.exceptions.DisambiguationError as ex:
-                wiki = wikipedia.summary(ex.options[0], sentences=3)
-                log.warning(f"❓disambiguating to {ex.options[0]}")
-            except wikipedia.exceptions.WikipediaException:
+            except DisambiguationError as ex:
+                try:
+                    wiki = wikipedia.summary(ex.options[0], sentences=3)
+                    log.warning(f"❓disambiguating to {ex.options[0]}")
+                except WikipediaException:
+                    continue
+            except WikipediaException:
                 continue
 
             if wiki:
@@ -156,9 +164,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id):
                 ))
                 # 2 sentences max please.
                 inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
-
-    # Load summaries and conversation
-    summaries, convo = recall.load(service, channel, summaries=2)
 
     prompt = generate_prompt(summaries, convo)
 
@@ -231,16 +236,19 @@ def daydream(service, channel):
         try:
             hits = wikipedia.search(entity)
             if hits:
-                wiki = wikipedia.summary(hits[0:1], sentences=3)
-                summary = completion.nlp(completion.get_summary(
-                    text=f"This Wikipeda article:\n{wiki}",
-                    summarizer="Can be summarized as: ",
-                    max_tokens=100
-                ))
-                # 2 sentences max please.
-                reply[entity] = ' '.join([s.text for s in summary.sents][:2])
+                try:
+                    wiki = wikipedia.summary(hits[0:1], sentences=3)
+                    summary = completion.nlp(completion.get_summary(
+                        text=f"This Wikipeda article:\n{wiki}",
+                        summarizer="Can be summarized as: ",
+                        max_tokens=100
+                    ))
+                    # 2 sentences max please.
+                    reply[entity] = ' '.join([s.text for s in summary.sents][:2])
+                except WikipediaException:
+                    continue
 
-        except wikipedia.exceptions.WikipediaException:
+        except WikipediaException:
             continue
 
     log.warning("💭 daydream entities:")
