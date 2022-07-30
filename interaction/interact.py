@@ -110,7 +110,7 @@ def choose_reply(prompt, convo):
         log.warning("😳 No surviving replies, one last try.")
         scored = completion.get_replies(
             prompt=prompt,
-            convo=convo[-2:],
+            convo=convo[-6:],
             temperature=TEMPERATURE
         )
 
