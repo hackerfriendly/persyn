@@ -57,13 +57,17 @@ class Recall(): # pylint: disable=too-many-arguments
         self.ltm.save_convo(service, channel, msg, speaker_name, speaker_id, convo_id)
         return True
 
-    def summary(self, service, channel, summary):
+    def summary(self, service, channel, summary, keywords=None):
         ''' Save a summary. Clears stm. '''
         if not summary:
             return False
+
+        if keywords is None:
+            keywords = []
+
         convo_id = self.stm.convo_id(service, channel)
         self.stm.clear(service, channel)
-        self.ltm.save_summary(service, channel, convo_id, summary)
+        self.ltm.save_summary(service, channel, convo_id, summary, keywords)
         return True
 
     def expired(self, service, channel):
@@ -316,7 +320,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         return convo_id, cur_ts
 
     # TODO: set refresh=False after separate summary thread is implemented.
-    def save_summary(self, service, channel, convo_id, summary, refresh=True):
+    def save_summary(self, service, channel, convo_id, summary, keywords, refresh=True):
         '''
         Save a conversation summary to ElasticSearch.
         '''
@@ -326,7 +330,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "summary": summary,
             "service": service,
             "channel": channel,
-            "@timestamp": cur_ts
+            "@timestamp": cur_ts,
+            "keywords": keywords
         }
         _id = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
             index=self.index['summary'],

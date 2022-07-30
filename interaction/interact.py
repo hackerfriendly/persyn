@@ -10,8 +10,12 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 
+# just-in-time Wikipedia
 import wikipedia
 from wikipedia.exceptions import (DisambiguationError, WikipediaException)
+
+# string comparisons
+# from Levenshtein import ratio
 
 # Prompt completion
 from gpt import GPT
@@ -81,13 +85,12 @@ def summarize_convo(service, channel, save=True, max_tokens=200):
         max_tokens=max_tokens
     )
     if save:
-        recall.summary(service, channel, summary)
+        recall.summary(service, channel, summary, completion.get_keywords(summary))
     return summary
 
 def choose_reply(prompt, convo):
     ''' Choose the best reply from a list of possibilities '''
 
-    # TODO: If no replies survive, try again?
     scored = completion.get_replies(
         prompt=prompt,
         convo=convo,
@@ -99,6 +102,15 @@ def choose_reply(prompt, convo):
         scored = completion.get_replies(
             prompt=prompt,
             convo=convo,
+            temperature=TEMPERATURE
+        )
+
+    # Uh-oh. Just keep it brief.
+    if not scored:
+        log.warning("😳 No surviving replies, one last try.")
+        scored = completion.get_replies(
+            prompt=prompt,
+            convo=convo[-2:],
             temperature=TEMPERATURE
         )
 
