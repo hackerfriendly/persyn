@@ -189,7 +189,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "convo": f"{self.index_prefix}-conversations-{self.version}",
             "summary": f"{self.index_prefix}-summaries-{self.version}",
             "entity": f"{self.index_prefix}-entities-{self.version}",
-            "relation": f"{self.index_prefix}-relationships-{self.version}"
+            "relation": f"{self.index_prefix}-relationships-{self.version}",
+            "opinion": f"{self.index_prefix}-opinions-{self.version}",
+            "belief": f"{self.index_prefix}-beliefs-{self.version}"
         }
 
         for item in self.index.items():
