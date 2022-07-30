@@ -124,8 +124,14 @@ class GPT():
                 return None
             # Don't repeat yourself for the last three sentences
             if text in ' '.join(convo):
-                self.stats.update(['repetition'])
+                self.stats.update(['pure repetition'])
                 return None
+            # Semantic similarity
+            choice = self.nlp(text)
+            for line in convo:
+                if choice.similarity(self.nlp(line)) > 0.97: # TODO: configurable? dynamic?
+                    self.stats.update(['semantic repetition'])
+                    return None
 
             return text
 
@@ -263,12 +269,13 @@ class GPT():
         reply = []
         if '-' in keywords:
             for tag in keywords.split('\n'):
-                reply.append(tag.strip('-').strip())
+                reply.append(tag.strip('-').strip().lower())
         elif ',' in keywords:
             for tag in keywords.split(','):
-                reply.append(tag.strip())
+                reply.append(tag.strip().lower())
         else:
-            reply = keywords.split()
+            for tag in keywords.split():
+                reply.append(tag.strip().lower())
 
         log.warning("gpt get_keywords():", reply)
         return reply

@@ -116,6 +116,7 @@ def choose_reply(prompt, convo):
 
     if not scored:
         log.warning("😩 No surviving replies, I give up.")
+        log.info("🤷‍♀️ Choice: none available")
         return ":shrug:"
 
     for item in sorted(scored.items()):
@@ -145,16 +146,16 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     if not entities:
         entities = extract_nouns(msg)
 
-    search_term = ' '.join(entities)
-    log.warning(f"ℹ️ look up '{search_term}' in summaries")
-
-    memories = recall.remember(service, channel, search_term, summaries=4)
-    for memory in memories:
-        if memory not in summaries and f"{BOT_NAME} remembers: {memory}" not in convo:
-            inject_idea(service, channel, memory, "remembers")
+    if entities:
+        search_term = ' '.join(entities)
+        log.warning(f"ℹ️ look up '{search_term}' in memories")
+        for memory in recall.remember(service, channel, search_term, summaries=3):
+            # Don't repeat yourself, loopy-lou.
+            if memory not in summaries and f"{BOT_NAME} remembers: {memory}" not in convo:
+                inject_idea(service, channel, memory, "remembers")
 
     for entity in entities:
-        if random.random() < 0.5:
+        if random.random() < 0.5: #TODO: configurable? dynamic?
             log.warning(f"ℹ️ look up {entity} on Wikipeda")
             try:
                 wiki = wikipedia.summary(entity, sentences=3)
