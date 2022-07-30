@@ -251,6 +251,28 @@ class GPT():
         log.warning("gpt get_summary():", reply)
         return reply
 
+    def get_keywords(
+        self,
+        text,
+        summarizer="Topics mentioned in the preceding paragraph include the following tags:",
+        max_tokens=50
+        ):
+        ''' Ask GPT for keywords'''
+        keywords = self.get_summary(text, summarizer, max_tokens)
+
+        reply = []
+        if '-' in keywords:
+            for tag in keywords.split('\n'):
+                reply.append(tag.strip('-').strip())
+        elif ',' in keywords:
+            for tag in keywords.split(','):
+                reply.append(tag.strip())
+        else:
+            reply = keywords.split()
+
+        log.warning("gpt get_keywords():", reply)
+        return reply
+
     def has_forbidden(self, text):
         ''' Returns True if any forbidden word appears in text '''
         if not self.forbidden:
