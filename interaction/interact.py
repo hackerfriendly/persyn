@@ -149,7 +149,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     if entities:
         search_term = ' '.join(entities)
         log.warning(f"ℹ️ look up '{search_term}' in memories")
-        for memory in recall.remember(service, channel, search_term, summaries=3):
+        for memory in recall.remember(service, channel, search_term, summaries=1):
             # Don't repeat yourself, loopy-lou.
             if memory not in summaries and f"{BOT_NAME} remembers: {memory}" not in convo:
                 inject_idea(service, channel, memory, "remembers")
