@@ -266,15 +266,25 @@ class GPT():
         ''' Ask GPT for keywords'''
         keywords = self.get_summary(text, summarizer, max_tokens)
 
-        reply = []
-        if '-' in keywords:
-            for tag in keywords.split('\n'):
-                reply.append(tag.strip('-').strip().lower())
+        if keywords.lstrip().startswith('-'):
+            sep = '\n'
         elif ',' in keywords:
-            for tag in keywords.split(','):
-                reply.append(tag.strip().lower())
+            sep = ','
         else:
-            for tag in keywords.split():
+            sep = None
+
+        reply = []
+        for tag in keywords.split(sep):
+            # too long
+            if len(tag) > 30:
+                continue
+            # - bullet lists
+            if tag.strip().startswith('-'):
+                reply.append(tag.lstrip('-').strip().lower())
+            # #topic
+            elif tag.lstrip().startswith('#'):
+                reply.append(tag.lstrip('#').strip().lower())
+            else:
                 reply.append(tag.strip().lower())
 
         log.warning("gpt get_keywords():", reply)
