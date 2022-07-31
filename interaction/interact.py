@@ -69,6 +69,9 @@ recall = Recall(
     verify_certs=True
 )
 
+# local Wikipedia cache
+wikicache = {}
+
 def summarize_convo(service, channel, save=True, max_tokens=200):
     '''
     Generate a GPT summary of the current conversation for this channel.
@@ -152,31 +155,41 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         for memory in recall.remember(service, channel, search_term, summaries=1):
             # Don't repeat yourself, loopy-lou.
             if memory not in summaries and f"{BOT_NAME} remembers: {memory}" not in convo:
+                log.warning("🐘 memory found")
                 inject_idea(service, channel, memory, "remembers")
 
     for entity in entities:
         if random.random() < 0.5: #TODO: configurable? dynamic?
-            log.warning(f"ℹ️ look up {entity} on Wikipeda")
-            try:
-                wiki = wikipedia.summary(entity, sentences=3)
-                log.warning("☑️ found it.")
-            # except DisambiguationError as ex:
-            #     try:
-            #         wiki = wikipedia.summary(ex.options[0], sentences=3)
-            #         log.warning(f"❓disambiguating to {ex.options[0]}")
-            #     except WikipediaException:
-            #         continue
-            except WikipediaException:
-                continue
+            log.warning(f"❇️ look up {entity} on Wikipeda")
 
-            if wiki:
-                summary = completion.nlp(completion.get_summary(
-                    text=f"This Wikipeda article:\n{wiki}",
-                    summarizer="Can be briefly summarized as: ",
-                    max_tokens=75
-                ))
-                # 2 sentences max please.
-                inject_idea(service, channel, ' '.join([s.text for s in summary.sents][:2]))
+            if entity in wikicache:
+                log.warning(f"🤑 wiki cache hit: {entity}")
+            else:
+                wiki = None
+                try:
+                    wiki = wikipedia.summary(entity, sentences=3)
+                    log.warning("✅ found it.")
+                # except DisambiguationError as ex:
+                #     try:
+                #         wiki = wikipedia.summary(ex.options[0], sentences=3)
+                #         log.warning(f"❓disambiguating to {ex.options[0]}")
+                #     except WikipediaException:
+                #         continue
+
+                    summary = completion.nlp(completion.get_summary(
+                        text=f"This Wikipedia article:\n{wiki}",
+                        summarizer="Can be briefly summarized as: ",
+                        max_tokens=75
+                    ))
+                    # 2 sentences max please.
+                    wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
+
+                except WikipediaException:
+                    log.warning("❎ no unambigous wikipedia entry found")
+                    continue
+
+            if entity in wikicache:
+                inject_idea(service, channel, wikicache[entity])
 
     prompt = generate_prompt(summaries, convo)
 
@@ -244,25 +257,29 @@ def daydream(service, channel):
     reply = {}
     entities = extract_entities(paragraph.join(summaries) + newline.join(convo))
 
-    # TODO: Wikipedia is slow. Cache these.
     for entity in random.sample(entities, k=3):
-        try:
-            hits = wikipedia.search(entity)
-            if hits:
-                try:
-                    wiki = wikipedia.summary(hits[0:1], sentences=3)
-                    summary = completion.nlp(completion.get_summary(
-                        text=f"This Wikipeda article:\n{wiki}",
-                        summarizer="Can be summarized as: ",
-                        max_tokens=100
-                    ))
-                    # 2 sentences max please.
-                    reply[entity] = ' '.join([s.text for s in summary.sents][:2])
-                except WikipediaException:
-                    continue
+        if entity in wikicache:
+            log.warning(f"🤑 wiki cache hit: {entity}")
+            reply[entity] = wikicache[entity]
+        else:
+            try:
+                hits = wikipedia.search(entity)
+                if hits:
+                    try:
+                        wiki = wikipedia.summary(hits[0:1], sentences=3)
+                        summary = completion.nlp(completion.get_summary(
+                            text=f"This Wikipedia article:\n{wiki}",
+                            summarizer="Can be summarized as: ",
+                            max_tokens=100
+                        ))
+                        # 2 sentences max please.
+                        reply[entity] = ' '.join([s.text for s in summary.sents][:2])
+                        wikicache[entity] = reply[entity]
+                    except WikipediaException:
+                        continue
 
-        except WikipediaException:
-            continue
+            except WikipediaException:
+                continue
 
     log.warning("💭 daydream entities:")
     log.warning(reply)
