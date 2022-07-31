@@ -68,6 +68,30 @@ class GPT():
 
         return scored
 
+    def get_opinions(self, context, entity, stop=[".", "!", "?"], temperature=0.9, max_tokens=50):
+        '''
+        Ask GPT3 for its opinions of entity, given the context.
+        '''
+        prompt = f'''{context}\n\nHow does {self.bot_name} feel about {entity}?'''
+
+        if len(prompt) > self.max_prompt_length:
+            log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+
+        response = openai.Completion.create(
+            model=self.engine,
+            prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=stop
+        )
+        reply = response.choices[0]['text'].strip()
+        log.warning(f"☝️ opinion of {entity}: {reply}")
+
+        return reply
+
     def truncate(self, text):
         '''
         Extract the first few "sentences" from OpenAI's messy output.
