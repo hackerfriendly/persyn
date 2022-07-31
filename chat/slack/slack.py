@@ -144,13 +144,14 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
     return reply
 
-def get_summary(channel, save=False, photo=False, max_tokens=200):
+def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywords=False):
     ''' Ask interact for a channel summary. '''
     req = {
         "service": SLACK_SERVICE,
         "channel": channel,
         "save": save,
-        "max_tokens": max_tokens
+        "max_tokens": max_tokens,
+        "include_keywords": include_keywords
     }
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
@@ -475,7 +476,7 @@ def summarize(say, context):
     ''' Say a condensed summary of this channel '''
     save = bool(context['matches'][0])
     channel = context['channel_id']
-    say("💭 " + get_summary(channel, save))
+    say("💭 " + get_summary(channel, save, include_keywords=True))
 
 @app.message(re.compile(r"^status$", re.I))
 def status(say, context):

@@ -14,6 +14,8 @@ from fastapi import FastAPI, HTTPException, Query
 import wikipedia
 from wikipedia.exceptions import (DisambiguationError, WikipediaException)
 
+from spacy.lang.en.stop_words import STOP_WORDS
+
 # string comparisons
 # from Levenshtein import ratio
 
@@ -72,7 +74,7 @@ recall = Recall(
 # local Wikipedia cache
 wikicache = {}
 
-def summarize_convo(service, channel, save=True, max_tokens=200):
+def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False):
     '''
     Generate a GPT summary of the current conversation for this channel.
     If save == True, save it to long term memory.
@@ -87,8 +89,14 @@ def summarize_convo(service, channel, save=True, max_tokens=200):
         summarizer="To briefly summarize this conversation, ",
         max_tokens=max_tokens
     )
+    keywords = completion.get_keywords(summary)
+
     if save:
-        recall.summary(service, channel, summary, completion.get_keywords(summary))
+        recall.summary(service, channel, summary, keywords)
+
+    if include_keywords:
+        return summary + f"\nKeywords: {keywords}"
+
     return summary
 
 def choose_reply(prompt, convo):
@@ -160,6 +168,9 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
     for entity in entities:
         if random.random() < 0.5: #TODO: configurable? dynamic?
+            if entity == '' or entity in STOP_WORDS:
+                continue
+
             log.warning(f"❇️ look up {entity} on Wikipeda")
 
             if entity in wikicache:
@@ -258,6 +269,9 @@ def daydream(service, channel):
     entities = extract_entities(paragraph.join(summaries) + newline.join(convo))
 
     for entity in random.sample(entities, k=3):
+        if entity == '' or entity in STOP_WORDS:
+            continue
+
         if entity in wikicache:
             log.warning(f"🤑 wiki cache hit: {entity}")
             reply[entity] = wikicache[entity]
@@ -326,10 +340,11 @@ async def handle_summary(
     channel: str = Query(..., min_length=1, max_length=255),
     save: Optional[bool] = Query(True),
     max_tokens: Optional[int] = Query(200),
+    include_keywords: Optional[bool] = Query(False)
     ):
     ''' Return the reply '''
     return {
-        "summary": summarize_convo(service, channel, save, max_tokens)
+        "summary": summarize_convo(service, channel, save, max_tokens, include_keywords)
     }
 
 @app.post("/status/")

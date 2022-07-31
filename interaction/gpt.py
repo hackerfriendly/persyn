@@ -289,29 +289,12 @@ class GPT():
         ):
         ''' Ask GPT for keywords'''
         keywords = self.get_summary(text, summarizer, max_tokens)
+        log.warning(f"gpt get_keywords() raw: {keywords}")
 
-        if keywords.lstrip().startswith('-'):
-            sep = '\n'
-        elif ',' in keywords:
-            sep = ','
-        else:
-            sep = None
-
-        reply = []
-        for tag in keywords.split(sep):
-            # too long
-            if len(tag) > 30:
-                continue
-            # - bullet lists
-            if tag.strip().startswith('-'):
-                reply.append(tag.lstrip('-').strip().lower())
-            # #topic
-            elif tag.lstrip().startswith('#'):
-                reply.append(tag.lstrip('#').strip().lower())
-            else:
-                reply.append(tag.strip().lower())
-
-        log.warning("gpt get_keywords():", reply)
+        reply = list(
+            {n.text.strip('- ').strip('#').strip('[').strip().lower() for n in self.nlp(keywords).noun_chunks if n.text.strip() != self.bot_name for t in n if t.pos_ != 'PRON'}
+        )
+        log.warning(f"gpt get_keywords(): {reply}")
         return reply
 
     def has_forbidden(self, text):
