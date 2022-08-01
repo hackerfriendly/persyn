@@ -83,6 +83,16 @@ class Recall(): # pylint: disable=too-many-arguments
         ''' Oh right. '''
         return self.ltm.remember(service, channel, search, summaries)
 
+    def judge(self, service, channel, topic, opinion, speaker_id=None):
+        ''' Judge not, lest ye be judged '''
+        log.warning(f"👨‍⚖️ judging {topic}")
+        return self.ltm.save_opinion(service, channel, topic, opinion, speaker_id)
+
+    def opine(self, service, channel, topic, speaker_id=None, size=10):
+        ''' Everyone's got an opinion '''
+        log.warning(f"🧷 opinion on {topic}")
+        return self.ltm.lookup_opinion(service, channel, topic, speaker_id, size)
+
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
     def __init__(self, conversation_interval):
@@ -478,3 +488,50 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if entity:
             return entity['speaker_name']
         return []
+
+    def save_opinion(self, service, channel, topic, opinion, speaker_id=None, refresh=True):
+        '''
+        Save an opinion to Elasticscarch.
+        '''
+        if not speaker_id:
+            speaker_id = self.bot_id
+
+        doc = {
+            "service": service,
+            "channel": channel,
+            "topic": topic,
+            "opinion": opinion,
+            "speaker_id": speaker_id,
+            "@timestamp": get_cur_ts()
+        }
+        self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['opinion'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )
+        # return something here?
+
+    def lookup_opinion(self, service, channel, topic, speaker_id=None, size=10):
+        ''' Look up an opinion in Elasticsearch. '''
+        if not speaker_id:
+            speaker_id = self.bot_id
+
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                    {"match": {"topic.keyword": topic}}
+                ]
+            }
+        }
+
+        ret = []
+        for opinion in self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['opinion'],
+            query=query,
+            size=size
+        )['hits']['hits']:
+            ret.append(opinion["_source"]["opinion"])
+
+        return ret

@@ -77,6 +77,7 @@ wikicache = {}
 def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False):
     '''
     Generate a GPT summary of the current conversation for this channel.
+    Also generate and save opinions about detected topics.
     If save == True, save it to long term memory.
     Returns the text summary.
     '''
@@ -93,6 +94,14 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
 
     if save:
         recall.summary(service, channel, summary, keywords)
+
+    for topic in keywords:
+        recall.judge(
+            service,
+            channel,
+            topic,
+            completion.get_opinions(summary, topic)
+        )
 
     if include_keywords:
         return summary + f"\nKeywords: {keywords}"
@@ -406,4 +415,17 @@ async def handle_inject(
 
     return {
         "status": get_status(service, channel)
+    }
+
+@app.post("/opinion/")
+async def handle_opinion(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    topic: str = Query(..., min_length=1, max_length=16384),
+    speaker_id: Optional[str] = Query(None, min_length=1, max_length=36),
+    size: Optional[int] = Query(10)
+    ):
+    ''' Get our opinion about topic '''
+    return {
+        "opinions": recall.opine(service, channel, topic, speaker_id, size)
     }

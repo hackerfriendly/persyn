@@ -228,6 +228,27 @@ def get_status(channel):
 
     return reply.json()['status']
 
+def get_opinion(channel, topic):
+    ''' Ask interact for all the nouns in text, excluding the speakers. '''
+    req = {
+        "service": SLACK_SERVICE,
+        "channel": channel,
+        "topic": topic
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/opinion/", params=req)
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
+        return []
+
+    ret = reply.json()
+    if 'opinions' in ret:
+        return ret['opinions']
+
+    return []
+    # return [e for e in reply.json()['nouns'] if e not in speakers()]
+
 def inject_idea(channel, idea):
     ''' Directly inject an idea into the stream of consciousness. '''
     req = {
@@ -509,6 +530,18 @@ def daydream(say, context):
 
         inject_idea(channel, ideas[idea])
         say(f"💭 _{idea}: {ideas[idea]}_")
+
+@app.message(re.compile(r"^opinion (.*)$", re.I))
+def opine(say, context):
+    ''' Fetch our opinion on a topic '''
+    topic = context['matches'][0]
+    channel = context['channel_id']
+
+    opinion = get_opinion(channel, topic)
+    if opinion:
+        say('\n'.join(opinion))
+    else:
+        say('I have no opinion on that topic.')
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
