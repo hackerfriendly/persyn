@@ -166,6 +166,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     if not entities:
         entities = extract_nouns(msg)
 
+    # memories
     if entities:
         search_term = ' '.join(entities)
         log.warning(f"ℹ️ look up '{search_term}' in memories")
@@ -175,38 +176,45 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
                 log.warning("🐘 memory found")
                 inject_idea(service, channel, memory, "remembers")
 
+    # facts and opinions
     for entity in entities:
-        if random.random() < 0.5: #TODO: configurable? dynamic?
-            if entity == '' or entity in STOP_WORDS:
+        if entity == '' or entity in STOP_WORDS:
+            continue
+
+        # TODO: when implementing beliefs, new facts should be ignored (or at least hugely discounted).
+        opinions = recall.opine(service, channel, entity)
+        if opinions:
+            log.warning(f"🙋‍♂️ I have an opinion about {entity}")
+            for opinion in opinions:
+                inject_idea(service, channel, opinion, f"thinks about {entity}")
+
+        log.warning(f"❇️ look up {entity} on Wikipeda")
+
+        if entity in wikicache:
+            log.warning(f"🤑 wiki cache hit: {entity}")
+        else:
+            wiki = None
+            try:
+                wiki = wikipedia.summary(entity, sentences=3)
+                log.warning("✅ found it.")
+            # except DisambiguationError as ex:
+            #     try:
+            #         wiki = wikipedia.summary(ex.options[0], sentences=3)
+            #         log.warning(f"❓disambiguating to {ex.options[0]}")
+            #     except WikipediaException:
+            #         continue
+
+                summary = completion.nlp(completion.get_summary(
+                    text=f"This Wikipedia article:\n{wiki}",
+                    summarizer="Can be briefly summarized as: ",
+                    max_tokens=75
+                ))
+                # 2 sentences max please.
+                wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
+
+            except WikipediaException:
+                log.warning("❎ no unambigous wikipedia entry found")
                 continue
-
-            log.warning(f"❇️ look up {entity} on Wikipeda")
-
-            if entity in wikicache:
-                log.warning(f"🤑 wiki cache hit: {entity}")
-            else:
-                wiki = None
-                try:
-                    wiki = wikipedia.summary(entity, sentences=3)
-                    log.warning("✅ found it.")
-                # except DisambiguationError as ex:
-                #     try:
-                #         wiki = wikipedia.summary(ex.options[0], sentences=3)
-                #         log.warning(f"❓disambiguating to {ex.options[0]}")
-                #     except WikipediaException:
-                #         continue
-
-                    summary = completion.nlp(completion.get_summary(
-                        text=f"This Wikipedia article:\n{wiki}",
-                        summarizer="Can be briefly summarized as: ",
-                        max_tokens=75
-                    ))
-                    # 2 sentences max please.
-                    wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
-
-                except WikipediaException:
-                    log.warning("❎ no unambigous wikipedia entry found")
-                    continue
 
             if entity in wikicache:
                 inject_idea(service, channel, wikicache[entity])
