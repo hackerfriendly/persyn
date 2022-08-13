@@ -1,6 +1,7 @@
 ''' chronoception: the perception of time '''
 
 import datetime as dt
+import humanize
 
 def elapsed(ts1, ts2):
     ''' Elapsed seconds between two timestamps (str in isoformat) '''
@@ -9,6 +10,10 @@ def elapsed(ts1, ts2):
 def get_cur_ts():
     ''' Return a properly formatted timestamp string '''
     return str(dt.datetime.now(dt.timezone.utc).astimezone().isoformat())
+
+def ago(since):
+    ''' Return a human friendly estimate of elapsed time since ts '''
+    return humanize.naturaldelta(dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(since))
 
 def natural_time(hour=dt.datetime.now().hour):
     ''' Natural time of the day '''

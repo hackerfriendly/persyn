@@ -414,7 +414,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         for line in history[::-1]:
             src = line['_source']
-            ret.append(src['summary'])
+            ret.append({'text': src['summary'], 'timestamp': src['@timestamp']})
 
         log.debug(f"recall(): {ret}")
         return ret

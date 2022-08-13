@@ -32,7 +32,7 @@ from feels import get_feels
 from memory import Recall
 
 # Time handling
-from chrono import natural_time
+from chrono import natural_time, ago
 
 # Color logging
 from color_logging import ColorLog
@@ -172,9 +172,9 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         log.warning(f"ℹ️ look up '{search_term}' in memories")
         for memory in recall.remember(service, channel, search_term, summaries=1):
             # Don't repeat yourself, loopy-lou.
-            if memory not in summaries and f"{BOT_NAME} remembers: {memory}" not in convo:
+            if memory['text'] not in summaries and memory not in convo:
                 log.warning("🐘 memory found")
-                inject_idea(service, channel, memory, "remembers")
+                inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
 
     # facts and opinions
     for entity in entities:
