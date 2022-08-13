@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Query
 
 # just-in-time Wikipedia
 import wikipedia
-from wikipedia.exceptions import (DisambiguationError, WikipediaException)
+from wikipedia.exceptions import WikipediaException
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
@@ -188,21 +188,19 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
             for opinion in opinions:
                 inject_idea(service, channel, opinion, f"thinks about {entity}")
 
-        log.warning(f"❇️ look up {entity} on Wikipeda")
+        log.warning(f'❇️ look up "{entity}" on Wikipeda')
 
         if entity in wikicache:
-            log.warning(f"🤑 wiki cache hit: {entity}")
+            log.warning(f'🤑 wiki cache hit: "{entity}"')
         else:
             wiki = None
             try:
-                wiki = wikipedia.summary(entity, sentences=3)
+                if wikipedia.page(entity).original_title.lower() != entity.lower():
+                    log.warning("❎ no exact match found")
+                    continue
+
                 log.warning("✅ found it.")
-            # except DisambiguationError as ex:
-            #     try:
-            #         wiki = wikipedia.summary(ex.options[0], sentences=3)
-            #         log.warning(f"❓disambiguating to {ex.options[0]}")
-            #     except WikipediaException:
-            #         continue
+                wiki = wikipedia.summary(entity, sentences=3)
 
                 summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipedia article:\n{wiki}",
