@@ -111,6 +111,9 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
 def choose_reply(prompt, convo):
     ''' Choose the best reply from a list of possibilities '''
 
+    if not convo:
+        convo = [f'{BOT_NAME} changes the subject.']
+
     scored = completion.get_replies(
         prompt=prompt,
         convo=convo,
@@ -162,9 +165,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
     # Ruminate a bit
     entities = extract_entities(msg)
-
-    if not entities:
-        entities = extract_nouns(msg)
 
     # memories
     if entities:
