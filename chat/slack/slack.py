@@ -138,7 +138,7 @@ def get_reply(channel, msg, speaker_name, speaker_id):
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /reply/ to interact: {err}")
-        return ":shrug:"
+        return " :speech_balloon: :interrobang: "
 
     reply = response.json()['reply']
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
@@ -156,9 +156,9 @@ def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywor
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
         reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
+    except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
         log.critical(f"🤖 Could not post /summary/ to interact: {err}")
-        return ":shrug:"
+        return " :writing_hand: :interrobang: "
 
     summary = reply.json()['summary']
     log.warning(f"∑ {reply.json()['summary']}")
@@ -168,7 +168,7 @@ def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywor
             take_a_photo(channel, summary, engine="dalle2")
         return summary
 
-    return ":shrug:"
+    return " :spiral_note_pad: :interrobang: "
 
 def get_nouns(text):
     ''' Ask interact for all the nouns in text, excluding the speakers. '''
@@ -224,7 +224,7 @@ def get_status(channel):
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /status/ to interact: {err}")
-        return ":shrug:"
+        return " :moyai: :interrobang: "
 
     return reply.json()['status']
 
@@ -261,7 +261,7 @@ def inject_idea(channel, idea):
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /inject/ to interact: {err}")
-        return ":shrug:"
+        return " :syringe: :interrobang: "
 
     return response.json()['status']
 
@@ -276,9 +276,9 @@ def forget_it(channel):
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not forget_it(): {err}")
-        return ":shrug:"
+        return " :jigsaw: :interrobang: "
 
-    return ":exploding_head:"
+    return " :exploding_head: "
 
 @app.message(re.compile(r"^help$", re.I))
 def help_me(say, context): # pylint: disable=unused-argument
@@ -320,9 +320,6 @@ def picture(say, context): # pylint: disable=unused-argument
     msg = f'I wonder what "{prompt}" looks like.'
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
-    if the_reply == ":shrug:":
-        return
-
     say(the_reply)
     summarize_later(channel)
 
@@ -346,9 +343,6 @@ def clip_picture(say, context): # pylint: disable=unused-argument
 
     msg = f'I wonder what "{prompt}" looks like.'
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    if the_reply == ":shrug:":
-        return
 
     say(the_reply)
     summarize_later(channel)
@@ -443,9 +437,6 @@ def dalle_picture(say, context): # pylint: disable=unused-argument
     msg = f'I wonder what "{prompt}" looks like.'
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
-    if the_reply == ":shrug:":
-        return
-
     say(the_reply)
     summarize_later(channel)
 
@@ -485,9 +476,6 @@ def ld_picture(say, context): # pylint: disable=unused-argument
 
     msg = f'I wonder what "{prompt}" looks like.'
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    if the_reply == ":shrug:":
-        return
 
     say(the_reply)
     summarize_later(channel)
@@ -609,9 +597,6 @@ def catch_all(say, context):
             return
 
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    if the_reply == ":shrug:":
-        return
 
     say(the_reply)
     summarize_later(channel)
