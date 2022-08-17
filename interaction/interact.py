@@ -166,13 +166,16 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     # Ruminate a bit
     entities = extract_entities(msg)
 
+    if not entities:
+        entities = extract_nouns(msg)
+
     # memories
     if entities:
         search_term = ' '.join(entities)
         log.warning(f"ℹ️ look up '{search_term}' in memories")
         for memory in recall.remember(service, channel, search_term, summaries=1):
             # Don't repeat yourself, loopy-lou.
-            if memory['text'] not in summaries and memory not in convo:
+            if memory['text'] not in summaries and memory['text'] not in '\n'.join(convo):
                 log.warning("🐘 memory found")
                 inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
 
