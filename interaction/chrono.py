@@ -19,3 +19,7 @@ def natural_time(hour=dt.datetime.now().hour):
     ''' Natural time of the day '''
     day_times = ("late at night", "early morning", "morning", "afternoon", "evening", "night")
     return day_times[hour // 4]
+
+def today():
+    ''' Natural day of the year '''
+    return dt.date.today().strftime(f"%A %B {humanize.ordinal(dt.date.today().day)}, %Y")

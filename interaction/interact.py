@@ -32,7 +32,7 @@ from feels import get_feels
 from memory import Recall
 
 # Time handling
-from chrono import natural_time, ago
+from chrono import natural_time, ago, today
 
 # Color logging
 from color_logging import ColorLog
@@ -237,12 +237,15 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
     return reply
 
+def default_prompt_prefix():
+    ''' The default prompt prefix '''
+    return f"""It is {natural_time()} on {today()}. {BOT_NAME} is feeling {feels['current']['text']}."""
+
 def generate_prompt(summaries, convo):
     ''' Generate the model prompt '''
     newline = '\n'
 
-    return f"""It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
-
+    return f"""{default_prompt_prefix()}
 {newline.join(summaries)}
 {newline.join(convo)}
 {BOT_NAME}:"""
@@ -252,12 +255,12 @@ def get_status(service, channel):
     paragraph = '\n\n'
     newline = '\n'
     summaries, convo = recall.load(service, channel, summaries=2)
-    return f'''It is {natural_time()}. {BOT_NAME} is feeling {feels['current']['text']}.
+    return f"""{default_prompt_prefix()}
 
 {paragraph.join(summaries)}
 
 {newline.join(convo)}
-'''
+"""
 
 def amnesia(service, channel):
     ''' forget it '''
