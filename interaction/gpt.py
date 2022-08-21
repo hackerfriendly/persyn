@@ -9,7 +9,7 @@ import spacy
 
 from ftfy import fix_text
 
-from feels import get_flair_score, get_feels_score, get_profanity_score
+from feels import get_flair_score, get_profanity_score
 
 # Color logging
 from color_logging import ColorLog
@@ -23,6 +23,7 @@ class GPT():
         bot_name,
         min_score=0.0,
         api_key=os.getenv('OPENAI_API_KEY'),
+        api_base=os.environ.get('OPENAI_API_BASE', 'https://api.openai.com/v1'),
         engine=os.environ.get('OPENAI_MODEL', 'text-davinci-001'),
         forbidden=None,
         max_prompt_length=4000
@@ -35,6 +36,7 @@ class GPT():
         self.stats = Counter()
         self.nlp = spacy.load("en_core_web_lg")
         openai.api_key = api_key
+        openai.api_base = api_base
 
     def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=150):
         '''
@@ -78,10 +80,11 @@ class GPT():
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
         response = openai.Completion.create(
-            model=self.engine,
+            engine=self.engine,
             prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens,
+            n=1,
             top_p=1,
             frequency_penalty=0,
             presence_penalty=0,
@@ -89,6 +92,31 @@ class GPT():
         )
         reply = response.choices[0]['text'].strip()
         log.warning(f"☝️ opinion of {entity}: {reply}")
+
+        return reply
+
+    def get_feels(self, context, stop=[".", "!", "?"], temperature=0.9, max_tokens=50):
+        '''
+        Ask GPT3 for sentiment analysis of the current convo.
+        '''
+        prompt = f'''{context}\nThree words that describe {self.bot_name}'s sentiment in the text are:'''
+
+        if len(prompt) > self.max_prompt_length:
+            log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+
+        response = openai.Completion.create(
+            engine=self.engine,
+            prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            n=1,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=stop
+        )
+        reply = response.choices[0]['text'].strip()
+        log.warning(f"☺️ sentiment of conversation: {reply}")
 
         return reply
 
@@ -215,7 +243,6 @@ class GPT():
 
             all_scores = {
                 "flair": get_flair_score(raw),
-                "t2e": get_feels_score(raw),
                 "profanity": get_profanity_score(raw),
                 "topic_bonus": topic_bonus
             }
