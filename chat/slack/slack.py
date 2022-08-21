@@ -531,6 +531,16 @@ def opine(say, context):
     else:
         say('I have no opinion on that topic.')
 
+@app.message(re.compile(r"^:bulb:$"))
+def lights(say, context): # pylint: disable=unused-argument
+    ''' Are the lights on? '''
+    them = get_display_name(context['user_id'])
+
+    if os.path.isfile('/home/rob/.u16-lights'):
+        say(f'The lights are on, {them}.')
+    else:
+        say(f'The lights are off, {them}.')
+
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
     if channel not in reminders:
