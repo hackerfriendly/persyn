@@ -16,17 +16,11 @@ from wikipedia.exceptions import WikipediaException
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
-# string comparisons
-# from Levenshtein import ratio
-
 # Prompt completion
 from gpt import GPT
 
 # text-to-speech
 from voice import tts
-
-# Emotions courtesy of Dr. Noonian Soong
-from feels import get_feels
 
 # Long and short term memory
 from memory import Recall
@@ -51,7 +45,7 @@ MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
 TEMPERATURE = float(os.environ.get('TEMPERATURE', 0.99))
 
 # How are we feeling today?
-feels = {'current': get_feels("")}
+feels = {'current': "nothing in particular"}
 
 # GPT-3 for completion
 completion = GPT(bot_name=BOT_NAME, min_score=MINIMUM_QUALITY_SCORE)
@@ -234,7 +228,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     recall.save(service, channel, reply, BOT_NAME, BOT_ID)
 
     tts(reply, voice=BOT_VOICE)
-    feels['current'] = get_feels(f'{prompt} {reply}')
+    feels['current'] = completion.get_feels(f'{prompt} {reply}')
 
     log.warning("😄 Feeling:", feels['current'])
 
@@ -242,7 +236,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
 def default_prompt_prefix():
     ''' The default prompt prefix '''
-    return f"""It is {natural_time()} on {today()}. {BOT_NAME} is feeling {feels['current']['text']}."""
+    return f"""It is {natural_time()} on {today()}. {BOT_NAME} is feeling {feels['current']}."""
 
 def generate_prompt(summaries, convo):
     ''' Generate the model prompt '''
