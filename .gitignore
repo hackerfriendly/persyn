@@ -10,3 +10,4 @@ dreams/vqgan/taming-transformers/
 dreams/vqgan/taming/
 *~
 .ipynb_checkpoints/
+notebooks/
