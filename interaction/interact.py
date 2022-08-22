@@ -17,7 +17,7 @@ from wikipedia.exceptions import WikipediaException
 from spacy.lang.en.stop_words import STOP_WORDS
 
 # Prompt completion
-from gpt import GPT
+from completion import LanguageModel
 
 # text-to-speech
 from voice import tts
@@ -34,21 +34,16 @@ from color_logging import ColorLog
 log = ColorLog()
 
 # These are all defined in config/*.conf
-BOT_NAME = os.environ["BOT_NAME"]
-BOT_ID = os.environ["BOT_ID"]
+BOT_NAME = os.environ['BOT_NAME']
+BOT_ID = os.environ['BOT_ID']
+BOT_ENGINE = os.environ.get('BOT_ENGINE', 'openai')
 BOT_VOICE = os.environ.get('BOT_VOICE', 'USA')
-
-# Minimum completion reply quality. Lower numbers get more dark + sleazy.
-MINIMUM_QUALITY_SCORE = float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
-
-# Temperature. 0.0 == repetitive, 1.0 == chaos
-TEMPERATURE = float(os.environ.get('TEMPERATURE', 0.99))
 
 # How are we feeling today?
 feels = {'current': "nothing in particular"}
 
-# GPT-3 for completion
-completion = GPT(bot_name=BOT_NAME, min_score=MINIMUM_QUALITY_SCORE)
+# Pick a language model for completion
+completion = LanguageModel(engine=BOT_ENGINE, bot_name=BOT_NAME)
 
 # FastAPI
 app = FastAPI()
@@ -70,7 +65,7 @@ wikicache = {}
 
 def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False):
     '''
-    Generate a GPT summary of the current conversation for this channel.
+    Generate a summary of the current conversation for this channel.
     Also generate and save opinions about detected topics.
     If save == True, save it to long term memory.
     Returns the text summary.
@@ -110,16 +105,14 @@ def choose_reply(prompt, convo):
 
     scored = completion.get_replies(
         prompt=prompt,
-        convo=convo,
-        temperature=TEMPERATURE
+        convo=convo
     )
 
     if not scored:
         log.warning("🤨 No surviving replies, try again.")
         scored = completion.get_replies(
             prompt=prompt,
-            convo=convo,
-            temperature=TEMPERATURE
+            convo=convo
         )
 
     # Uh-oh. Just keep it brief.
@@ -127,8 +120,7 @@ def choose_reply(prompt, convo):
         log.warning("😳 No surviving replies, one last try.")
         scored = completion.get_replies(
             prompt=prompt,
-            convo=convo[-6:],
-            temperature=TEMPERATURE
+            convo=convo[-6:]
         )
 
     if not scored:

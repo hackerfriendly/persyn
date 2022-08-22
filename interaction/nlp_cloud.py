@@ -1,10 +1,12 @@
-''' OpenAI completion engine '''
+''' NLP Cloud completion engine '''
 import re
 
 from collections import Counter
+from time import sleep
 
-import openai
+import nlpcloud
 import spacy
+import requests
 
 from ftfy import fix_text
 
@@ -15,14 +17,21 @@ from color_logging import ColorLog
 
 log = ColorLog()
 
-class GPT():
+
+MAX_TOKENS = {
+    'gpt-j': 1024,
+    'fast-gpt-j': 2048,
+    'gpt-neox-20b': 1024,
+    'finetuned-gpt-neox-20b': 2048
+}
+
+class NLPCLOUD():
     ''' Container for GPT-3 completion requests '''
     def __init__(
         self,
         bot_name,
         min_score,
         api_key,
-        api_base,
         model_name,
         forbidden=None,
         nlp=None
@@ -34,13 +43,23 @@ class GPT():
         self.stats = Counter()
         self.nlp = nlp or spacy.load("en_core_web_lg")
 
-        if model_name.startswith('text-davinci-'):
-            self.max_prompt_length = 4000 # tokens
+        if model_name in MAX_TOKENS:
+            self.max_prompt_length = MAX_TOKENS[model_name]
         else:
-            self.max_prompt_length = 2048 # tokens
+            self.max_prompt_length = 2048
 
-        openai.api_key = api_key
-        openai.api_base = api_base
+        self.client = nlpcloud.Client(model_name, api_key, gpu=True, lang="en")
+
+    def request_generation(self, **kwargs):
+        '''
+        Make a request, with retries on rate limit
+        '''
+        try:
+            return self.client.generation(**kwargs)
+        except requests.exceptions.HTTPError:
+            log.error("👾 got HTTPError, wait and try again")
+            sleep(3)
+            return self.client.generation(**kwargs)
 
     def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=150):
         '''
@@ -50,21 +69,25 @@ class GPT():
         if len(prompt) > self.max_prompt_length:
             log.warning(f"get_replies: text too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt[:self.max_prompt_length],
+        response = self.client.generation(
+            text=prompt[:self.max_prompt_length],
             temperature=temperature,
-            max_tokens=max_tokens,
-            n=8,
-            frequency_penalty=1.2,
-            presence_penalty=0.8,
-            stop=stop
+            min_length=max_tokens,
+            max_length=max_tokens,
+            num_return_sequences=8,
+            bad_words=self.forbidden,
+            remove_input=True,
+            remove_end_sequence=True,
+            end_sequence='\n'
         )
         log.info(f"🧠 Prompt: {prompt}")
         # log.warning(response)
 
+        log.warning(response)
+
         # Choose a response based on the most positive sentiment.
-        scored = self.score_choices(response.choices, convo)
+        choices = self.parse_response(response)
+        scored = self.score_choices(choices, convo)
         if not scored:
             self.stats.update(['replies exhausted'])
             log.error("😓 get_replies(): all replies exhausted")
@@ -86,18 +109,19 @@ class GPT():
         if len(prompt) > self.max_prompt_length:
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt,
+        response = self.client.generation(
+            text=prompt,
             temperature=temperature,
-            max_tokens=max_tokens,
-            n=1,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=stop
+            min_length=max_tokens,
+            max_length=max_tokens,
+            num_return_sequences=1,
+            bad_words=self.forbidden,
+            remove_input=True,
+            remove_end_sequence=True,
+            end_sequence='\n'
         )
-        reply = response.choices[0]['text'].strip()
+        choices = self.parse_response(response)
+        reply = choices[0]
         log.warning(f"☝️ opinion of {entity}: {reply}")
 
         return reply
@@ -114,18 +138,19 @@ class GPT():
         if len(prompt) > self.max_prompt_length:
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt,
+        response = self.client.generation(
+            text=prompt,
             temperature=temperature,
-            max_tokens=max_tokens,
-            n=1,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=stop
+            min_length=max_tokens,
+            max_length=max_tokens,
+            num_return_sequences=1,
+            bad_words=self.forbidden,
+            remove_input=True,
+            remove_end_sequence=True,
+            end_sequence='\n'
         )
-        reply = response.choices[0]['text'].strip()
+        choices = self.parse_response(response)
+        reply = choices[0]
         log.warning(f"☺️ sentiment of conversation: {reply}")
 
         return reply
@@ -157,6 +182,25 @@ class GPT():
             pass
 
         return ' '.join(reply)
+
+    def parse_response(self, response): # pylint: disable=no-self-use
+        '''
+        Split the completion response into a list of possibilities
+        '''
+        if response['nb_generated_tokens'] == 0:
+            return [':man-shrugging']
+
+        reply = []
+        for choice in [t.strip() for t in response['generated_text'].split("\n--------------\n") if t.strip()]:
+            # strip sentence fragments if possible
+            if choice[-1] not in ['.', '?', '!']:
+                sents = [self.nlp(choice).sents]
+                if len(sents) == 1:
+                    reply.append(choice)
+                else:
+                    reply.append(' '.join(sents[:-1]))
+
+        return reply or [':man-shrugging:']
 
     def validate_choice(self, text, convo):
         '''
@@ -211,7 +255,7 @@ class GPT():
         nouns_in_convo = {word.lemma_ for word in self.nlp(' '.join(convo)) if word.pos_ == "NOUN"}
 
         for choice in choices:
-            text = self.validate_choice(self.truncate(choice['text']), convo)
+            text = self.validate_choice(self.truncate(choice), convo)
 
             if not text:
                 continue
@@ -219,13 +263,13 @@ class GPT():
             log.debug(f"text: {text}")
             log.debug(f"convo: {convo}")
 
-            # Too long? Ditch the last sentence fragment.
-            if choice['finish_reason'] == 'length':
-                try:
-                    self.stats.update(['truncated to first sentence'])
-                    text = text[:text.rindex('.') + 1]
-                except ValueError:
-                    pass
+            # # Too long? Ditch the last sentence fragment.
+            # if choice['finish_reason'] == 'length':
+            #     try:
+            #         self.stats.update(['truncated to first sentence'])
+            #         text = text[:text.rindex('.') + 1]
+            #     except ValueError:
+            #         pass
 
             # Fix unbalanced symbols
             for symbol in r'(){}[]<>':
@@ -241,7 +285,7 @@ class GPT():
                         text = text.replace(symbol, '')
 
             # Now for sentiment analysis. This uses the entire raw response to see where it's leading.
-            raw = choice['text'].strip()
+            raw = choice.strip()
 
             # Potentially on-topic gets a bonus
             nouns_in_reply = [word.lemma_ for word in self.nlp(raw) if word.pos_ == "NOUN"]
@@ -294,26 +338,28 @@ class GPT():
             textlen = self.max_prompt_length - len(summarizer) - 3
             prompt = f"{text[:textlen]}\n\n{summarizer}\n"
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt,
-            max_tokens=max_tokens,
+        response = self.client.generation(
+            text=prompt,
+            min_length=max_tokens,
+            max_length=max_tokens,
+            bad_words=self.forbidden,
             top_p=0.1,
-            frequency_penalty=0.8,
-            presence_penalty=0.0
+            remove_input=True
         )
-        reply = response.choices[0]['text'].strip().split('\n')[0]
+        log.warning(response)
+        choices = self.parse_response(response)
+        reply = choices[0].split('\n', maxsplit=1)[0]
 
         # To the right of the : (if any)
         if ':' in reply:
             reply = reply.split(':')[1].strip()
 
-        # Too long? Ditch the last sentence fragment.
-        if response.choices[0]['finish_reason'] == "length":
-            try:
-                reply = reply[:reply.rindex('.') + 1].strip()
-            except ValueError:
-                pass
+        # # Too long? Ditch the last sentence fragment.
+        # if response.choices[0]['finish_reason'] == "length":
+        #     try:
+        #         reply = reply[:reply.rindex('.') + 1].strip()
+        #     except ValueError:
+        #         pass
 
         log.warning("gpt get_summary():", reply)
         return reply
