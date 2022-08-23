@@ -26,7 +26,7 @@ app = FastAPI()
 # Every GPU device that can be used for image generation
 GPUS = {
     "0": {"name": "TITAN X", "lock": Lock()},
-    # "1": {"name": "TITAN X", "lock": Lock()}
+    "1": {"name": "TITAN X", "lock": Lock()}
 }
 
 # Only two DALL-E prompts at a time.
@@ -209,6 +209,17 @@ def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylin
     finally:
         DALLE[inst]['lock'].release()
 
+def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
+    ''' https://github.com/hackerfriendly/latent-diffusion '''
+    image = f"{image_id}.jpg"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cmd = [
+            f'{SCRIPT_PATH}/stable-diffusion/go-sd',
+            f'{tmpdir}/{image}',
+            prompt[:250]
+        ]
+        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+
 def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
     image = f"{image_id}.jpg"
@@ -251,6 +262,7 @@ async def generate(
         'vqgan': vqgan,
         'stylegan2': stylegan2,
         'latent-diffusion': latent_diffusion,
+        'stable-diffusion': stable_diffusion,
         'dalle2': dalle2
     }
 
@@ -284,8 +296,14 @@ async def generate(
         },
         'latent-diffusion': {
             'default': {'name': 'text2img-large'}
+        },
+        'stable-diffusion': {
+            'default': {'name': 'stable-diffusion'}
         }
     }
+
+    if engine == "dalle2":
+        engine = "stable-diffusion"
 
     if engine not in engines:
         raise HTTPException(
@@ -307,7 +325,7 @@ async def generate(
     if not prompt:
         prompt = "Untitled"
 
-    if engine in ['stylegan2', 'latent-diffusion', 'dalle2']:
+    if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2']:
         background_tasks.add_task(
             engines[engine],
             channel=channel,

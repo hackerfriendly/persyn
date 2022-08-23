@@ -33,6 +33,7 @@ IMAGE_MODELS = {
     "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
     "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"],
     "latent-diffusion": ["default"],
+    "stable-diffusion": ["default"],
     "dalle2": ["default"]
 }
 
@@ -165,7 +166,7 @@ def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywor
 
     if summary:
         if photo:
-            take_a_photo(channel, summary, engine="dalle2")
+            take_a_photo(channel, summary, engine="stable-diffusion")
         return summary
 
     return " :spiral_note_pad: :interrobang: "
@@ -292,7 +293,7 @@ def help_me(say, context): # pylint: disable=unused-argument
   `daydream`: Let {BOT_NAME}'s mind wander on the convo.
 
   *Image generation:*
-  :art: _prompt_ : Generate a picture of _prompt_ using DALLE-2
+  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
   :eye: _prompt_ : Generate a picture of _prompt_ using latent-diffusion
   :camera: _prompt_ : Generate a picture of _prompt_ using v-diffusion-pytorch-cfg
   :paperclip: _prompt_ : Generate a picture of _prompt_ using clip guided diffusion
@@ -401,8 +402,8 @@ def photo_clip_summary(say, context): # pylint: disable=unused-argument
     take_a_photo(channel, get_summary(channel, max_tokens=30), engine="v-diffusion-pytorch-clip")
 
 @app.message(re.compile(r"^:art:$"))
-def photo_dalle_summary(say, context): # pylint: disable=unused-argument
-    ''' Take a DALLE2 photo of this conversation '''
+def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
+    ''' Take a stable diffusion photo of this conversation '''
     them = get_display_name(context['user_id'])
     channel = context['channel_id']
 
@@ -414,11 +415,11 @@ def photo_dalle_summary(say, context): # pylint: disable=unused-argument
         when=10,
         what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
     )
-    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="dalle2")
+    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
 
 @app.message(re.compile(r"^:art:(.+)$"))
-def dalle_picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture with DALLE2 '''
+def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with stable diffusion '''
     speaker_id = context['user_id']
     speaker_name = get_display_name(speaker_id)
     channel = context['channel_id']
@@ -432,7 +433,7 @@ def dalle_picture(say, context): # pylint: disable=unused-argument
         when=10,
         what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
     )
-    take_a_photo(channel, prompt, engine="dalle2")
+    take_a_photo(channel, prompt, engine="stable-diffusion")
 
     msg = f'I wonder what "{prompt}" looks like.'
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)

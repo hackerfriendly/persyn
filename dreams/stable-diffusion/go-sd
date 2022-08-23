@@ -1,0 +1,36 @@
+#!/bin/bash
+set -x
+if [ -z "$2" ]; then
+  echo "Usage: $(basename $0) outfile [prompt]"
+  exit 1
+fi
+
+OUTFILE=$1
+shift
+
+set -e
+
+cd $(dirname $0)
+
+# Older torch required
+. env/bin/activate
+
+TMPDIR=$(mktemp -d)
+
+export PYTHONPATH=.:taming-transformers:CLIP
+export SEED=${RANDOM}
+
+python3 optimizedSD/optimized_txt2img.py --H 512 --W 512 --seed ${SEED} --n_iter 1 --ddim_steps 50 --skip_grid --n_samples 1 --outdir ${TMPDIR} --prompt "$*"
+
+# Now for upscaling
+# deactivate
+# cd ../Real-ESRGAN
+# . env/bin/activate
+
+# python inference_realesrgan.py --face_enhance -n RealESRGAN_x4plus -i ${TMPDIR}/samples/0000.png -o ${TMPDIR}
+
+convert ${TMPDIR}/*/00000.png ${OUTFILE}
+
+exiftool -description="$*" -software='Stable Diffusion v1.4' -make="--seed ${SEED}" ${OUTFILE}
+
+rm -rf ${TMPDIR}
