@@ -157,7 +157,7 @@ def vqgan(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
         ]
         process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
-def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
+def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/NVlabs/stylegan2 '''
     image = f"{image_id}.jpg"
     psi = random.uniform(0.6, 0.9)
@@ -171,7 +171,7 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name):
         ]
         process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
-def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
+def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
     ''' https://openai.com/dall-e-2/ (pre-release) '''
     try:
         inst = wait_for_dalle()
@@ -209,18 +209,18 @@ def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylin
     finally:
         DALLE[inst]['lock'].release()
 
-def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
-    ''' https://github.com/hackerfriendly/latent-diffusion '''
+def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
+    ''' https://github.com/hackerfriendly/stable-diffusion '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/stable-diffusion/go-sd',
             f'{tmpdir}/{image}',
-            prompt[:250]
+            prompt
         ]
         process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
-def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name): # pylint: disable=unused-argument
+def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -251,7 +251,8 @@ async def generate(
     model: str = None,
     channel: str = None,
     slack_bot_token: str = None,
-    bot_name: str = None
+    bot_name: str = None,
+    style: str = None
     ):
     ''' Make an image and post it '''
     image_id = uuid.uuid4()
@@ -325,6 +326,11 @@ async def generate(
     if not prompt:
         prompt = "Untitled"
 
+    if style is None:
+        style = ""
+
+    prompt = prompt[:max(len(prompt) + len(style), 300)] + f" {style}"
+
     if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2']:
         background_tasks.add_task(
             engines[engine],
@@ -333,7 +339,8 @@ async def generate(
             model=models[engine][model]['name'],
             image_id=image_id,
             slack_bot_token=slack_bot_token,
-            bot_name=bot_name
+            bot_name=bot_name,
+            style=style
         )
     else:
         background_tasks.add_task(

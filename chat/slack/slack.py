@@ -21,6 +21,9 @@ from slack_sdk.errors import SlackApiError
 # Color logging
 from color_logging import ColorLog
 
+# Artist names
+from art import artists
+
 log = ColorLog()
 
 # These are all defined in config/*.conf
@@ -102,7 +105,7 @@ def speakers():
     ''' Everyone speaking in any channel '''
     return [BOT_NAME] + list(known_users.values())
 
-def take_a_photo(channel, prompt, engine=None, model=None):
+def take_a_photo(channel, prompt, engine=None, model=None, style=None):
     ''' Pick an image engine and generate a photo '''
     if not engine:
         engine = random.choice(IMAGE_ENGINES)
@@ -113,7 +116,8 @@ def take_a_photo(channel, prompt, engine=None, model=None):
         "prompt": prompt,
         "model": model or random.choice(IMAGE_MODELS[engine]),
         "slack_bot_token": os.environ['SLACK_BOT_TOKEN'],
-        "bot_name": os.environ['BOT_NAME']
+        "bot_name": os.environ['BOT_NAME'],
+        "style": style
     }
     reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
     if reply.ok:
@@ -166,7 +170,7 @@ def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywor
 
     if summary:
         if photo:
-            take_a_photo(channel, summary, engine="stable-diffusion")
+            take_a_photo(channel, summary, engine="stable-diffusion") #, style=f"by {random.choice(artists)}")
         return summary
 
     return " :spiral_note_pad: :interrobang: "
@@ -486,7 +490,7 @@ def summarize(say, context):
     ''' Say a condensed summary of this channel '''
     save = bool(context['matches'][0])
     channel = context['channel_id']
-    say("💭 " + get_summary(channel, save, include_keywords=True))
+    say("💭 " + get_summary(channel, save, include_keywords=True, photo=True))
 
 @app.message(re.compile(r"^status$", re.I))
 def status(say, context):
