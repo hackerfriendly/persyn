@@ -15,8 +15,10 @@ def ago(since):
     ''' Return a human friendly estimate of elapsed time since ts '''
     return humanize.naturaldelta(dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(since))
 
-def natural_time(hour=dt.datetime.now().hour):
+def natural_time(hour=None):
     ''' Natural time of the day '''
+    if hour is None:
+        hour = dt.datetime.now().hour
     day_times = ("late at night", "early morning", "morning", "afternoon", "evening", "night")
     return day_times[hour // 4]
 
