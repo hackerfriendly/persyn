@@ -8,6 +8,12 @@ dreams/vqgan/CLIP/
 dreams/vqgan/models/
 dreams/vqgan/taming-transformers/
 dreams/vqgan/taming/
+dreams/stable-diffusion/CLIP/
+dreams/stable-diffusion/models/
+dreams/stable-diffusion/taming-transformers/
+dreams/latent-diffusion/CLIP/
+dreams/latent-diffusion/models/
+dreams/latent-diffusion/taming-transformers/
 *~
 .ipynb_checkpoints/
 notebooks/
