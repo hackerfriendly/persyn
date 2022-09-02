@@ -325,13 +325,13 @@ class GPT():
         max_tokens=50
         ):
         ''' Ask GPT for keywords'''
-        keywords = self.get_summary(text, summarizer, max_tokens)
+        keywords = self.get_summary(text, summarizer, max_tokens).replace('#', '').replace('[', '')
         log.warning(f"gpt get_keywords() raw: {keywords}")
 
         raw = list(
             {n.text.lower() for n in self.nlp(keywords).noun_chunks if n.text.strip() != self.bot_name for t in n if t.pos_ != 'PRON'}
         )
-        reply = [ n.strip('-').strip('#').strip('[').strip() for n in raw ]
+        reply = [ n.strip('-').strip() for n in raw ]
 
         log.warning(f"gpt get_keywords(): {reply}")
         return reply
