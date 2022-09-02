@@ -170,7 +170,7 @@ def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywor
 
     if summary:
         if photo:
-            take_a_photo(channel, summary, engine="stable-diffusion") #, style=f"by {random.choice(artists)}")
+            take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}")
         return summary
 
     return " :spiral_note_pad: :interrobang: "
