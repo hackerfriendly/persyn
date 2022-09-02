@@ -153,7 +153,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     entities = extract_entities(msg)
 
     if not entities:
-        entities = extract_nouns(msg)
+        entities = completion.get_keywords(convo)
 
     # memories
     if entities:
@@ -175,7 +175,9 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         if opinions:
             log.warning(f"🙋‍♂️ I have an opinion about {entity}")
             for opinion in opinions:
-                inject_idea(service, channel, opinion, f"thinks about {entity}")
+                if opinion not in recall.stm.get_bias(service, channel):
+                    recall.stm.add_bias(service, channel, opinion)
+                    inject_idea(service, channel, opinion, f"thinks about {entity}")
 
         log.warning(f'❇️ look up "{entity}" on Wikipeda')
 

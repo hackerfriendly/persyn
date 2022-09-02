@@ -104,6 +104,7 @@ class ShortTermMemory():
         self.convo[service][channel]['ts'] = get_cur_ts()
         self.convo[service][channel]['convo'] = []
         self.convo[service][channel]['id'] = su.encode(uuid.uuid4())
+        self.convo[service][channel]['opinions'] = []
 
     def exists(self, service, channel):
         ''' True if a channel already exists, else False '''
@@ -145,11 +146,30 @@ class ShortTermMemory():
 
         return self.convo_id(service, channel)
 
+    def add_bias(self, service, channel, line):
+        '''
+        Append a short-term opinion to a channel. Returns the convo_id.
+        '''
+        self.convo[service][channel]['opinions'].append(line)
+        return self.convo_id(service, channel)
+
+    def get_bias(self, service, channel):
+        '''
+        Return all short-term opinions for a channel.
+        '''
+        return self.convo[service][channel]['opinions']
+
     def fetch(self, service, channel):
         ''' Fetch the current convo, if any '''
         if not self.exists(service, channel):
             return []
         return self.convo[service][channel]['convo']
+
+    def opinions(self, service, channel):
+        ''' Fetch the current opinions expressed in convo, if any '''
+        if not self.exists(service, channel):
+            return []
+        return self.convo[service][channel]['opinions']
 
     def convo_id(self, service, channel):
         ''' Return the convo id, if any '''
