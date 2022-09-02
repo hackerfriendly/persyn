@@ -25,8 +25,8 @@ app = FastAPI()
 
 # Every GPU device that can be used for image generation
 GPUS = {
-    "0": {"name": "TITAN X", "lock": Lock()},
-    "1": {"name": "TITAN X", "lock": Lock()}
+#    "0": {"name": "TITAN X", "lock": Lock()},
+    "0": {"name": "RTX 2080 Ti", "lock": Lock()}
 }
 
 # Only two DALL-E prompts at a time.
@@ -215,8 +215,9 @@ def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             f'{SCRIPT_PATH}/stable-diffusion/go-sd',
-            f'{tmpdir}/{image}',
-            prompt
+            '-o', f'{tmpdir}/{image}',
+            '-p', prompt,
+            '-t', style
         ]
         process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
@@ -329,7 +330,7 @@ async def generate(
     if style is None:
         style = ""
 
-    prompt = prompt[:max(len(prompt) + len(style), 300)] + f" {style}"
+    prompt = prompt[:max(len(prompt) + len(style), 300)]
 
     if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2']:
         background_tasks.add_task(

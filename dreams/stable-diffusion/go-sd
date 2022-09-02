@@ -1,26 +1,50 @@
 #!/bin/bash
-set -x
-if [ -z "$2" ]; then
-  echo "Usage: $(basename $0) outfile [prompt]"
+usage() {
+  echo "Usage: $(basename $0) -p 'prompt' -t 'style' -w width -h height -s seed -o outfile" ;
+}
+
+SEED=$RANDOM
+WIDTH=512
+HEIGHT=512
+OUTFILE="out.jpg"
+STYLE=""
+
+while getopts "p:s:t:w:h:o:?" opt
+do
+  case "$opt" in
+    '?') usage; exit 0 ;;
+    'p') PROMPT=${OPTARG} ;;
+    's') SEED=${OPTARG} ;;
+    't') STYLE=${OPTARG} ;;
+    'w') WIDTH=${OPTARG} ;;
+    'h') HEIGHT=${OPTARG} ;;
+    'o') OUTFILE=${OPTARG} ;;
+    *) usage; exit 1 ;;
+  esac
+done
+
+if [ -z "${PROMPT}" ]; then
+  usage
   exit 1
 fi
-
-OUTFILE=$1
-shift
 
 set -e
 
 cd $(dirname $0)
 
-# Older torch required
 . env/bin/activate
 
 TMPDIR=$(mktemp -d)
 
 export PYTHONPATH=.:taming-transformers:CLIP
-export SEED=${RANDOM}
 
-python3 optimizedSD/optimized_txt2img.py --H 512 --W 512 --seed ${SEED} --n_iter 1 --ddim_steps 50 --skip_grid --n_samples 1 --outdir ${TMPDIR} --prompt "$*"
+if [ ! -z "${STYLE}" ]; then
+  export GEN="${PROMPT} by ${STYLE}"
+else
+  export GEN="${PROMPT}"
+fi
+
+python3 optimizedSD/optimized_txt2img.py --H ${HEIGHT} --W ${WIDTH} --seed ${SEED} --n_iter 1 --ddim_steps 50 --skip_grid --n_samples 1 --outdir ${TMPDIR} --prompt "${GEN}"
 
 # Now for upscaling
 # deactivate
@@ -31,6 +55,6 @@ python3 optimizedSD/optimized_txt2img.py --H 512 --W 512 --seed ${SEED} --n_iter
 
 convert ${TMPDIR}/*/00000.png ${OUTFILE}
 
-exiftool -description="$*" -software='Stable Diffusion v1.4' -make="--seed ${SEED}" ${OUTFILE}
+exiftool -overwrite_original -description="${PROMPT}" -software='Stable Diffusion v1.4' -make="--seed ${SEED}" -artist="${STYLE}" ${OUTFILE}
 
 rm -rf ${TMPDIR}
