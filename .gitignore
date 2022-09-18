@@ -14,6 +14,11 @@ dreams/stable-diffusion/taming-transformers/
 dreams/latent-diffusion/CLIP/
 dreams/latent-diffusion/models/
 dreams/latent-diffusion/taming-transformers/
+dreams/stable-diffusion/
+dreams/GFPGAN/
+dreams/Real-ESRGAN/
+dreams/disco-diffusion-1/
+dreams/latent-diffusion/
 *~
 .ipynb_checkpoints/
 notebooks/
