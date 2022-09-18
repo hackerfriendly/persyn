@@ -110,7 +110,6 @@ artists = [
     'Ilya Kuvshinov',
     'Ingrid Baars',
     'Inio Asano',
-    'Iris Van Herpen',
     'Ismail Inceoglu',
     'Ivan Albright',
     'Ivan Bilibin',
