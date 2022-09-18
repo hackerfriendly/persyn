@@ -32,7 +32,7 @@ BOT_ID = os.environ["BOT_ID"]
 
 IMAGE_ENGINES = ["latent-diffusion", "v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip"] # "vqgan", "stylegan2"
 IMAGE_MODELS = {
-    "stylegan2": ["ffhq", "waifu", "cat"], #, "car", "church", "horse"
+    "stylegan2": ["ffhq", "waifu"], #, "cat", "car", "church", "horse"
     "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
     "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"],
     "latent-diffusion": ["default"],
@@ -298,59 +298,8 @@ def help_me(say, context): # pylint: disable=unused-argument
 
   *Image generation:*
   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
-  :eye: _prompt_ : Generate a picture of _prompt_ using latent-diffusion
-  :camera: _prompt_ : Generate a picture of _prompt_ using v-diffusion-pytorch-cfg
-  :paperclip: _prompt_ : Generate a picture of _prompt_ using clip guided diffusion
   :selfie: Take a selfie
 """)
-
-@app.message(re.compile(r"^:camera:(.+)$"))
-def picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture, it'll last longer '''
-    speaker_id = context['user_id']
-    speaker_name = get_display_name(speaker_id)
-    channel = context['channel_id']
-    prompt = context['matches'][0].strip()
-
-    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=60,
-        what=f"*{BOT_NAME} takes a picture of _{prompt}_* It will take a few minutes to develop."
-    )
-    take_a_photo(channel, prompt, engine="v-diffusion-pytorch-cfg")
-
-    msg = f'I wonder what "{prompt}" looks like.'
-    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    say(the_reply)
-    summarize_later(channel)
-
-@app.message(re.compile(r"^:paperclip:(.+)$"))
-def clip_picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture with CLIP, it'll last longer '''
-    speaker_id = context['user_id']
-    speaker_name = get_display_name(speaker_id)
-    channel = context['channel_id']
-    prompt = context['matches'][0].strip()
-
-    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out an old fashioned camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=60,
-        what=f"*{BOT_NAME} takes a picture of _{prompt}_* It will take a few minutes to develop."
-    )
-    take_a_photo(channel, prompt, engine="v-diffusion-pytorch-clip")
-
-    msg = f'I wonder what "{prompt}" looks like.'
-    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    say(the_reply)
-    summarize_later(channel)
 
 @app.message(re.compile(r"^:selfie:$"))
 def selfie(say, context): # pylint: disable=unused-argument
@@ -372,38 +321,6 @@ def selfie(say, context): # pylint: disable=unused-argument
         engine="stylegan2",
         model=random.choice(["ffhq", "waifu", "cat"])
     )
-
-@app.message(re.compile(r"^:camera:$"))
-def photo_summary(say, context): # pylint: disable=unused-argument
-    ''' Take a photo of this conversation '''
-    them = get_display_name(context['user_id'])
-    channel = context['channel_id']
-
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=20,
-        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
-    )
-    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="latent-diffusion")
-
-@app.message(re.compile(r"^:paperclip:$"))
-def photo_clip_summary(say, context): # pylint: disable=unused-argument
-    ''' Take a CLIP photo of this conversation '''
-    them = get_display_name(context['user_id'])
-    channel = context['channel_id']
-
-    say(f"OK, {them}.\n_{BOT_NAME} takes out an old fashioned camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=60,
-        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
-    )
-    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="v-diffusion-pytorch-clip")
 
 @app.message(re.compile(r"^:art:$"))
 def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
@@ -439,47 +356,13 @@ def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
     )
     take_a_photo(channel, prompt, engine="stable-diffusion")
 
-    msg = f'I wonder what "{prompt}" looks like.'
-    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+    ents = get_entities(prompt)
+    if ents:
+        inject_idea(channel, ents)
+        msg = "..."
+    else:
+        msg = prompt
 
-    say(the_reply)
-    summarize_later(channel)
-
-@app.message(re.compile(r"^:eye:$"))
-def photo_ld_summary(say, context): # pylint: disable=unused-argument
-    ''' Take a CLIP photo of this conversation '''
-    them = get_display_name(context['user_id'])
-    channel = context['channel_id']
-
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=20,
-        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
-    )
-    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="latent-diffusion")
-
-@app.message(re.compile(r"^:eye:(.+)$"))
-def ld_picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture with CompVis latent diffusion, it'll be better '''
-    speaker_id = context['user_id']
-    speaker_name = get_display_name(speaker_id)
-    channel = context['channel_id']
-    prompt = context['matches'][0].strip()
-
-    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=20,
-        what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
-    )
-    take_a_photo(channel, prompt, engine="latent-diffusion")
-
-    msg = f'I wonder what "{prompt}" looks like.'
     the_reply = get_reply(channel, msg, speaker_name, speaker_id)
 
     say(the_reply)
@@ -697,11 +580,11 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                         with tempfile.TemporaryDirectory() as tmpdir:
                             media_ids = []
                             for blk in msg['blocks']:
-                                resp = requests.get(blk['image_url'])
-                                resp.raise_for_status()
+                                response = requests.get(blk['image_url'])
+                                response.raise_for_status()
                                 fname = f"{tmpdir}/{blk['image_url'].split('/')[-1]}"
                                 with open(fname, "wb") as f:
-                                    for chunk in resp.iter_content():
+                                    for chunk in response.iter_content():
                                         f.write(chunk)
                                 media = twitter.media_upload(fname)
                                 media_ids.append(media.media_id)
