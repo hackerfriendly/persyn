@@ -325,7 +325,7 @@ class GPT():
         max_tokens=50
         ):
         ''' Ask GPT for keywords'''
-        keywords = self.get_summary(text, summarizer, max_tokens).replace('#', '').replace('[', '')
+        keywords = self.get_summary(text, summarizer, max_tokens).replace('#', '').replace('[', '').replace(']', '')
         log.warning(f"gpt get_keywords() raw: {keywords}")
 
         raw = list(
