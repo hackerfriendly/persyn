@@ -152,8 +152,11 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     # Ruminate a bit
     entities = extract_entities(msg)
 
-    if not entities:
+    if entities:
+        log.warning(f"🆔 extracted entities: {entities}")
+    else:
         entities = completion.get_keywords(convo)
+        log.warning(f"🆔 extracted keywords: {entities}")
 
     # memories
     if entities:
