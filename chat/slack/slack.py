@@ -319,7 +319,7 @@ def selfie(say, context): # pylint: disable=unused-argument
         channel,
         context['matches'][0].strip(),
         engine="stylegan2",
-        model=random.choice(["ffhq", "waifu", "cat"])
+        model=random.choice(["ffhq", "waifu"])
     )
 
 @app.message(re.compile(r"^:art:$"))
