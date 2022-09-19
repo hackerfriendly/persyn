@@ -162,11 +162,28 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     if entities:
         search_term = ' '.join(entities)
         log.warning(f"ℹ️ look up '{search_term}' in memories")
-        for memory in recall.remember(service, channel, search_term, summaries=1):
+
+        for memory in recall.remember(service, channel, search_term, summaries=5):
             # Don't repeat yourself, loopy-lou.
-            if memory['text'] not in summaries and memory['text'] not in '\n'.join(convo):
-                log.warning("🐘 memory found")
-                inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
+            if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
+                continue
+
+            # Stay on topic
+            prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
+            log.error(prompt)
+            on_topic = completion.get_summary(
+                prompt,
+                summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
+                max_tokens=10)
+
+            log.warning(f"🧐 Are we on topic? {on_topic}")
+            if 'true' not in on_topic.lower():
+                log.warning(f"🚫 Irrelevant memory discarded: {memory}")
+                continue
+
+            log.warning(f"🐘 Memory found: {memory}")
+            inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
+            break
 
     # facts and opinions
     for entity in entities:
