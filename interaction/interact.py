@@ -159,6 +159,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         log.warning(f"🆔 extracted keywords: {entities}")
 
     # memories
+    found = False
     if entities:
         search_term = ' '.join(entities)
         log.warning(f"ℹ️ look up '{search_term}' in memories")
@@ -170,7 +171,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
             # Stay on topic
             prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
-            log.error(prompt)
             on_topic = completion.get_summary(
                 prompt,
                 summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
@@ -182,8 +182,18 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
                 continue
 
             log.warning(f"🐘 Memory found: {memory}")
-            inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
+            inject_idea(
+                service,
+                channel,
+                completion.get_summary(memory['text'], summarizer="To paraphrase:", max_tokens=200),
+                f"remembers that {ago(memory['timestamp'])} ago"
+            )
+            found = True
             break
+
+        if not found:
+            if search_term not in summaries and f"wonders about: {search_term}" not in '\n'.join(convo):
+                inject_idea(service, channel, search_term, "wonders about")
 
     # facts and opinions
     for entity in entities:
