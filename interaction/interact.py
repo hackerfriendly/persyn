@@ -63,20 +63,24 @@ recall = Recall(
 # local Wikipedia cache
 wikicache = {}
 
-def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False):
+def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
     '''
     Generate a summary of the current conversation for this channel.
     Also generate and save opinions about detected topics.
     If save == True, save it to long term memory.
     Returns the text summary.
     '''
-    summaries, convo = recall.load(service, channel, summaries=1)
+    summaries, convo = recall.load(service, channel, summaries=3)
     if not convo:
-        return '\n'.join(summaries)
+        if not summaries:
+            summaries = [ f"{BOT_NAME} isn't sure what is happening." ]
+
+        # No convo? summarize the summaries
+        convo = summaries
 
     summary = completion.get_summary(
         text='\n'.join(convo),
-        summarizer="To briefly summarize this conversation, ",
+        summarizer="To briefly summarize this conversation,",
         max_tokens=max_tokens
     )
     keywords = completion.get_keywords(summary)
@@ -94,6 +98,9 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
 
     if include_keywords:
         return summary + f"\nKeywords: {keywords}"
+
+    if context_lines:
+        return "\n".join(convo[-context_lines:] + [summary])
 
     return summary
 
@@ -140,7 +147,7 @@ def choose_reply(prompt, convo):
 def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
     ''' Get the best reply for the given channel. Saves to recall memory. '''
     if recall.expired(service, channel):
-        summarize_convo(service, channel, save=True)
+        summarize_convo(service, channel, save=True, context_lines=2)
 
     if msg != '...':
         recall.save(service, channel, msg, speaker_name, speaker_id)
@@ -159,7 +166,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         log.warning(f"🆔 extracted keywords: {entities}")
 
     # memories
-    found = False
     if entities:
         search_term = ' '.join(entities)
         log.warning(f"ℹ️ look up '{search_term}' in memories")
@@ -171,6 +177,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
             # Stay on topic
             prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
+            log.error(prompt)
             on_topic = completion.get_summary(
                 prompt,
                 summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
@@ -182,18 +189,8 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
                 continue
 
             log.warning(f"🐘 Memory found: {memory}")
-            inject_idea(
-                service,
-                channel,
-                completion.get_summary(memory['text'], summarizer="To paraphrase:", max_tokens=200),
-                f"remembers that {ago(memory['timestamp'])} ago"
-            )
-            found = True
+            inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
             break
-
-        if not found:
-            if search_term not in summaries and f"wonders about: {search_term}" not in '\n'.join(convo):
-                inject_idea(service, channel, search_term, "wonders about")
 
     # facts and opinions
     for entity in entities:
@@ -341,7 +338,7 @@ def daydream(service, channel):
 def inject_idea(service, channel, idea, verb="thinks"):
     ''' Directly inject an idea into recall memory. '''
     if recall.expired(service, channel):
-        summarize_convo(service, channel, save=True)
+        summarize_convo(service, channel, save=True, context_lines=2)
 
     recall.save(service, channel, idea, f"{BOT_NAME} {verb}", BOT_ID)
 
@@ -379,11 +376,12 @@ async def handle_summary(
     channel: str = Query(..., min_length=1, max_length=255),
     save: Optional[bool] = Query(True),
     max_tokens: Optional[int] = Query(200),
-    include_keywords: Optional[bool] = Query(False)
+    include_keywords: Optional[bool] = Query(False),
+    context_lines: Optional[int] = Query(0)
     ):
     ''' Return the reply '''
     return {
-        "summary": summarize_convo(service, channel, save, max_tokens, include_keywords)
+        "summary": summarize_convo(service, channel, save, max_tokens, include_keywords, context_lines)
     }
 
 @app.post("/status/")

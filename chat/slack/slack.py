@@ -149,14 +149,15 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
     return reply
 
-def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywords=False):
+def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
     ''' Ask interact for a channel summary. '''
     req = {
         "service": SLACK_SERVICE,
         "channel": channel,
         "save": save,
         "max_tokens": max_tokens,
-        "include_keywords": include_keywords
+        "include_keywords": include_keywords,
+        "context_lines": context_lines
     }
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
@@ -470,7 +471,7 @@ def summarize_later(channel, when=None):
         when = 120 + random.randint(20,80)
 
     reminders[channel]['summarizer'].cancel()
-    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True, 50])
+    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True, 50, False, 0])
     reminders[channel]['summarizer'].start()
 
 @app.message(re.compile(r"(.*)", re.I))
