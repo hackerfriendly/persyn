@@ -126,8 +126,8 @@ def choose_reply(prompt, convo):
     if not scored:
         log.warning("😳 No surviving replies, one last try.")
         scored = completion.get_replies(
-            prompt=prompt,
-            convo=convo[-6:]
+            prompt=generate_prompt([], convo[-4:]),
+            convo=convo
         )
 
     if not scored:
@@ -177,7 +177,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
             # Stay on topic
             prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
-            log.error(prompt)
             on_topic = completion.get_summary(
                 prompt,
                 summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
