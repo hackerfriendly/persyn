@@ -40,11 +40,13 @@ IMAGE_MODELS = {
     "dalle2": ["default"]
 }
 
-# Twitter
-twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
-twitter_auth.set_access_token(os.environ['TWITTER_ACCESS_TOKEN'], os.environ['TWITTER_ACCESS_TOKEN_SECRET'])
+# Twitter support
+twitter = None
+if os.environ.get('TWITTER_ACCESS_TOKEN_SECRET', None):
+    twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
+    twitter_auth.set_access_token(os.environ['TWITTER_ACCESS_TOKEN'], os.environ['TWITTER_ACCESS_TOKEN_SECRET'])
 
-twitter = tweepy.API(twitter_auth)
+    twitter = tweepy.API(twitter_auth)
 
 BASEURL = os.environ.get('BASEURL', None)
 
@@ -590,6 +592,10 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
     '''
     Handle reactions: post images to Twitter.
     '''
+    if twitter is None:
+        log.error("🐦 Twitter not configured, check your config.")
+        return
+
     channel = body['event']['item']['channel']
     try:
         result = app.client.conversations_history(
