@@ -541,7 +541,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                 "must": [
                     {"match": {"service.keyword": service}},
                     {"match": {"channel.keyword": channel}},
-                    {"match": {"topic": topic}}
+                    {"match": {"topic.keyword": topic}}
                 ]
             }
         }
