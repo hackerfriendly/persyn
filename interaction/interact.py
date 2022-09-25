@@ -450,9 +450,45 @@ async def handle_opinion(
     channel: str = Query(..., min_length=1, max_length=255),
     topic: str = Query(..., min_length=1, max_length=16384),
     speaker_id: Optional[str] = Query(None, min_length=1, max_length=36),
-    size: Optional[int] = Query(10)
+    size: Optional[int] = Query(10),
+    summarize: Optional[bool] = Query(True),
+    max_tokens: Optional[int] = Query(50)
     ):
     ''' Get our opinion about topic '''
+
+    opinions = recall.opine(service, channel, topic, speaker_id, size)
+
+    if summarize:
+        if not opinions:
+            return { "opinions": [] }
+
+        return {
+            "opinions": [
+                completion.get_summary(
+                    text='\n'.join(opinions),
+                    summarizer="To briefly summarize,",
+                    max_tokens=max_tokens
+                )
+            ]
+        }
+
+    # If not summarizing, just return them all
     return {
-        "opinions": recall.opine(service, channel, topic, speaker_id, size)
+        "opinions": opinions
+    }
+
+@app.post("/judge/")
+async def handle_judging(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    topic: str = Query(..., min_length=1, max_length=16384)
+    ):
+    ''' Form an opinion about topic in a given context '''
+
+    summaries, convo = recall.load(service, channel, summaries=3)
+    opinion = completion.get_opinions(generate_prompt(summaries, convo), topic)
+    recall.judge(service, channel, topic, opinion)
+
+    return {
+        "opinion": opinion
     }

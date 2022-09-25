@@ -234,12 +234,13 @@ def get_status(channel):
 
     return reply.json()['status']
 
-def get_opinion(channel, topic):
-    ''' Ask interact for all the nouns in text, excluding the speakers. '''
+def get_opinions(channel, topic, condense=True):
+    ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
     req = {
         "service": SLACK_SERVICE,
         "channel": channel,
-        "topic": topic
+        "topic": topic,
+        "summarize": condense
     }
     try:
         reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/opinion/", params=req)
@@ -291,10 +292,10 @@ def help_me(say, context): # pylint: disable=unused-argument
     ''' TODO: These should really be / commands. '''
     say(f"""*Commands:*
   `...`: Let {BOT_NAME} keep talking without interrupting
-  `summary`: Explain it all to me in a single sentence.
+  `summary`: Explain it all to me very briefly.
   `status`: Say exactly what is on {BOT_NAME}'s mind.
-  `nouns`: Some nouns worth thinking about.
-  `entities`: Proper entities floating through {BOT_NAME}'s mind.
+  `nouns`: Some things worth thinking about.
+  `reflect`: {BOT_NAME}'s opinion of those things.
   `daydream`: Let {BOT_NAME}'s mind wander on the convo.
 
   *Image generation:*
@@ -398,15 +399,44 @@ def entities(say, context):
 def daydream(say, context):
     ''' Let your mind wander '''
     channel = context['channel_id']
+    say(f"_{BOT_NAME}'s mind starts to wander..._")
+
     ideas = get_daydream(channel)
 
-    for idea in ideas:
+    for idea in random.sample(list(ideas), min(len(ideas), 5)):
         # skip anyone speaking in the channel
         if idea in speakers():
             continue
 
+        # skip eg. "4 months ago"
+        if 'ago' in str(idea):
+            continue
+
         inject_idea(channel, ideas[idea])
-        say(f"💭 _{idea}: {ideas[idea]}_")
+        say(f"💭 *{idea}*: _{ideas[idea]}_")
+
+    for noun in random.sample(get_nouns(get_status(channel)), 8):
+        opinion = get_opinions(channel, noun.lower(), condense=True)
+        if not opinion:
+            opinion = [judge(channel, noun.lower())]
+        if opinion:
+            inject_idea(channel, opinion[0])
+            say(f"🤔 *{noun}*: _{opinion[0]}_")
+
+    say(f"_{BOT_NAME} blinks and looks around._")
+    summarize_later(channel, when=1)
+
+@app.message(re.compile(r"^opinions (.*)$", re.I))
+def opine_all(say, context):
+    ''' Fetch our opinion on a topic '''
+    topic = context['matches'][0]
+    channel = context['channel_id']
+
+    opinions = get_opinions(channel, topic, condense=False)
+    if opinions:
+        say('\n'.join(opinions))
+    else:
+        say('I have no opinion on that topic.')
 
 @app.message(re.compile(r"^opinion (.*)$", re.I))
 def opine(say, context):
@@ -414,11 +444,34 @@ def opine(say, context):
     topic = context['matches'][0]
     channel = context['channel_id']
 
-    opinion = get_opinion(channel, topic)
+    opinion = get_opinions(channel, topic, condense=True)
     if opinion:
-        say('\n'.join(opinion))
+        say(opinion[0])
     else:
         say('I have no opinion on that topic.')
+
+def judge(channel, topic):
+    ''' Form an opinion on topic '''
+    try:
+        req = { "service": SLACK_SERVICE, "channel": channel, "topic": topic }
+        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/judge/", params=req)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /judge/ to interact: {err}")
+        return ""
+    return response.json()['opinion']
+
+@app.message(re.compile(r"^reflect$", re.I))
+def reflect(say, context):
+    ''' Fetch our opinion on all the nouns in the channel '''
+    channel = context['channel_id']
+
+    for noun in get_nouns(get_status(channel)):
+        opinion = get_opinions(channel, noun.lower(), condense=True)
+        if not opinion:
+            opinion = [judge(channel, noun.lower())]
+
+        say(f"{noun}: {opinion[0]}")
 
 @app.message(re.compile(r"^:bulb:$"))
 def lights(say, context): # pylint: disable=unused-argument
