@@ -19,6 +19,7 @@ dreams/GFPGAN/
 dreams/Real-ESRGAN/
 dreams/disco-diffusion-1/
 dreams/latent-diffusion/
+dreams/prompt-parrot/model/
 *~
 .ipynb_checkpoints/
 notebooks/

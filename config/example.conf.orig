@@ -41,6 +41,11 @@ export INTERACT_SERVER_URL="http://${INTERACT_SERVER_HOST}:${INTERACT_SERVER_POR
 # export DREAM_SERVER_PORT=8001
 # export DREAM_SERVER_URL="http://${DREAM_SERVER_HOST}:${DREAM_SERVER_PORT}"
 
+# Prompt Parrot port (prompt-parrot.py). Optional.
+# export PARROT_SERVER_HOST='localhost'
+# export PARROT_SERVER_PORT=8004
+# export PARROT_SERVER_URL="http://${PARROT_SERVER_HOST}:${PARROT_SERVER_PORT}"
+
 # Voice server (gtts_api.py). Optional.
 # export GTTS_SERVER_HOST='localhost'
 # export GTTS_SERVER_PORT=8002
