@@ -78,6 +78,7 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
         # No convo? summarize the summaries
         convo = summaries
 
+    log.warning(f"∑ summarizing convo: {convo}")
     summary = completion.get_summary(
         text='\n'.join(convo),
         summarizer="To briefly summarize this conversation,",
@@ -200,6 +201,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         opinions = recall.opine(service, channel, entity)
         if opinions:
             log.warning(f"🙋‍♂️ I have an opinion about {entity}")
+            # TODO: Summarize all opinions HERE.
             for opinion in opinions:
                 if opinion not in recall.stm.get_bias(service, channel):
                     recall.stm.add_bias(service, channel, opinion)
