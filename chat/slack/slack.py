@@ -302,6 +302,7 @@ def help_me(say, context): # pylint: disable=unused-argument
 
   *Image generation:*
   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
+  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
   :selfie: Take a selfie
 """)
 
@@ -359,6 +360,38 @@ def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
         what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
     )
     take_a_photo(channel, prompt, engine="stable-diffusion")
+
+    ents = get_entities(prompt)
+    if ents:
+        inject_idea(channel, ents)
+        msg = "..."
+    else:
+        msg = prompt
+
+    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+
+    say(the_reply)
+    summarize_later(channel)
+
+@app.message(re.compile(r"^:magic_wand:(.+)$"))
+def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with stable diffusion '''
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a magic wand and frames the scene_")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=10,
+        what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
+    )
+    parrot = prompt_parrot(prompt)
+    log.warning(f"🦜 {parrot}")
+    take_a_photo(channel, prompt, engine="stable-diffusion", style=parrot)
 
     ents = get_entities(prompt)
     if ents:
@@ -451,6 +484,17 @@ def opine(say, context):
         say(opinion[0])
     else:
         say('I have no opinion on that topic.')
+
+def prompt_parrot(prompt):
+    ''' Fetch a prompt from the parrot '''
+    try:
+        req = { "prompt": prompt }
+        response = requests.post(f"{os.environ['PARROT_SERVER_URL']}/generate/", params=req)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
+        return ""
+    return response.json()['parrot']
 
 def judge(channel, topic):
     ''' Form an opinion on topic '''
