@@ -493,7 +493,7 @@ def prompt_parrot(prompt):
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
-        return ""
+        return prompt
     return response.json()['parrot']
 
 def judge(channel, topic):
