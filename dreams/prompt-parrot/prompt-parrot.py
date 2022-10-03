@@ -37,7 +37,7 @@ async def root():
 
 @app.post("/generate/")
 async def generate(
-    prompt: str = Query(..., min_length=1, max_length=50)
+    prompt: str = Query(..., min_length=1, max_length=255)
     ):
     ''' Generate a fancier prompt '''
 
