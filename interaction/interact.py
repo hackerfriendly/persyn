@@ -200,12 +200,19 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         # TODO: when implementing beliefs, new facts should be ignored (or at least hugely discounted).
         opinions = recall.opine(service, channel, entity)
         if opinions:
-            log.warning(f"🙋‍♂️ I have an opinion about {entity}")
-            # TODO: Summarize all opinions HERE.
-            for opinion in opinions:
-                if opinion not in recall.stm.get_bias(service, channel):
-                    recall.stm.add_bias(service, channel, opinion)
-                    inject_idea(service, channel, opinion, f"thinks about {entity}")
+            log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
+            if len(opinions) == 1:
+                opinion = opinions[0]
+            else:
+                opinion = completion.nlp(completion.get_summary(
+                    text='\n'.join(opinions),
+                    summarizer=f"{BOT_NAME}'s opinion about {entity} can be briefly summarized as:",
+                    max_tokens=75
+                )).text
+
+            if opinion not in recall.stm.get_bias(service, channel):
+                recall.stm.add_bias(service, channel, opinion)
+                inject_idea(service, channel, opinion, f"thinks about {entity}")
 
         log.warning(f'❇️ look up "{entity}" on Wikipeda')
 
