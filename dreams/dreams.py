@@ -13,20 +13,16 @@ from pathlib import Path
 from subprocess import run, CalledProcessError
 from threading import Lock
 
-import urllib
-import urllib.request
 import requests
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
-
-from dalle2 import Dalle2
 
 app = FastAPI()
 
 # Every GPU device that can be used for image generation
 GPUS = {
-#    "0": {"name": "TITAN X", "lock": Lock()},
-    "0": {"name": "RTX 2080 Ti", "lock": Lock()}
+    # "0": {"name": "RTX 2080 Ti", "lock": Lock()}, # Used by ssd.py
+   "1": {"name": "TITAN X", "lock": Lock()}
 }
 
 # Only two DALL-E prompts at a time.
@@ -171,43 +167,42 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name, style
         ]
         process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
 
-def dalle2(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
-    ''' https://openai.com/dall-e-2/ (pre-release) '''
-    try:
-        inst = wait_for_dalle()
+def sdd(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
+    ''' Fetch images from sdd.py '''
+    url = os.environ.get('SD_SERVER_URL', None)
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail="SD_SERVER_URL not defined. Check your config."
+        )
 
-        token = os.environ.get('DALLE2_TOKEN', None)
-        if not token:
-            raise HTTPException(
-                status_code=400,
-                detail="No DALLE2_TOKEN defined. Check your config."
-            )
+    req = {
+        "prompt": prompt,
+        # "seed": seed,
+        # "steps": steps,
+        # "width": width,
+        # "height": height
+    }
 
-        dalle = Dalle2(token)
-        generations = dalle.generate(prompt)
+    response = requests.post(f"{url}/generate/", params=req, stream=True)
 
-        if not generations:
-            raise HTTPException(
-                status_code=400,
-                detail="No DALLE2 generations returned"
-            )
+    if not response.ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Generate failed!"
+        )
 
-        images = []
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for i, gen in enumerate(generations):
-                image = f"{image_id}-{i}.jpg"
-                images.append(image)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fname = str(Path(tmpdir)/f"{image_id}.jpg")
+        with open(fname, "wb") as f:
+            for chunk in response.iter_content(chunk_size=1024):
+                f.write(chunk)
 
-                imageurl = gen["generation"]["image_path"]
-                urllib.request.urlretrieve(imageurl, f"{tmpdir}/{image}")
+        upload_files([fname])
 
-            upload_files(Path(tmpdir).glob('*'))
+    if channel:
+        post_to_slack(channel, prompt, [f"{image_id}.jpg"], slack_bot_token, bot_name)
 
-        if channel:
-            post_to_slack(channel, prompt, images, slack_bot_token, bot_name)
-
-    finally:
-        DALLE[inst]['lock'].release()
 
 def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/stable-diffusion '''
@@ -264,8 +259,8 @@ async def generate(
         'vqgan': vqgan,
         'stylegan2': stylegan2,
         'latent-diffusion': latent_diffusion,
-        'stable-diffusion': stable_diffusion,
-        'dalle2': dalle2
+        'stable-diffusion': sdd,
+        'sdd': sdd
     }
 
     models = {
@@ -301,6 +296,9 @@ async def generate(
         },
         'stable-diffusion': {
             'default': {'name': 'stable-diffusion'}
+        },
+        'sdd': {
+            'default': {'name': 'sdd'}
         }
     }
 
@@ -332,7 +330,7 @@ async def generate(
 
     prompt = prompt[:max(len(prompt) + len(style), 300)]
 
-    if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2']:
+    if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2', 'sdd']:
         background_tasks.add_task(
             engines[engine],
             channel=channel,
