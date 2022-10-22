@@ -5,6 +5,7 @@ A REST API for the limbic system.
 '''
 import os
 import random
+import json
 
 from typing import Optional
 
@@ -63,6 +64,18 @@ recall = Recall(
 # local Wikipedia cache
 wikicache = {}
 
+def dialog(convo):
+    '''
+    Return only the words actually spoken in a convo
+    TODO: Convo lines should be better structured, but it would require overhauling memory.py
+    '''
+    return [
+        line for line in convo
+        if not line.startswith(f"{BOT_NAME} remembers")
+        and not line.startswith(f"{BOT_NAME} recalls")
+        and not line.startswith(f"{BOT_NAME} thinks")
+    ]
+
 def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
     '''
     Generate a summary of the current conversation for this channel.
@@ -78,7 +91,9 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
         # No convo? summarize the summaries
         convo = summaries
 
-    log.warning(f"∑ summarizing convo: {convo}")
+    spoken = dialog(convo)
+    log.warning(f"∑ summarizing convo: {json.dumps(spoken)}")
+
     summary = completion.get_summary(
         text='\n'.join(convo),
         summarizer="To briefly summarize this conversation,",
@@ -248,7 +263,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
     # Is this just too much to think about?
     if len(prompt) > completion.max_prompt_length:
         log.warning("🥱 get_reply(): prompt too long, summarizing.")
-        summarize_convo(service, channel, save=True, max_tokens=50)
+        summarize_convo(service, channel, save=True, max_tokens=100)
         summaries, _ = recall.load(service, channel, summaries=3)
         prompt = generate_prompt(summaries, convo[-3:])
 
@@ -343,7 +358,7 @@ def daydream(service, channel):
     log.warning(reply)
     return reply
 
-def inject_idea(service, channel, idea, verb="thinks"):
+def inject_idea(service, channel, idea, verb="recalls"):
     ''' Directly inject an idea into recall memory. '''
     if recall.expired(service, channel):
         summarize_convo(service, channel, save=True, context_lines=2)
