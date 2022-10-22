@@ -334,17 +334,7 @@ def selfie(say, context): # pylint: disable=unused-argument
 @app.message(re.compile(r"^:art:$"))
 def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
     ''' Take a stable diffusion photo of this conversation '''
-    them = get_display_name(context['user_id'])
     channel = context['channel_id']
-
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=10,
-        what=f"*click* _{BOT_NAME} shakes it like a polaroid picture_"
-    )
     take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
 
 @app.message(re.compile(r"^:art:(.+)$"))
@@ -355,27 +345,12 @@ def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
     channel = context['channel_id']
     prompt = context['matches'][0].strip()
 
-    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a shiny new camera and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=10,
-        what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
-    )
     take_a_photo(channel, prompt, engine="stable-diffusion")
-
+    say(f"OK, {speaker_name}.")
+    say_something_later(say, channel, context, 4, ":camera_with_flash:")
     ents = get_entities(prompt)
     if ents:
         inject_idea(channel, ents)
-        msg = "..."
-    else:
-        msg = prompt
-
-    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    say(the_reply)
-    summarize_later(channel)
 
 @app.message(re.compile(r"^:magic_wand:(.+)$"))
 def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
@@ -385,29 +360,15 @@ def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
     channel = context['channel_id']
     prompt = context['matches'][0].strip()
 
-    say(f"OK, {speaker_name}.\n_{BOT_NAME} takes out a magic wand and frames the scene_")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=10,
-        what=f"*{BOT_NAME} takes a picture of _{prompt}_*."
-    )
     parrot = prompt_parrot(prompt)
     log.warning(f"🦜 {parrot}")
     take_a_photo(channel, prompt, engine="stable-diffusion", style=parrot)
+    say(f"OK, {speaker_name}.")
+    say_something_later(say, channel, context, 4, ":camera_with_flash:")
 
     ents = get_entities(prompt)
     if ents:
         inject_idea(channel, ents)
-        msg = "..."
-    else:
-        msg = prompt
-
-    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
-
-    say(the_reply)
-    summarize_later(channel)
 
 @app.message(re.compile(r"^summary(\!)?$", re.I))
 def summarize(say, context):
@@ -527,11 +488,14 @@ def reflect(say, context):
 def lights(say, context): # pylint: disable=unused-argument
     ''' Are the lights on? '''
     them = get_display_name(context['user_id'])
+    channel = context['channel_id']
 
     if os.path.isfile('/home/rob/.u16-lights'):
         say(f'The lights are on, {them}.')
+        inject_idea(channel, "The lights are on.")
     else:
         say(f'The lights are off, {them}.')
+        inject_idea(channel, "The lights are off.")
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
