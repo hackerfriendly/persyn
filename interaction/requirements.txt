@@ -11,3 +11,4 @@ openai
 requests
 shortuuid
 spacy
+Levenshtein

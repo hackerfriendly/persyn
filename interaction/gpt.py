@@ -8,7 +8,7 @@ import spacy
 
 from ftfy import fix_text
 
-from feels import get_flair_score, get_profanity_score
+from feels import get_flair_score, get_profanity_score, closest_emoji
 
 # Color logging
 from color_logging import ColorLog
@@ -160,7 +160,7 @@ class GPT():
 
     def validate_choice(self, text, convo):
         '''
-        Filter low quality GPT responses
+        Filter or fix low quality GPT responses
         '''
         try:
             # Skip blanks
@@ -172,9 +172,15 @@ class GPT():
                 self.stats.update(['URL'])
                 return None
             # Putting words Rob: In people's mouths
-            match = re.search(r'^(.*)?\s+(\S+: .*)', text)
+            match = re.search(r'^(.*)?\s+(\w+: .*)', text)
             if match:
                 text = match.group(1)
+            # Fix bad emoji
+            for match in re.findall(r'(:\S+:)', text):
+                closest = closest_emoji(match)
+                if match != closest:
+                    log.warning(f"😜 {match} > {closest}")
+                    text = text.replace(match, closest)
             if '/r/' in text:
                 self.stats.update(['Reddit'])
                 return None
@@ -235,14 +241,6 @@ class GPT():
             for symbol in r'(){}[]<>':
                 if text.count(symbol) % 2:
                     text = text.replace(symbol, '')
-            for symbol in r'"*_':
-                if text.count(symbol) % 2:
-                    if text.startswith(symbol):
-                        text = text + symbol
-                    elif text.endswith(symbol):
-                        text = symbol + text
-                    else:
-                        text = text.replace(symbol, '')
 
             # Now for sentiment analysis. This uses the entire raw response to see where it's leading.
             raw = choice['text'].strip()
