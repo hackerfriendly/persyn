@@ -171,6 +171,11 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
     # Load summaries and conversation
     summaries, convo = recall.load(service, channel, summaries=2)
+    convo_length = len(convo)
+    last_sentence = None
+
+    if convo:
+        last_sentence = convo[-1]
 
     # Ruminate a bit
     entities = extract_entities(msg)
@@ -212,7 +217,6 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         if entity == '' or entity in STOP_WORDS:
             continue
 
-        # TODO: when implementing beliefs, new facts should be ignored (or at least hugely discounted).
         opinions = recall.opine(service, channel, entity)
         if opinions:
             log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
@@ -253,10 +257,15 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
             except WikipediaException:
                 log.warning("❎ no unambigous wikipedia entry found")
+                wikicache[entity] = None
                 continue
 
-            if entity in wikicache:
+            if entity in wikicache and wikicache[entity] is not None:
                 inject_idea(service, channel, wikicache[entity])
+
+    # If our mind was wandering, remember the last thing that was said.
+    if convo_length != len(convo):
+        inject_idea(service, channel, last_sentence)
 
     prompt = generate_prompt(summaries, convo)
 
