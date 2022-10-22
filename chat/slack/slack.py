@@ -150,7 +150,7 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     reply = response.json()['reply']
     log.warning(f"[{channel}] {BOT_NAME}: {reply}")
 
-    if any(verb in reply for verb in ['look', 'see', 'show', 'imagine']):
+    if any(verb in reply for verb in ['look', 'see', 'show', 'imagine', 'idea', 'memory', 'remember']):
         take_a_photo(channel, reply, engine="stable-diffusion")
 
     return reply
