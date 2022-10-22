@@ -171,6 +171,10 @@ class GPT():
             if 'http' in text or '.com/' in text:
                 self.stats.update(['URL'])
                 return None
+            # Putting words Rob: In people's mouths
+            match = re.search(r'^(.*)?\s+(\S+: .*)', text)
+            if match:
+                text = match.group(1)
             if '/r/' in text:
                 self.stats.update(['Reddit'])
                 return None
@@ -184,7 +188,7 @@ class GPT():
             if self.bleed_through(text):
                 self.stats.update(['prompt bleed-through'])
                 return None
-            # Don't repeat yourself for the last three sentences
+            # Don't repeat yourself
             if text in ' '.join(convo):
                 self.stats.update(['pure repetition'])
                 return None
