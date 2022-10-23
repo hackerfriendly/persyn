@@ -38,10 +38,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 print("Loading BLIP model...")
 blip_model = blip_decoder(
-    pretrained='src/blip/models/model_large_caption.pth',
+    pretrained='env/src/blip/models/model_large_caption.pth',
     image_size=BLIP_IMAGE_EVAL_SIZE,
     vit='large',
-    med_config='src/blip/configs/med_config.json'
+    med_config='env/src/blip/configs/med_config.json'
 )
 blip_model.eval()
 blip_model = blip_model.to(device)
@@ -51,7 +51,7 @@ print("Loading CLIP model...")
 clip_model, clip_preprocess = clip.load(CLIP_MODEL_NAME, device="cuda")
 clip_model.cuda().eval()
 
-DATA_PATH = '/home/rob/persyn/interaction/notebooks/clip-interrogator/data'
+DATA_PATH = './data/'
 
 class LabelTable():
     def __init__(self, labels, desc):
@@ -151,7 +151,7 @@ def load_list(filename):
 
 def interrogate(image):
     caption = generate_caption(image)
-
+    
     images = clip_preprocess(image).unsqueeze(0).cuda()
     with torch.no_grad():
         image_features = clip_model.encode_image(images).float()
@@ -192,6 +192,8 @@ def interrogate(image):
 
     check_multi_batch([best_medium, best_artist, best_trending, best_movement])
 
+    return best_prompt
+    
     extended_flavors = set(flaves)
     for _ in tqdm(range(25), desc="Flavor chain"):
         try:
