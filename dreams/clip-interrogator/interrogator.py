@@ -4,12 +4,12 @@ clip-interrigator by pharmapsychotic, https://github.com/pharmapsychotic/clip-in
 
 Adapted to FastAPI by hackerfriendly
 '''
-import argparse
 import hashlib
 import math
 import os
 import pickle
 import sys
+from typing import Optional
 
 import numpy as np
 import requests
@@ -20,6 +20,9 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 from tqdm import tqdm
+
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import StreamingResponse
 
 sys.path.append('src/blip')
 sys.path.append('src/clip')
@@ -47,6 +50,8 @@ print("Loading CLIP model...")
 
 clip_model, clip_preprocess = clip.load(CLIP_MODEL_NAME, device="cuda")
 clip_model.cuda().eval()
+
+DATA_PATH = '/home/rob/persyn/interaction/notebooks/clip-interrogator/data'
 
 class LabelTable():
     def __init__(self, labels, desc):
@@ -201,8 +206,6 @@ def interrogate(image):
 
     return best_prompt
 
-DATA_PATH = '/home/rob/persyn/interaction/notebooks/clip-interrogator/data'
-
 trending_list = [
     "Artstation",
     "behance",
@@ -237,12 +240,30 @@ mediums = LabelTable(load_list(f'{DATA_PATH}/mediums.txt'), "mediums")
 movements = LabelTable(load_list(f'{DATA_PATH}/movements.txt'), "movements")
 trendings = LabelTable(trending_list, "trendings")
 
-image_url = 'https://cdnb.artstation.com/p/assets/images/images/032/142/769/large/ignacio-bazan-lazcano-book-4-final.jpg'
+app = FastAPI()
 
-if str(image_url).startswith('http://') or str(image_url).startswith('https://'):
-    image = Image.open(requests.get(image_url, stream=True).raw).convert('RGB')
-else:
-    image = Image.open(image_url).convert('RGB')
+@app.get("/")
+async def root():
+    ''' Hi there! '''
+    return {"message": "clip-interrogator server. Try /docs"}
 
-print("Interrogating...")
-print(interrogate(image))
+@app.post("/caption/")
+async def caption(
+    url: str
+    # seed: Optional[int] = Query(-1),
+    # steps: Optional[int] = Query(ge=1, le=100, default=40),
+    # width: Optional[int] = Query(512),
+    # height: Optional[int] = Query(512),
+    # guidance: Optional[float] = Query(7.5),
+    # safe: Optional[bool] = Query(True),
+    ):
+    ''' Generate a caption with clip-interrogator '''
+
+    if url.startswith('http://') or url.startswith('https://'):
+        image = Image.open(requests.get(url, stream=True, timeout=30).raw).convert('RGB')
+    else:
+        image = Image.open(url).convert('RGB')
+
+    print(f"Interrogating {url}")
+
+    return { "caption": interrogate(image) }

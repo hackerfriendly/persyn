@@ -4,3 +4,4 @@ timm
 requests
 git+https://github.com/openai/CLIP.git@main
 git+https://github.com/pharmapsychotic/BLIP.git@main
+fastapi[all]
