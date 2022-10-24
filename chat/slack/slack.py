@@ -8,6 +8,7 @@ import os
 import random
 import re
 import tempfile
+import base64
 
 import threading as th
 
@@ -681,6 +682,52 @@ def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argum
 #     ack()
 #     respond(f"_{command['text']}_")
 
+@app.event("message")
+def handle_message_events(body, say):
+    ''' Handle uploaded images '''
+    channel = body['event']['channel']
+
+    if 'user' not in body['event']:
+        log.warning("Message event with no user. 🤷")
+        return
+
+    speaker_id = body['event']['user']
+    speaker_name = get_display_name(speaker_id)
+    msg = substitute_names(body['event']['text'])
+
+    if channel not in reminders:
+        new_channel(channel)
+
+    log.warning("🖼 needs a caption")
+
+    if 'files' not in body['event']:
+        log.warning("Message with no picture? 🤷‍♂️")
+        return
+
+    for file in body['event']['files']:
+        url = file['url_private_download']
+        resp = requests.get(url, headers={'Authorization': f'Bearer {os.environ["SLACK_BOT_TOKEN"]}'})
+        if not resp.ok:
+            log.error(f"🖼 Could not retrieve image: {resp.text}")
+            continue
+
+        resp = requests.post(
+            f"{os.environ['CAPTION_SERVER_URL']}/caption/",
+            json={"data": base64.b64encode(resp.content).decode()}
+        )
+        if resp.ok:
+            caption = resp.json()['caption']
+            log.warning(f"🖼 {caption}")
+
+            prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
+            say(f"{prefix} {caption}")
+
+            inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
+
+            if not msg.strip():
+                msg = f"{speaker_name} posted a photo of {caption}"
+
+            say(get_reply(channel, msg, speaker_name, speaker_id))
 
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])

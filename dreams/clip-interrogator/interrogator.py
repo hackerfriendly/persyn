@@ -9,6 +9,9 @@ import math
 import os
 import pickle
 import sys
+import base64
+
+from io import BytesIO
 from typing import Optional
 
 import numpy as np
@@ -23,11 +26,9 @@ from tqdm import tqdm
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-sys.path.append('src/blip')
-sys.path.append('src/clip')
-
-import clip # argparse: disable=wrong-import-positio
+import clip # argparse: disable=wrong-import-position
 
 CHUNK_SIZE = 2048
 BLIP_IMAGE_EVAL_SIZE = 384
@@ -38,10 +39,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 print("Loading BLIP model...")
 blip_model = blip_decoder(
-    pretrained='src/blip/models/model_large_caption.pth',
+    pretrained='env/src/blip/models/model_large_caption.pth',
     image_size=BLIP_IMAGE_EVAL_SIZE,
     vit='large',
-    med_config='src/blip/configs/med_config.json'
+    med_config='env/src/blip/configs/med_config.json'
 )
 blip_model.eval()
 blip_model = blip_model.to(device)
@@ -51,7 +52,7 @@ print("Loading CLIP model...")
 clip_model, clip_preprocess = clip.load(CLIP_MODEL_NAME, device="cuda")
 clip_model.cuda().eval()
 
-DATA_PATH = '/home/rob/persyn/interaction/notebooks/clip-interrogator/data'
+DATA_PATH = 'data'
 
 class LabelTable():
     def __init__(self, labels, desc):
@@ -190,21 +191,24 @@ def interrogate(image):
         best_prompt = t.rank(image_features, 1)[0]
         best_sim = similarity(image_features, best_prompt)
 
-    check_multi_batch([best_medium, best_artist, best_trending, best_movement])
-
-    extended_flavors = set(flaves)
-    for _ in tqdm(range(25), desc="Flavor chain"):
-        try:
-            best = rank_top(image_features, [f"{best_prompt}, {f}" for f in extended_flavors])
-            flave = best[len(best_prompt)+2:]
-            if not check(flave):
-                break
-            extended_flavors.remove(flave)
-        except:
-            # exceeded max prompt length
-            break
+    # check_multi_batch([best_medium, best_artist, best_trending, best_movement])
+    check_multi_batch([best_medium])
 
     return best_prompt
+
+    # extended_flavors = set(flaves)
+    # for _ in tqdm(range(25), desc="Flavor chain"):
+    #     try:
+    #         best = rank_top(image_features, [f"{best_prompt}, {f}" for f in extended_flavors])
+    #         flave = best[len(best_prompt)+2:]
+    #         if not check(flave):
+    #             break
+    #         extended_flavors.remove(flave)
+    #     except:
+    #         # exceeded max prompt length
+    #         break
+
+    # return best_prompt
 
 trending_list = [
     "Artstation",
@@ -242,6 +246,9 @@ trendings = LabelTable(trending_list, "trendings")
 
 app = FastAPI()
 
+class ImageToCaption(BaseModel):
+    data: str
+
 @app.get("/")
 async def root():
     ''' Hi there! '''
@@ -249,7 +256,7 @@ async def root():
 
 @app.post("/caption/")
 async def caption(
-    url: str
+    img: ImageToCaption
     # seed: Optional[int] = Query(-1),
     # steps: Optional[int] = Query(ge=1, le=100, default=40),
     # width: Optional[int] = Query(512),
@@ -259,11 +266,13 @@ async def caption(
     ):
     ''' Generate a caption with clip-interrogator '''
 
-    if url.startswith('http://') or url.startswith('https://'):
-        image = Image.open(requests.get(url, stream=True, timeout=30).raw).convert('RGB')
+    if img.data.startswith('http://') or img.data.startswith('https://'):
+        image = Image.open(requests.get(img.data, stream=True, timeout=30).raw).convert('RGB')
     else:
-        image = Image.open(url).convert('RGB')
+        buf = BytesIO()
+        buf.write(base64.b64decode(img.data))
+        buf.seek(0)
 
-    print(f"Interrogating {url}")
+        image = Image.open(buf).convert('RGB')
 
     return { "caption": interrogate(image) }
