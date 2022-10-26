@@ -245,29 +245,32 @@ def check_goals(service, channel, convo):
     achieved = []
 
     if feels['goals']:
-        for goal in feels['goals']:
-            goal_achieved = completion.get_summary(
-                '\n'.join(convo),
-                summarizer=f"Q: True or False: {BOT_NAME} achieved the goal of {goal}.\nA:",
-                max_tokens=10
-            )
+        goal = random.choice(feels['goals'])
+        goal_achieved = completion.get_summary(
+            '\n'.join(convo),
+            summarizer=f"Q: True or False: {BOT_NAME} achieved the goal of {goal}.\nA:",
+            max_tokens=10
+        )
 
-            log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
-            if 'true' not in goal_achieved.lower():
-                log.warning(f"🚫 Goal not yet achieved: {goal}")
-                continue
-
+        log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
+        if 'true' in goal_achieved.lower():
             log.warning(f"🏆 Goal achieved: {goal}")
             achieved.append(goal)
             feels['goals'].remove(goal)
+        else:
+            log.warning(f"🚫 Goal not yet achieved: {goal}")
 
     summary = completion.nlp(completion.get_summary(
         text='\n'.join(convo),
         summarizer=f"{BOT_NAME}'s goal is",
         max_tokens=100
     ))
+
     # 1 sentence max please.
-    recall.add_goal(service, channel, ' '.join([s.text for s in summary.sents][:1]))
+    the_goal = ' '.join([s.text for s in summary.sents][:1])
+
+    if 'remember' not in the_goal:
+        recall.add_goal(service, channel, the_goal)
 
     return achieved
 

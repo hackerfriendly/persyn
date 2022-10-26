@@ -152,7 +152,9 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     reply = resp['reply']
     goals_achieved = resp['goals_achieved']
 
-    log.warning(f"[{channel}] {BOT_NAME}: {reply} (🏆 {goals_achieved})")
+    log.warning(f"[{channel}] {BOT_NAME}: {reply}")
+    if goals_achieved:
+        log.warning(f"[{channel}] {BOT_NAME}: 🏆 {goals_achieved}")
 
     if any(verb in reply for verb in ['look', 'see', 'show', 'imagine', 'idea', 'memory', 'remember']):
         take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
