@@ -42,13 +42,16 @@ class GPT():
         openai.api_key = api_key
         openai.api_base = api_base
 
-    def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=150):
+    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
         '''
         if len(prompt) > self.max_prompt_length:
             log.warning(f"get_replies: text too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+
+        if goals is None:
+            goals = []
 
         response = openai.Completion.create(
             engine=self.model_name,
@@ -64,7 +67,7 @@ class GPT():
         # log.warning(response)
 
         # Choose a response based on the most positive sentiment.
-        scored = self.score_choices(response.choices, convo)
+        scored = self.score_choices(response.choices, convo, goals)
         if not scored:
             self.stats.update(['replies exhausted'])
             log.error("😓 get_replies(): all replies exhausted")
@@ -171,6 +174,8 @@ class GPT():
             if 'http' in text or '.com/' in text:
                 self.stats.update(['URL'])
                 return None
+            # No whitespace
+            text = text.strip()
             # Putting words Rob: In people's mouths
             match = re.search(r'^(.*)?\s+(\w+: .*)', text)
             if match:
@@ -211,7 +216,7 @@ class GPT():
             log.error(f"🔥 Invalid text for validate_choice(): {text}")
             return None
 
-    def score_choices(self, choices, convo):
+    def score_choices(self, choices, convo, goals):
         '''
         Filter potential responses for quality, sentimentm and profanity.
         Rank the remaining choices by sentiment and return the ranked list of possible choices.
@@ -219,6 +224,7 @@ class GPT():
         scored = {}
 
         nouns_in_convo = {word.lemma_ for word in self.nlp(' '.join(convo)) if word.pos_ == "NOUN"}
+        nouns_in_goals = {word.lemma_ for word in self.nlp(' '.join(goals)) if word.pos_ == "NOUN"}
 
         for choice in choices:
             text = self.validate_choice(self.truncate(choice['text']), convo)
@@ -253,10 +259,16 @@ class GPT():
             else:
                 topic_bonus = 0.0
 
+            if nouns_in_reply:
+                goal_bonus = len(nouns_in_goals.intersection(nouns_in_reply)) / float(len(nouns_in_reply))
+            else:
+                goal_bonus = 0.0
+
             all_scores = {
                 "flair": get_flair_score(raw),
                 "profanity": get_profanity_score(raw),
-                "topic_bonus": topic_bonus
+                "topic_bonus": topic_bonus,
+                "goal_bonus": goal_bonus
             }
 
             # Sum the sentiments, emotional heuristic, offensive quotient, and topic_bonus
@@ -264,7 +276,7 @@ class GPT():
             all_scores['total'] = score
             log.warning(
                 ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
-                "❌" if (score < self.min_score or all_scores['profanity'] < -1.0) else "👍"
+                "❌" if (score < self.min_score or all_scores['profanity'] < -1.0) else f"👍 {raw}"
             )
 
             if score < self.min_score:

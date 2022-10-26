@@ -148,13 +148,16 @@ def get_reply(channel, msg, speaker_name, speaker_id):
         log.critical(f"🤖 Could not post /reply/ to interact: {err}")
         return " :speech_balloon: :interrobang: "
 
-    reply = response.json()['reply']
-    log.warning(f"[{channel}] {BOT_NAME}: {reply}")
+    resp = response.json()
+    reply = resp['reply']
+    goals_achieved = resp['goals_achieved']
+
+    log.warning(f"[{channel}] {BOT_NAME}: {reply} (🏆 {goals_achieved})")
 
     if any(verb in reply for verb in ['look', 'see', 'show', 'imagine', 'idea', 'memory', 'remember']):
-        take_a_photo(channel, reply, engine="stable-diffusion")
+        take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
 
-    return reply
+    return (reply, goals_achieved)
 
 def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
     ''' Ask interact for a channel summary. '''
@@ -563,9 +566,13 @@ def catch_all(say, context):
         if random.random() < 0.95:
             return
 
-    the_reply = get_reply(channel, msg, speaker_name, speaker_id)
+    (the_reply, goals_achieved) = get_reply(channel, msg, speaker_name, speaker_id)
 
     say(the_reply)
+
+    for goal in goals_achieved:
+        say(f"🏆 _achievement unlocked: {goal}_")
+
     summarize_later(channel)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
@@ -598,7 +605,12 @@ def handle_app_mention_events(body, client, say): # pylint: disable=unused-argum
     if channel not in reminders:
         new_channel(channel)
 
-    say(get_reply(channel, msg, speaker_name, speaker_id))
+    reply, goals_achieved = get_reply(channel, msg, speaker_name, speaker_id)
+
+    say(reply)
+
+    for goal in goals_achieved:
+        say(f"🏆 _achievement unlocked: {goal}_")
 
 @app.event("reaction_added")
 def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -727,7 +739,12 @@ def handle_message_events(body, say):
             if not msg.strip():
                 msg = f"{speaker_name} posted a photo of {caption}"
 
-            say(get_reply(channel, msg, speaker_name, speaker_id))
+            reply, goals_achieved = get_reply(channel, msg, speaker_name, speaker_id)
+
+            say(reply)
+
+            for goal in goals_achieved:
+                say(f"🏆 _achievement unlocked: {goal}_")
 
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])

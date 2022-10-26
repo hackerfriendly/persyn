@@ -41,7 +41,7 @@ BOT_ENGINE = os.environ.get('BOT_ENGINE', 'openai')
 BOT_VOICE = os.environ.get('BOT_VOICE', 'USA')
 
 # How are we feeling today?
-feels = {'current': "nothing in particular"}
+feels = {'current': "nothing in particular", 'goals': ["to learn about something new"]}
 
 # Pick a language model for completion
 completion = LanguageModel(engine=BOT_ENGINE, bot_name=BOT_NAME)
@@ -120,22 +120,23 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
 
     return summary
 
-def choose_reply(prompt, convo):
+def choose_reply(prompt, convo, goals):
     ''' Choose the best reply from a list of possibilities '''
-
     if not convo:
         convo = [f'{BOT_NAME} changes the subject.']
 
     scored = completion.get_replies(
         prompt=prompt,
-        convo=convo
+        convo=convo,
+        goals=goals
     )
 
     if not scored:
         log.warning("🤨 No surviving replies, try again.")
         scored = completion.get_replies(
             prompt=prompt,
-            convo=convo
+            convo=convo,
+            goals=goals
         )
 
     # Uh-oh. Just keep it brief.
@@ -143,7 +144,8 @@ def choose_reply(prompt, convo):
         log.warning("😳 No surviving replies, one last try.")
         scored = completion.get_replies(
             prompt=generate_prompt([], convo[-4:]),
-            convo=convo
+            convo=convo,
+            goals=goals
         )
 
     if not scored:
@@ -160,59 +162,34 @@ def choose_reply(prompt, convo):
 
     return reply
 
-def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
-    ''' Get the best reply for the given channel. Saves to recall memory. '''
-    if recall.expired(service, channel):
-        summarize_convo(service, channel, save=True, context_lines=2)
+def gather_memories(service, channel, entities, summaries, convo):
+    ''' Take a trip down memory lane '''
+    search_term = ' '.join(entities)
+    log.warning(f"ℹ️ look up '{search_term}' in memories")
 
-    if msg != '...':
-        recall.save(service, channel, msg, speaker_name, speaker_id)
-        tts(msg)
+    for memory in recall.remember(service, channel, search_term, summaries=5):
+        # Don't repeat yourself, loopy-lou.
+        if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
+            continue
 
-    # Load summaries and conversation
-    summaries, convo = recall.load(service, channel, summaries=2)
-    convo_length = len(convo)
-    last_sentence = None
+        # Stay on topic
+        prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
+        on_topic = completion.get_summary(
+            prompt,
+            summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
+            max_tokens=10)
 
-    if convo:
-        last_sentence = convo[-1]
+        log.warning(f"🧐 Are we on topic? {on_topic}")
+        if 'true' not in on_topic.lower():
+            log.warning(f"🚫 Irrelevant memory discarded: {memory}")
+            continue
 
-    # Ruminate a bit
-    entities = extract_entities(msg)
+        log.warning(f"🐘 Memory found: {memory}")
+        inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
+        break
 
-    if entities:
-        log.warning(f"🆔 extracted entities: {entities}")
-    else:
-        entities = completion.get_keywords(convo)
-        log.warning(f"🆔 extracted keywords: {entities}")
-
-    # memories
-    if entities:
-        search_term = ' '.join(entities)
-        log.warning(f"ℹ️ look up '{search_term}' in memories")
-
-        for memory in recall.remember(service, channel, search_term, summaries=5):
-            # Don't repeat yourself, loopy-lou.
-            if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
-                continue
-
-            # Stay on topic
-            prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
-            on_topic = completion.get_summary(
-                prompt,
-                summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
-                max_tokens=10)
-
-            log.warning(f"🧐 Are we on topic? {on_topic}")
-            if 'true' not in on_topic.lower():
-                log.warning(f"🚫 Irrelevant memory discarded: {memory}")
-                continue
-
-            log.warning(f"🐘 Memory found: {memory}")
-            inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
-            break
-
-    # facts and opinions
+def gather_facts(service, channel, entities):
+    ''' Gather facts (from Wikipedia) and opinions (from memory) '''
     for entity in entities:
         if entity == '' or entity in STOP_WORDS:
             continue
@@ -263,8 +240,73 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
             if entity in wikicache and wikicache[entity] is not None:
                 inject_idea(service, channel, wikicache[entity])
 
+def check_goals(convo):
+    ''' Have we achieved our goals? '''
+    achieved = []
+
+    if feels['goals']:
+        for goal in feels['goals']:
+            goal_achieved = completion.get_summary(
+                '\n'.join(convo),
+                summarizer=f"Q: True or False: {BOT_NAME} achieved the goal of {goal}.\nA:",
+                max_tokens=10
+            )
+
+            log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
+            if 'true' not in goal_achieved.lower():
+                log.warning(f"🚫 Goal not yet achieved: {goal}")
+                continue
+
+            log.warning(f"🏆 Goal achieved: {goal}")
+            achieved.append(goal)
+            feels['goals'].remove(goal)
+
+    return achieved
+
+def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
+    '''
+    Get the best reply for the given channel. Saves to recall memory.
+
+    Returns the best reply, and any goals achieved.
+    '''
+    feels['goals'] = recall.get_goals(service, channel)
+
+    if recall.expired(service, channel):
+        summarize_convo(service, channel, save=True, context_lines=2)
+
+    if msg != '...':
+        recall.save(service, channel, msg, speaker_name, speaker_id)
+        tts(msg)
+
+    # Load summaries and conversation
+    summaries, convo = recall.load(service, channel, summaries=2)
+    convo_length = len(convo)
+    last_sentence = None
+
+    if convo:
+        last_sentence = convo[-1]
+
+    # Ruminate a bit
+    entities = extract_entities(msg)
+
+    if entities:
+        log.warning(f"🆔 extracted entities: {entities}")
+    else:
+        entities = completion.get_keywords(convo)
+        log.warning(f"🆔 extracted keywords: {entities}")
+
+    if entities:
+        # Memories
+        gather_memories(service, channel, entities, summaries, convo)
+
+        # Facts and opinions (interleaved)
+        gather_facts(service, channel, entities)
+
+    # Goals
+    achieved = check_goals(convo)
+
     # If our mind was wandering, remember the last thing that was said.
-    if convo_length != len(convo):
+    if convo_length != len(recall.load(service, channel, summaries=0)[1]):
         inject_idea(service, channel, last_sentence)
 
     prompt = generate_prompt(summaries, convo)
@@ -276,7 +318,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         summaries, _ = recall.load(service, channel, summaries=3)
         prompt = generate_prompt(summaries, convo[-3:])
 
-    reply = choose_reply(prompt, convo)
+    reply = choose_reply(prompt, convo, feels['goals'])
 
     recall.save(service, channel, reply, BOT_NAME, BOT_ID)
 
@@ -285,11 +327,16 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
     log.warning("😄 Feeling:", feels['current'])
 
-    return reply
+    return (reply, achieved)
 
 def default_prompt_prefix():
     ''' The default prompt prefix '''
-    return f"""It is {natural_time()} on {today()}. {BOT_NAME} is feeling {feels['current']}."""
+    if feels['goals']:
+        goals = f"""\n{BOT_NAME}'s goals include {', '.join(feels['goals'])}."""
+    else:
+        goals = ""
+
+    return f"""It is {natural_time()} on {today()}. {BOT_NAME} is feeling {feels['current']}.{goals}"""
 
 def generate_prompt(summaries, convo):
     ''' Generate the model prompt '''
@@ -398,8 +445,10 @@ async def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
+    (reply, achieved) = get_reply(service, channel, msg, speaker_name, speaker_id)
     return {
-        "reply": get_reply(service, channel, msg, speaker_name, speaker_id)
+        "reply": reply,
+        "goals_achieved": achieved
     }
 
 @app.post("/summary/")
@@ -510,18 +559,24 @@ async def handle_opinion(
         "opinions": opinions
     }
 
-@app.post("/judge/")
-async def handle_judging(
+@app.post("/add_goal/")
+async def add_goal(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    topic: str = Query(..., min_length=1, max_length=16384)
+    goal: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Form an opinion about topic in a given context '''
-
-    summaries, convo = recall.load(service, channel, summaries=3)
-    opinion = completion.get_opinions(generate_prompt(summaries, convo), topic)
-    recall.judge(service, channel, topic, opinion)
-
+    ''' Add a short-term goal in a given context '''
+    recall.add_goal(service, channel, goal)
     return {
-        "opinion": opinion
+        "goals": recall.get_goals(service, channel)
+    }
+
+@app.post("/get_goals/")
+async def get_goals(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    ):
+    ''' Fetch the current short-term goals for a given context '''
+    return {
+        "goals": recall.get_goals(service, channel)
     }

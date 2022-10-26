@@ -79,6 +79,14 @@ class Recall(): # pylint: disable=too-many-arguments
         self.stm.clear(service, channel)
         return True
 
+    def add_goal(self, service, channel, goal):
+        ''' Add a goal to this channel. '''
+        return self.stm.add_goal(service, channel, goal)
+
+    def get_goals(self, service, channel):
+        ''' Return the temparary goals for this channel, if any. '''
+        return self.stm.get_goals(service, channel)
+
     def remember(self, service, channel, search, summaries):
         ''' Oh right. '''
         return self.ltm.remember(service, channel, search, summaries)
@@ -105,6 +113,7 @@ class ShortTermMemory():
         self.convo[service][channel]['convo'] = []
         self.convo[service][channel]['id'] = su.encode(uuid.uuid4())
         self.convo[service][channel]['opinions'] = []
+        self.convo[service][channel]['goals'] = []
 
     def exists(self, service, channel):
         ''' True if a channel already exists, else False '''
@@ -158,6 +167,30 @@ class ShortTermMemory():
         Return all short-term opinions for a channel.
         '''
         return self.convo[service][channel]['opinions']
+
+    def add_goal(self, service, channel, goal):
+        '''
+        Append a short-term goal to a channel. Returns the convo_id.
+        '''
+        if not self.exists(service, channel):
+            self.create(service, channel)
+
+        if goal not in self.convo[service][channel]['goals']:
+            self.convo[service][channel]['goals'].append(goal)
+
+        # five max
+        if len(self.convo[service][channel]['goals']) > 5:
+            self.convo[service][channel]['goals'] = self.convo[service][channel]['goals'][:5]
+
+        return self.convo[service][channel]['goals']
+
+    def get_goals(self, service, channel):
+        '''
+        Return all short-term goals for a channel.
+        '''
+        if not self.exists(service, channel):
+            return []
+        return self.convo[service][channel]['goals']
 
     def fetch(self, service, channel):
         ''' Fetch the current convo, if any '''

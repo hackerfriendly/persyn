@@ -61,7 +61,7 @@ class NLPCLOUD():
             sleep(3)
             return self.client.generation(**kwargs)
 
-    def get_replies(self, prompt, convo, stop=None, temperature=0.9, max_tokens=150):
+    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
