@@ -240,7 +240,7 @@ def gather_facts(service, channel, entities):
             if entity in wikicache and wikicache[entity] is not None:
                 inject_idea(service, channel, wikicache[entity])
 
-def check_goals(convo):
+def check_goals(service, channel, convo):
     ''' Have we achieved our goals? '''
     achieved = []
 
@@ -260,6 +260,14 @@ def check_goals(convo):
             log.warning(f"🏆 Goal achieved: {goal}")
             achieved.append(goal)
             feels['goals'].remove(goal)
+
+    summary = completion.nlp(completion.get_summary(
+        text='\n'.join(convo),
+        summarizer=f"{BOT_NAME}'s goal is",
+        max_tokens=100
+    ))
+    # 1 sentence max please.
+    recall.add_goal(service, channel, ' '.join([s.text for s in summary.sents][:1]))
 
     return achieved
 
@@ -303,7 +311,7 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
         gather_facts(service, channel, entities)
 
     # Goals
-    achieved = check_goals(convo)
+    achieved = check_goals(service, channel, convo)
 
     # If our mind was wandering, remember the last thing that was said.
     if convo_length != len(recall.load(service, channel, summaries=0)[1]):

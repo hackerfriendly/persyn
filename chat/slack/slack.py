@@ -266,6 +266,26 @@ def get_opinions(channel, topic, condense=True):
     return []
     # return [e for e in reply.json()['nouns'] if e not in speakers()]
 
+def get_goals(channel):
+    ''' Return the goals for this channel, if any. '''
+    req = {
+        "service": SLACK_SERVICE,
+        "channel": channel
+    }
+    try:
+        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/get_goals/", params=req)
+        reply.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        log.critical(f"🤖 Could not post /get_goals/ to interact: {err}")
+        return []
+
+    ret = reply.json()
+    if 'goals' in ret:
+        return ret['goals']
+
+    return []
+    # return [e for e in reply.json()['nouns'] if e not in speakers()]
+
 def inject_idea(channel, idea):
     ''' Directly inject an idea into the stream of consciousness. '''
     req = {
@@ -307,12 +327,25 @@ def help_me(say, context): # pylint: disable=unused-argument
   `nouns`: Some things worth thinking about.
   `reflect`: {BOT_NAME}'s opinion of those things.
   `daydream`: Let {BOT_NAME}'s mind wander on the convo.
+  `goals`: See {BOT_NAME}'s current goals
 
   *Image generation:*
   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
   :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
   :selfie: Take a selfie
 """)
+
+@app.message(re.compile(r"^goals$"))
+def goals(say, context): # pylint: disable=unused-argument
+    ''' What are we doing again? '''
+    channel = context['channel_id']
+
+    current_goals = get_goals(channel)
+    if current_goals:
+        for goal in current_goals:
+            say(f":goal_net: {goal}")
+    else:
+        say(":shrug:")
 
 @app.message(re.compile(r"^:selfie:$"))
 def selfie(say, context): # pylint: disable=unused-argument

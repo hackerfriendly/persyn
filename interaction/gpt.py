@@ -271,8 +271,8 @@ class GPT():
                 "goal_bonus": goal_bonus
             }
 
-            # Sum the sentiments, emotional heuristic, offensive quotient, and topic_bonus
-            score = sum(all_scores.values()) + topic_bonus
+            # Sum the sentiments, emotional heuristic, offensive quotient, and topic / goal bonuses
+            score = sum(all_scores.values()) + topic_bonus + goal_bonus
             all_scores['total'] = score
             log.warning(
                 ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
