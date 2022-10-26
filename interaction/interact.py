@@ -269,9 +269,11 @@ def check_goals(service, channel, convo):
     # 1 sentence max please.
     the_goal = ' '.join([s.text for s in summary.sents][:1])
 
-    if 'remember' not in the_goal:
-        recall.add_goal(service, channel, the_goal)
+    for taboo in ['remember', 'learn']:
+        if taboo in the_goal:
+            return achieved
 
+    recall.add_goal(service, channel, the_goal)
     return achieved
 
 def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
