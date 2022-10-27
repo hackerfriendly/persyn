@@ -83,8 +83,9 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
     If save == True, save it to long term memory.
     Returns the text summary.
     '''
-    summaries, convo = recall.load(service, channel, summaries=3)
+    summaries, convo = recall.load(service, channel, summaries=0)
     if not convo:
+        summaries, convo = recall.load(service, channel, summaries=3)
         if not summaries:
             summaries = [ f"{BOT_NAME} isn't sure what is happening." ]
 
@@ -190,7 +191,10 @@ def gather_memories(service, channel, entities, summaries, convo):
 
 def gather_facts(service, channel, entities):
     ''' Gather facts (from Wikipedia) and opinions (from memory) '''
-    for entity in entities:
+    if not entities:
+        return
+
+    for entity in random.sample(entities, k=min(3, len(entities))):
         if entity == '' or entity in STOP_WORDS:
             continue
 
