@@ -12,12 +12,16 @@ import base64
 
 import threading as th
 
+from pathlib import Path
+from hashlib import sha256
+
 import requests
-import tweepy
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk.errors import SlackApiError
+
+from mastodon import Mastodon, MastodonError
 
 # Color logging
 from color_logging import ColorLog
@@ -41,15 +45,21 @@ IMAGE_MODELS = {
     "dalle2": ["default"]
 }
 
-# Twitter support
-twitter = None
-if os.environ.get('TWITTER_ACCESS_TOKEN_SECRET', None):
-    twitter_auth = tweepy.OAuthHandler(os.environ['TWITTER_CONSUMER_KEY'], os.environ['TWITTER_CONSUMER_SECRET'])
-    twitter_auth.set_access_token(os.environ['TWITTER_ACCESS_TOKEN'], os.environ['TWITTER_ACCESS_TOKEN_SECRET'])
-
-    twitter = tweepy.API(twitter_auth)
-
-BASEURL = os.environ.get('BASEURL', None)
+# Mastodon support for image posting
+mastodon = os.environ.get('MASTODON_INSTANCE', None)
+if mastodon:
+    masto_secret = Path(os.environ.get('MASTODON_SECRET', ''))
+    if not masto_secret.is_file():
+        raise RuntimeError(
+            f"Mastodon instance specified but secret file '{masto_secret}' does not exist.\nCheck your config."
+        )
+    try:
+        mastodon = Mastodon(
+            access_token = masto_secret,
+            api_base_url = mastodon
+        )
+    except MastodonError:
+        raise SystemExit("Invalid credentials, run mast-login.py and try again.") from MastodonError
 
 # Slack bolt App
 app = App(token=os.environ['SLACK_BOT_TOKEN'])
@@ -580,6 +590,28 @@ def summarize_later(channel, when=None):
     reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True, 50, False, 0])
     reminders[channel]['summarizer'].start()
 
+def get_caption(url):
+    ''' Fetch the image caption using CLIP Interrogator '''
+    log.warning("🖼  needs a caption")
+
+    resp = requests.get(url, headers={'Authorization': f'Bearer {os.environ["SLACK_BOT_TOKEN"]}'})
+    if not resp.ok:
+        log.error(f"🖼  Could not retrieve image: {resp.text}")
+        return None
+
+    resp = requests.post(
+        f"{os.environ['CAPTION_SERVER_URL']}/caption/",
+        json={"data": base64.b64encode(resp.content).decode()}
+    )
+    if not resp.ok:
+        log.error(f"🖼  Could not get_caption(): {resp.text}")
+        return None
+
+    caption = resp.json()['caption']
+    log.warning(f"🖼  got caption: '{caption}'")
+    return caption
+
+
 @app.message(re.compile(r"(.*)", re.I))
 def catch_all(say, context):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
@@ -650,10 +682,10 @@ def handle_app_mention_events(body, client, say): # pylint: disable=unused-argum
 @app.event("reaction_added")
 def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
     '''
-    Handle reactions: post images to Twitter.
+    Handle reactions: post images to Mastodon.
     '''
-    if twitter is None:
-        log.error("🐦 Twitter not configured, check your config.")
+    if mastodon is None:
+        log.error("🎺 Mastodon is not configured, check your config.")
         return
 
     channel = body['event']['item']['channel']
@@ -670,7 +702,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
             if 'reactions' in msg and len(msg['reactions']) == 1:
                 if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign', 'hand']:
                     if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
-                        log.warning("🐦 Not posting:", {msg['reactions'][0]['name']})
+                        log.warning("🎺 Not posting:", {msg['reactions'][0]['name']})
                         return
                     log.warning("🤯 All is forgotten.")
                     forget_it(channel)
@@ -684,19 +716,12 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                     return
 
                 if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
-                    if not BASEURL:
-                        log.error("Twitter posting is not enabled in the config.")
-                        return
-
                     blk = msg['blocks'][0]
-                    if not blk['image_url'].startswith(BASEURL):
-                        log.warning("🐦 Not my image, so not posting it to Twitter.")
-                        return
                     try:
-                        if len(blk['alt_text']) > 277:
-                            caption = blk['alt_text'][:277] + '...'
+                        if len(blk['alt_text']) > 497:
+                            toot = blk['alt_text'][:497] + '...'
                         else:
-                            caption = blk['alt_text']
+                            toot = blk['alt_text']
                         with tempfile.TemporaryDirectory() as tmpdir:
                             media_ids = []
                             for blk in msg['blocks']:
@@ -706,17 +731,25 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                                 with open(fname, "wb") as f:
                                     for chunk in response.iter_content():
                                         f.write(chunk)
-                                media = twitter.media_upload(fname)
-                                media_ids.append(media.media_id)
-                            twitter.update_status(caption, media_ids=media_ids)
-                        log.info(f"🐦 Uploaded {blk['image_url']}")
-                    except requests.exceptions.RequestException as err:
-                        log.error(f"🐦 Could not post {blk['image_url']}: {err}")
+                                caption = get_caption(blk['image_url'])
+                                media_ids.append(mastodon.media_post(fname, description=caption).id)
+
+                            resp = mastodon.status_post(
+                                toot,
+                                media_ids=media_ids,
+                                idempotency_key=sha256(blk['image_url'].encode()).hexdigest()
+                            )
+                            if not resp or 'url' not in resp:
+                                raise MastodonError(resp)
+                            log.info(f"🎺 Posted {blk['image_url']}: {resp['url']}")
+
+                    except MastodonError as err:
+                        log.error(f"🎺 Could not post {blk['image_url']}: {err}")
                 else:
-                    log.error(f"🐦 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
+                    log.error(f"🎺 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
 
     except SlackApiError as err:
-        log.error(f"Error: {err}")
+        log.error(f"Slack error: {err}")
 
 @app.event("reaction_removed")
 def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argument
@@ -745,27 +778,14 @@ def handle_message_events(body, say):
     if channel not in reminders:
         new_channel(channel)
 
-    log.warning("🖼 needs a caption")
-
     if 'files' not in body['event']:
         log.warning("Message with no picture? 🤷‍♂️")
         return
 
     for file in body['event']['files']:
-        url = file['url_private_download']
-        resp = requests.get(url, headers={'Authorization': f'Bearer {os.environ["SLACK_BOT_TOKEN"]}'})
-        if not resp.ok:
-            log.error(f"🖼 Could not retrieve image: {resp.text}")
-            continue
+        caption = get_caption(file['url_private_download'])
 
-        resp = requests.post(
-            f"{os.environ['CAPTION_SERVER_URL']}/caption/",
-            json={"data": base64.b64encode(resp.content).decode()}
-        )
-        if resp.ok:
-            caption = resp.json()['caption']
-            log.warning(f"🖼 {caption}")
-
+        if caption:
             prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
             say(f"{prefix} {caption}")
 
@@ -780,6 +800,18 @@ def handle_message_events(body, say):
 
             for goal in goals_achieved:
                 say(f"🏆 _achievement unlocked: {goal}_")
+        else:
+            say(
+                random.choice([
+                    "I'm not sure.",
+                    ":face_with_monocle:",
+                    ":face_with_spiral_eyes:",
+                    "What the...?",
+                    "Um.",
+                    "No idea.",
+                    "Beats me."
+                ])
+            )
 
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
