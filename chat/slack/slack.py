@@ -59,7 +59,7 @@ if mastodon:
             api_base_url = mastodon
         )
     except MastodonError:
-        raise SystemExit("Invalid credentials, run mast-login.py and try again.") from MastodonError
+        raise SystemExit("Invalid credentials, run masto-login.py and try again.") from MastodonError
 
 # Slack bolt App
 app = App(token=os.environ['SLACK_BOT_TOKEN'])
