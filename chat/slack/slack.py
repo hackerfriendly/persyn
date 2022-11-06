@@ -2,13 +2,14 @@
 """
 slack.py
 
-A Slack chat plugin for Persyn. Sends Slack events to interact.py.
+
 """
+import base64
 import os
 import random
 import re
+import sys
 import tempfile
-import base64
 
 import threading as th
 
@@ -23,13 +24,14 @@ from slack_sdk.errors import SlackApiError
 
 from mastodon import Mastodon, MastodonError
 
+# Add persyn root to sys.path
+sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
+
 # Color logging
-from color_logging import ColorLog
+from utils.color_logging import log # pylint: disable=import-error, wrong-import-position
 
 # Artist names
-from art import artists
-
-log = ColorLog()
+from utils.art import artists # pylint: disable=import-error, wrong-import-position
 
 # These are all defined in config/*.conf
 BOT_NAME = os.environ["BOT_NAME"]
