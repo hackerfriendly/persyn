@@ -7,7 +7,6 @@ import sys
 
 from click import style
 
-
 __all__ = [ 'ColorLog', 'log' ]
 
 class ColorLog():
