@@ -12,13 +12,10 @@ import re
 import sys
 import tempfile
 
-import threading as th
-
 from pathlib import Path
 from hashlib import sha256
 
 import requests
-import yaml
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -37,6 +34,9 @@ from utils.art import artists
 
 # Bot config
 from utils.config import load_config
+
+# Reminders
+from interaction.reminders import reminders
 
 if len(sys.argv) != 2:
     raise SystemExit("Usage: slack.py [config.yaml]")
@@ -68,11 +68,7 @@ mastodon = None
 app = App(token=CFG.chat.slack.bot_token)
 
 CFG.chat.service = app.client.auth_test().data['url']
-log.warning(f"Logged into chat service: {CFG.chat.service}")
-
-raise SystemExit()
-# Reminders: container for delayed response threads
-reminders = {}
+log.warning(f"Logged into chat.service: {CFG.chat.service}")
 
 # Username cache
 known_users = {}
@@ -81,16 +77,6 @@ known_users = {}
 known_bots = {}
 
 # TODO: callback thread to poll(?) interact, or inbound API call for push notifications
-
-def new_channel(channel):
-    ''' Initialize a new channel. '''
-    reminders[channel] = {
-        'rejoinder': th.Timer(0, log.warning, ["New channel rejoinder:", channel]),
-        'summarizer': th.Timer(1, log.warning, ["New channel summarizer:", channel]),
-        'count': 0
-    }
-    reminders[channel]['rejoinder'].start()
-    reminders[channel]['summarizer'].start()
 
 def is_bot(user_id):
     """ Returns true if the user_id is a Slack bot """
@@ -125,13 +111,13 @@ def speakers():
 def take_a_photo(channel, prompt, engine=None, model=None, style=None):
     ''' Pick an image engine and generate a photo '''
     if not engine:
-        engine = random.choice(CFG.dreams.engines)
+        engine = random.choice(CFG.dreams.all_engines)
 
     req = {
         "engine": engine,
         "channel": channel,
         "prompt": prompt,
-        "model": model or random.choice(IMAGE_MODELS[engine]),
+        "model": model,
         "slack_bot_token": CFG.chat.slack.bot_token,
         "bot_name": CFG.id.name,
         "style": style
@@ -552,30 +538,19 @@ def lights(say, context): # pylint: disable=unused-argument
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
-    if channel not in reminders:
-        new_channel(channel)
 
-    reminders[channel]['rejoinder'].cancel()
+    reminders.cancel(channel)
 
     if what:
-        reminders[channel]['rejoinder'] = th.Timer(when, say, [what])
+        reminders.add(channel, when, say, [what])
     else:
-        # Only 3 autoreplies max
-        if reminders[channel]['count'] >= 3:
-            reminders[channel]['count'] = 0
-            return
-
-        reminders[channel]['count'] = reminders[channel]['count'] + 1
-
         # yadda yadda yadda
         yadda = {
             'channel_id': channel,
             'user_id': context['user_id'],
             'matches': ['...']
         }
-        reminders[channel]['rejoinder'] = th.Timer(when, catch_all, [say, yadda])
-
-    reminders[channel]['rejoinder'].start()
+        reminders.add(channel, when, catch_all, [say, yadda])
 
 def summarize_later(channel, when=None):
     '''
@@ -584,15 +559,10 @@ def summarize_later(channel, when=None):
     Every time this thread executes, a new convo summary is saved. Only one
     can run at a time.
     '''
-    if channel not in reminders:
-        new_channel(channel)
-
     if not when:
         when = 120 + random.randint(20,80)
 
-    reminders[channel]['summarizer'].cancel()
-    reminders[channel]['summarizer'] = th.Timer(when, get_summary, [channel, True, True, 50, False, 0])
-    reminders[channel]['summarizer'].start()
+    reminders.add(channel, when, get_summary, [channel, True, True, 50, False, 0], 'summarizer')
 
 def get_caption(url):
     ''' Fetch the image caption using CLIP Interrogator '''
@@ -602,6 +572,8 @@ def get_caption(url):
     if not resp.ok:
         log.error(f"🖼  Could not retrieve image: {resp.text}")
         return None
+
+    # return caption_photo(resp.content)
 
     resp = requests.post(
         f"{CFG.dreams.caption.url}/caption/",
@@ -621,11 +593,8 @@ def catch_all(say, context):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
     channel = context['channel_id']
 
-    if channel not in reminders:
-        new_channel(channel)
-
     # Interrupt any rejoinder in progress
-    reminders[channel]['rejoinder'].cancel()
+    reminders.cancel(channel)
 
     speaker_id = context['user_id']
     speaker_name = get_display_name(speaker_id)
@@ -672,9 +641,6 @@ def handle_app_mention_events(body, client, say): # pylint: disable=unused-argum
     speaker_id = body['event']['user']
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(body['event']['text'])
-
-    if channel not in reminders:
-        new_channel(channel)
 
     reply, goals_achieved = get_reply(channel, msg, speaker_name, speaker_id)
 
@@ -760,11 +726,6 @@ def handle_reaction_removed_events(body, logger): # pylint: disable=unused-argum
     ''' Skip for now '''
     log.info("Reaction removed event")
 
-# @app.command("/echo")
-# def repeat_text(ack, respond, command):
-#     # Acknowledge command request
-#     ack()
-#     respond(f"_{command['text']}_")
 
 @app.event("message")
 def handle_message_events(body, say):
@@ -778,9 +739,6 @@ def handle_message_events(body, say):
     speaker_id = body['event']['user']
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(body['event']['text'])
-
-    if channel not in reminders:
-        new_channel(channel)
 
     if 'files' not in body['event']:
         log.warning("Message with no picture? 🤷‍♂️")
