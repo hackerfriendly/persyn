@@ -2,7 +2,7 @@
 """
 slack.py
 
-
+Chat with your persyn on Slack.
 """
 # pylint: disable=import-error, wrong-import-position
 import base64
@@ -38,10 +38,7 @@ from utils.config import load_config
 # Reminders
 from interaction.reminders import reminders
 
-if len(sys.argv) != 2:
-    raise SystemExit("Usage: slack.py [config.yaml]")
-
-CFG = load_config(sys.argv[1])
+CFG = load_config()
 
 # import json
 # raise SystemExit(json.dumps(CFG.dreams))

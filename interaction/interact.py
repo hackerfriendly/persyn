@@ -3,11 +3,14 @@ interact.py
 
 A REST API for the limbic system.
 '''
+# pylint: disable=import-error, wrong-import-position, wrong-import-order
 import os
+import sys
 import random
 import json
 
 from typing import Optional
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -16,6 +19,9 @@ import wikipedia
 from wikipedia.exceptions import WikipediaException
 
 from spacy.lang.en.stop_words import STOP_WORDS
+
+# Add persyn root to sys.path
+sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 # Prompt completion
 from completion import LanguageModel
@@ -30,33 +36,30 @@ from memory import Recall
 from chrono import natural_time, ago, today
 
 # Color logging
-from color_logging import ColorLog
+from utils.color_logging import log
 
-log = ColorLog()
+# Bot config
+from utils.config import load_config
 
-# These are all defined in config/*.conf
-BOT_NAME = os.environ['BOT_NAME']
-BOT_ID = os.environ['BOT_ID']
-BOT_ENGINE = os.environ.get('BOT_ENGINE', 'openai')
-BOT_VOICE = os.environ.get('BOT_VOICE', 'USA')
+CFG = load_config()
 
 # How are we feeling today?
 feels = {'current': "nothing in particular", 'goals': ["to learn about something new"]}
 
 # Pick a language model for completion
-completion = LanguageModel(engine=BOT_ENGINE, bot_name=BOT_NAME)
+completion = LanguageModel(engine=CFG.completion.engine, bot_name=CFG.id.name)
 
 # FastAPI
 app = FastAPI()
 
 # Elasticsearch memory
 recall = Recall(
-    bot_name=BOT_NAME,
-    bot_id=BOT_ID,
-    url=os.environ['ELASTIC_URL'],
-    auth_name=os.environ['ELASTIC_USER'],
-    auth_key=os.environ.get('ELASTIC_KEY', None),
-    index_prefix=os.environ.get('ELASTIC_INDEX_PREFIX', BOT_NAME.lower()),
+    bot_name=CFG.id.name,
+    bot_id=CFG.id.guid,
+    url=CFG.memory.elastic.url,
+    auth_name=CFG.memory.elastic.user,
+    auth_key=CFG.memory.elastic.key,
+    index_prefix=CFG.memory.elastic.index_prefix,
     conversation_interval=600, # ten minutes
     verify_certs=True
 )
@@ -71,9 +74,9 @@ def dialog(convo):
     '''
     return [
         line for line in convo
-        if not line.startswith(f"{BOT_NAME} remembers")
-        and not line.startswith(f"{BOT_NAME} recalls")
-        and not line.startswith(f"{BOT_NAME} thinks")
+        if not line.startswith(f"{CFG.id.name} remembers")
+        and not line.startswith(f"{CFG.id.name} recalls")
+        and not line.startswith(f"{CFG.id.name} thinks")
     ]
 
 def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
@@ -87,7 +90,7 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
     if not convo:
         summaries, convo = recall.load(service, channel, summaries=3)
         if not summaries:
-            summaries = [ f"{BOT_NAME} isn't sure what is happening." ]
+            summaries = [ f"{CFG.id.name} isn't sure what is happening." ]
 
         # No convo? summarize the summaries
         convo = summaries
@@ -124,7 +127,7 @@ def summarize_convo(service, channel, save=True, max_tokens=200, include_keyword
 def choose_reply(prompt, convo, goals):
     ''' Choose the best reply from a list of possibilities '''
     if not convo:
-        convo = [f'{BOT_NAME} changes the subject.']
+        convo = [f'{CFG.id.name} changes the subject.']
 
     scored = completion.get_replies(
         prompt=prompt,
@@ -174,7 +177,7 @@ def gather_memories(service, channel, entities, summaries, convo):
             continue
 
         # Stay on topic
-        prompt = '\n'.join(convo + [f"{BOT_NAME} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
+        prompt = '\n'.join(convo + [f"{CFG.id.name} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
         on_topic = completion.get_summary(
             prompt,
             summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
@@ -206,7 +209,7 @@ def gather_facts(service, channel, entities):
             else:
                 opinion = completion.nlp(completion.get_summary(
                     text='\n'.join(opinions),
-                    summarizer=f"{BOT_NAME}'s opinion about {entity} can be briefly summarized as:",
+                    summarizer=f"{CFG.id.name}'s opinion about {entity} can be briefly summarized as:",
                     max_tokens=75
                 )).text
 
@@ -252,7 +255,7 @@ def check_goals(service, channel, convo):
         goal = random.choice(feels['goals'])
         goal_achieved = completion.get_summary(
             '\n'.join(convo),
-            summarizer=f"Q: True or False: {BOT_NAME} achieved the goal of {goal}.\nA:",
+            summarizer=f"Q: True or False: {CFG.id.name} achieved the goal of {goal}.\nA:",
             max_tokens=10
         )
 
@@ -266,7 +269,7 @@ def check_goals(service, channel, convo):
 
     summary = completion.nlp(completion.get_summary(
         text='\n'.join(convo),
-        summarizer=f"{BOT_NAME}'s goal is",
+        summarizer=f"{CFG.id.name}'s goal is",
         max_tokens=100
     ))
 
@@ -337,9 +340,10 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 
     reply = choose_reply(prompt, convo, feels['goals'])
 
-    recall.save(service, channel, reply, BOT_NAME, BOT_ID)
+    recall.save(service, channel, reply, CFG.id.name, CFG.id.guid)
 
-    tts(reply, voice=BOT_VOICE)
+    # tts(reply, voice=CFG.voice.personality)
+
     feels['current'] = completion.get_feels(f'{prompt} {reply}')
 
     log.warning("😄 Feeling:", feels['current'])
@@ -349,11 +353,11 @@ def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disabl
 def default_prompt_prefix():
     ''' The default prompt prefix '''
     if feels['goals']:
-        goals = f"""\n{BOT_NAME}'s goals include {', '.join(feels['goals'])}."""
+        goals = f"""\n{CFG.id.name}'s goals include {', '.join(feels['goals'])}."""
     else:
         goals = ""
 
-    return f"""It is {natural_time()} on {today()}. {BOT_NAME} is feeling {feels['current']}.{goals}"""
+    return f"""It is {natural_time()} on {today()}. {CFG.id.name} is feeling {feels['current']}.{goals}"""
 
 def generate_prompt(summaries, convo):
     ''' Generate the model prompt '''
@@ -362,7 +366,7 @@ def generate_prompt(summaries, convo):
     return f"""{default_prompt_prefix()}
 {newline.join(summaries)}
 {newline.join(convo)}
-{BOT_NAME}:"""
+{CFG.id.name}:"""
 
 def get_status(service, channel):
     ''' status report '''
@@ -383,13 +387,13 @@ def amnesia(service, channel):
 def extract_nouns(text):
     ''' return a list of all nouns (except pronouns) in text '''
     nlp = completion.nlp(text)
-    nouns = {n.text.strip() for n in nlp.noun_chunks if n.text.strip() != BOT_NAME for t in n if t.pos_ != 'PRON'}
+    nouns = {n.text.strip() for n in nlp.noun_chunks if n.text.strip() != CFG.id.name for t in n if t.pos_ != 'PRON'}
     return list(nouns)
 
 def extract_entities(text):
     ''' return a list of all entities in text '''
     nlp = completion.nlp(text)
-    return list({n.text.strip() for n in nlp.ents if n.text.strip() != BOT_NAME})
+    return list({n.text.strip() for n in nlp.ents if n.text.strip() != CFG.id.name})
 
 def daydream(service, channel):
     ''' Chew on recent conversation '''
@@ -436,7 +440,7 @@ def inject_idea(service, channel, idea, verb="recalls"):
     if recall.expired(service, channel):
         summarize_convo(service, channel, save=True, context_lines=2)
 
-    recall.save(service, channel, idea, f"{BOT_NAME} {verb}", BOT_ID)
+    recall.save(service, channel, idea, f"{CFG.id.name} {verb}", CFG.id.guid)
 
     log.warning(f"🤔 {verb}:", idea)
     return "🤔"
