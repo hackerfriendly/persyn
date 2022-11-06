@@ -47,7 +47,7 @@ CFG = load_config()
 feels = {'current': "nothing in particular", 'goals': ["to learn about something new"]}
 
 # Pick a language model for completion
-completion = LanguageModel(engine=CFG.completion.engine, bot_name=CFG.id.name)
+completion = LanguageModel(config=CFG)
 
 # FastAPI
 app = FastAPI()
