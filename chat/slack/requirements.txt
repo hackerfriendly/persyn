@@ -1,4 +1,6 @@
-slack_bolt
-requests
 click
+dotwiz
 Mastodon.py
+pyyaml
+requests
+slack_bolt

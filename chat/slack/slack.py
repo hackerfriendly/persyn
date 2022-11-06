@@ -4,6 +4,7 @@ slack.py
 
 
 """
+# pylint: disable=import-error, wrong-import-position
 import base64
 import os
 import random
@@ -17,6 +18,7 @@ from pathlib import Path
 from hashlib import sha256
 
 import requests
+import yaml
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -28,47 +30,47 @@ from mastodon import Mastodon, MastodonError
 sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
 
 # Color logging
-from utils.color_logging import log # pylint: disable=import-error, wrong-import-position
+from utils.color_logging import log
 
 # Artist names
-from utils.art import artists # pylint: disable=import-error, wrong-import-position
+from utils.art import artists
 
-# These are all defined in config/*.conf
-BOT_NAME = os.environ["BOT_NAME"]
-BOT_ID = os.environ["BOT_ID"]
+# Bot config
+from utils.config import load_config
 
-IMAGE_ENGINES = ["latent-diffusion", "v-diffusion-pytorch-cfg", "v-diffusion-pytorch-clip"] # "vqgan", "stylegan2"
-IMAGE_MODELS = {
-    "stylegan2": ["ffhq", "waifu"], #, "cat", "car", "church", "horse"
-    "v-diffusion-pytorch-cfg": ["cc12m_1_cfg"],
-    "v-diffusion-pytorch-clip": ["yfcc_2", "cc12m_1"],
-    "latent-diffusion": ["default"],
-    "stable-diffusion": ["default"],
-    "dalle2": ["default"]
-}
+if len(sys.argv) != 2:
+    raise SystemExit("Usage: slack.py [config.yaml]")
+
+CFG = load_config(sys.argv[1])
+
+# import json
+# raise SystemExit(json.dumps(CFG.dreams))
 
 # Mastodon support for image posting
-mastodon = os.environ.get('MASTODON_INSTANCE', None)
-if mastodon:
-    masto_secret = Path(os.environ.get('MASTODON_SECRET', ''))
-    if not masto_secret.is_file():
-        raise RuntimeError(
-            f"Mastodon instance specified but secret file '{masto_secret}' does not exist.\nCheck your config."
-        )
-    try:
-        mastodon = Mastodon(
-            access_token = masto_secret,
-            api_base_url = mastodon
-        )
-    except MastodonError:
-        raise SystemExit("Invalid credentials, run masto-login.py and try again.") from MastodonError
+# mastodon = os.environ.get('MASTODON_INSTANCE', None)
+# if mastodon:
+#     masto_secret = Path(os.environ.get('MASTODON_SECRET', ''))
+#     if not masto_secret.is_file():
+#         raise RuntimeError(
+#             f"Mastodon instance specified but secret file '{masto_secret}' does not exist.\nCheck your config."
+#         )
+#     try:
+#         mastodon = Mastodon(
+#             access_token = masto_secret,
+#             api_base_url = mastodon
+#         )
+#     except MastodonError:
+#         raise SystemExit("Invalid credentials, run masto-login.py and try again.") from MastodonError
+
+mastodon = None
 
 # Slack bolt App
-app = App(token=os.environ['SLACK_BOT_TOKEN'])
-# Saved to the service field in ltm
-SLACK_SERVICE = app.client.auth_test().data['url']
-log.warning(f"SLACK_SERVICE: {SLACK_SERVICE}")
+app = App(token=CFG.chat.slack.bot_token)
 
+CFG.chat.service = app.client.auth_test().data['url']
+log.warning(f"Logged into chat service: {CFG.chat.service}")
+
+raise SystemExit()
 # Reminders: container for delayed response threads
 reminders = {}
 
@@ -118,27 +120,27 @@ def substitute_names(text):
 
 def speakers():
     ''' Everyone speaking in any channel '''
-    return [BOT_NAME] + list(known_users.values())
+    return [CFG.id.name] + list(known_users.values())
 
 def take_a_photo(channel, prompt, engine=None, model=None, style=None):
     ''' Pick an image engine and generate a photo '''
     if not engine:
-        engine = random.choice(IMAGE_ENGINES)
+        engine = random.choice(CFG.dreams.engines)
 
     req = {
         "engine": engine,
         "channel": channel,
         "prompt": prompt,
         "model": model or random.choice(IMAGE_MODELS[engine]),
-        "slack_bot_token": os.environ['SLACK_BOT_TOKEN'],
-        "bot_name": os.environ['BOT_NAME'],
+        "slack_bot_token": CFG.chat.slack.bot_token,
+        "bot_name": CFG.id.name,
         "style": style
     }
-    reply = requests.post(f"{os.environ['DREAM_SERVER_URL']}/generate/", params=req)
+    reply = requests.post(f"{CFG.dreams.url}/generate/", params=req)
     if reply.ok:
-        log.warning(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code}")
+        log.warning(f"{CFG.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
     else:
-        log.error(f"{os.environ['DREAM_SERVER_URL']}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
+        log.error(f"{CFG.dreams.url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
     return reply.ok
 
 def get_reply(channel, msg, speaker_name, speaker_id):
@@ -147,14 +149,14 @@ def get_reply(channel, msg, speaker_name, speaker_id):
         log.info(f"[{channel}] {speaker_name}: {msg}")
 
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
         "msg": msg,
         "speaker_name": speaker_name,
         "speaker_id": speaker_id
     }
     try:
-        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/reply/", params=req)
+        response = requests.post(f"{CFG.interact.url}/reply/", params=req)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /reply/ to interact: {err}")
@@ -164,9 +166,9 @@ def get_reply(channel, msg, speaker_name, speaker_id):
     reply = resp['reply']
     goals_achieved = resp['goals_achieved']
 
-    log.warning(f"[{channel}] {BOT_NAME}: {reply}")
+    log.warning(f"[{channel}] {CFG.id.name}: {reply}")
     if goals_achieved:
-        log.warning(f"[{channel}] {BOT_NAME}: 🏆 {goals_achieved}")
+        log.warning(f"[{channel}] {CFG.id.name}: 🏆 {goals_achieved}")
 
     if any(verb in reply for verb in ['look', 'see', 'show', 'imagine', 'idea', 'memory', 'remember']):
         take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
@@ -176,7 +178,7 @@ def get_reply(channel, msg, speaker_name, speaker_id):
 def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
     ''' Ask interact for a channel summary. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
         "save": save,
         "max_tokens": max_tokens,
@@ -184,7 +186,7 @@ def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywor
         "context_lines": context_lines
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/summary/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/summary/", params=req)
         reply.raise_for_status()
     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
         log.critical(f"🤖 Could not post /summary/ to interact: {err}")
@@ -206,7 +208,7 @@ def get_nouns(text):
         "text": text
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/nouns/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/nouns/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /nouns/ to interact: {err}")
@@ -220,7 +222,7 @@ def get_entities(text):
         "text": text
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/entities/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/entities/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /entities/ to interact: {err}")
@@ -231,11 +233,11 @@ def get_entities(text):
 def get_daydream(channel):
     ''' Ask interact to daydream about this channel. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/daydream/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/daydream/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /daydream/ to interact: {err}")
@@ -246,11 +248,11 @@ def get_daydream(channel):
 def get_status(channel):
     ''' Ask interact for status. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/status/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/status/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /status/ to interact: {err}")
@@ -261,13 +263,13 @@ def get_status(channel):
 def get_opinions(channel, topic, condense=True):
     ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
         "topic": topic,
         "summarize": condense
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/opinion/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/opinion/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
@@ -283,11 +285,11 @@ def get_opinions(channel, topic, condense=True):
 def get_goals(channel):
     ''' Return the goals for this channel, if any. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel
     }
     try:
-        reply = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/get_goals/", params=req)
+        reply = requests.post(f"{CFG.interact.url}/get_goals/", params=req)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /get_goals/ to interact: {err}")
@@ -303,12 +305,12 @@ def get_goals(channel):
 def inject_idea(channel, idea):
     ''' Directly inject an idea into the stream of consciousness. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
         "idea": idea
     }
     try:
-        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/inject/", params=req)
+        response = requests.post(f"{CFG.interact.url}/inject/", params=req)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /inject/ to interact: {err}")
@@ -319,11 +321,11 @@ def inject_idea(channel, idea):
 def forget_it(channel):
     ''' There is no antimemetics division. '''
     req = {
-        "service": SLACK_SERVICE,
+        "service": CFG.chat.service,
         "channel": channel,
     }
     try:
-        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/amnesia/", params=req)
+        response = requests.post(f"{CFG.interact.url}/amnesia/", params=req)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not forget_it(): {err}")
@@ -335,13 +337,13 @@ def forget_it(channel):
 def help_me(say, context): # pylint: disable=unused-argument
     ''' TODO: These should really be / commands. '''
     say(f"""*Commands:*
-  `...`: Let {BOT_NAME} keep talking without interrupting
+  `...`: Let {CFG.id.name} keep talking without interrupting
   `summary`: Explain it all to me very briefly.
-  `status`: Say exactly what is on {BOT_NAME}'s mind.
+  `status`: Say exactly what is on {CFG.id.name}'s mind.
   `nouns`: Some things worth thinking about.
-  `reflect`: {BOT_NAME}'s opinion of those things.
-  `daydream`: Let {BOT_NAME}'s mind wander on the convo.
-  `goals`: See {BOT_NAME}'s current goals
+  `reflect`: {CFG.id.name}'s opinion of those things.
+  `daydream`: Let {CFG.id.name}'s mind wander on the convo.
+  `goals`: See {CFG.id.name}'s current goals
 
   *Image generation:*
   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
@@ -367,7 +369,7 @@ def selfie(say, context): # pylint: disable=unused-argument
     them = get_display_name(context['user_id'])
     channel = context['channel_id']
 
-    say(f"OK, {them}.\n_{BOT_NAME} takes out a camera and smiles awkwardly_.")
+    say(f"OK, {them}.\n_{CFG.id.name} takes out a camera and smiles awkwardly_.")
     say_something_later(
         say,
         channel,
@@ -450,7 +452,7 @@ def entities(say, context):
 def daydream(say, context):
     ''' Let your mind wander '''
     channel = context['channel_id']
-    say(f"_{BOT_NAME}'s mind starts to wander..._")
+    say(f"_{CFG.id.name}'s mind starts to wander..._")
 
     ideas = get_daydream(channel)
 
@@ -474,7 +476,7 @@ def daydream(say, context):
             inject_idea(channel, opinion[0])
             say(f"🤔 *{noun}*: _{opinion[0]}_")
 
-    say(f"_{BOT_NAME} blinks and looks around._")
+    say(f"_{CFG.id.name} blinks and looks around._")
     summarize_later(channel, when=1)
 
 @app.message(re.compile(r"^opinions (.*)$", re.I))
@@ -505,7 +507,7 @@ def prompt_parrot(prompt):
     ''' Fetch a prompt from the parrot '''
     try:
         req = { "prompt": prompt }
-        response = requests.post(f"{os.environ['PARROT_SERVER_URL']}/generate/", params=req)
+        response = requests.post(f"{CFG.dreams.parrot.url}/generate/", params=req)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
@@ -515,8 +517,8 @@ def prompt_parrot(prompt):
 def judge(channel, topic):
     ''' Form an opinion on topic '''
     try:
-        req = { "service": SLACK_SERVICE, "channel": channel, "topic": topic }
-        response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/judge/", params=req)
+        req = { "service": CFG.chat.service, "channel": channel, "topic": topic }
+        response = requests.post(f"{CFG.interact.url}/judge/", params=req)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /judge/ to interact: {err}")
@@ -596,13 +598,13 @@ def get_caption(url):
     ''' Fetch the image caption using CLIP Interrogator '''
     log.warning("🖼  needs a caption")
 
-    resp = requests.get(url, headers={'Authorization': f'Bearer {os.environ["SLACK_BOT_TOKEN"]}'})
+    resp = requests.get(url, headers={'Authorization': f'Bearer {CFG.chat.slack.bot_token}'})
     if not resp.ok:
         log.error(f"🖼  Could not retrieve image: {resp.text}")
         return None
 
     resp = requests.post(
-        f"{os.environ['CAPTION_SERVER_URL']}/caption/",
+        f"{CFG.dreams.caption.url}/caption/",
         json={"data": base64.b64encode(resp.content).decode()}
     )
     if not resp.ok:
@@ -710,8 +712,8 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                     forget_it(channel)
                     return
                 try:
-                    req = { "service": SLACK_SERVICE, "channel": channel }
-                    response = requests.post(f"{os.environ['INTERACT_SERVER_URL']}/amnesia/", params=req)
+                    req = { "service": CFG.chat.service, "channel": channel }
+                    response = requests.post(f"{CFG.interact.url}/amnesia/", params=req)
                     response.raise_for_status()
                 except requests.exceptions.RequestException as err:
                     log.critical(f"🤖 Could not post /amnesia/ to interact: {err}")
@@ -816,7 +818,7 @@ def handle_message_events(body, say):
             )
 
 if __name__ == "__main__":
-    handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
+    handler = SocketModeHandler(app, CFG.chat.slack.app_token)
     try:
         handler.start()
     # Exit gracefully on ^C (so the wrapper script while loop continues)
