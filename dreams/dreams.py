@@ -6,6 +6,7 @@ A REST API for generating chat bot hallucinations.
 import json
 import os
 import random
+import sys
 import tempfile
 import uuid
 
@@ -17,19 +18,21 @@ import requests
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 
+# Add persyn root to sys.path
+sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
+
+# Color logging
+from utils.color_logging import log
+
+# Bot config
+from utils.config import load_config
+
+CFG = load_config()
+
 app = FastAPI()
 
-# Every GPU device that can be used for image generation
-GPUS = {
-    # "0": {"name": "RTX 2080 Ti", "lock": Lock()}, # Used by ssd.py
-   "1": {"name": "TITAN X", "lock": Lock()}
-}
-
-# Only two DALL-E prompts at a time.
-DALLE = {
-    "0": {"name": "DALLE-0", "lock": Lock()},
-    "1": {"name": "DALLE-1", "lock": Lock()}
-}
+for gpu in CFG.dreams.gpus:
+    CFG.dreams.gpus[gpu] = Lock()
 
 SCRIPT_PATH = Path(__file__).resolve().parent
 
@@ -46,7 +49,7 @@ def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
                     "type": "plain_text",
                     "text": prompt if i == 0 else " "
                 },
-                "image_url" : f"{os.environ['BASEURL']}/{image}",
+                "image_url" : f"{CFG.dreams.upload.url_base}/{image}",
                 "alt_text": prompt
             }
         )
@@ -62,25 +65,18 @@ def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
 
 def upload_files(files):
     ''' scp files to SCPDEST. Expects a Path glob generator. '''
-    scpopts = os.environ.get('SCPOPTS', None)
+    scpopts = getattr(CFG.dreams.upload, 'opts', None)
     if scpopts:
-        run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [os.environ['SCPDEST']], check=True)
+        run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [CFG.dreams.upload.dest_path], check=True)
     else:
-        run(['/usr/bin/scp'] + [str(f) for f in files] + [os.environ['SCPDEST']], check=True)
+        run(['/usr/bin/scp'] + [str(f) for f in files] + [CFG.dreams.upload.dest_path], check=True)
 
 def wait_for_gpu():
     ''' Return the device name of first available GPU. Blocks until one is available and sets the lock. '''
     while True:
-        gpu = random.choice(list(GPUS))
-        if GPUS[gpu]['lock'].acquire(timeout=1):
+        gpu = random.choice(list(CFG.dreams.gpus))
+        if CFG.dreams.gpus[gpu].acquire(timeout=1):
             return gpu
-
-def wait_for_dalle():
-    ''' Return the device name of first available DALLE slot. Blocks until one is available and sets the lock. '''
-    while True:
-        inst = random.choice(list(DALLE))
-        if DALLE[inst]['lock'].acquire(timeout=1):
-            return inst
 
 def process_prompt(cmd, channel, prompt, images, tmpdir, slack_bot_token, bot_name):
     ''' Generate the image files, upload them, post to Slack, and clean up. '''
@@ -92,7 +88,7 @@ def process_prompt(cmd, channel, prompt, images, tmpdir, slack_bot_token, bot_na
             env['CUDA_VISIBLE_DEVICES'] = gpu
             run(cmd, check=True, env=env)
         finally:
-            GPUS[gpu]['lock'].release()
+            CFG.dreams.gpus[gpu].release()
 
         upload_files(Path(tmpdir).glob('*'))
 
@@ -169,11 +165,11 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name, style
 
 def sdd(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
     ''' Fetch images from sdd.py '''
-    url = os.environ.get('SD_SERVER_URL', None)
+    url = getattr(CFG.dreams.stable_diffusion, 'url', None)
     if not url:
         raise HTTPException(
             status_code=400,
-            detail="SD_SERVER_URL not defined. Check your config."
+            detail="dreams.stable_diffusion.url not defined. Check your config."
         )
 
     req = {
@@ -236,7 +232,7 @@ async def root():
 async def image_url(image_id):
     ''' Redirect to BASEURL '''
     response = Response(status_code=301)
-    response.headers['Location'] = f"{os.environ['BASEURL']}/{image_id}.jpg"
+    response.headers['Location'] = f"{CFG.dreams.upload.url_base}/{image_id}.jpg"
     return response
 
 @app.post("/generate/")

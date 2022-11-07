@@ -33,4 +33,10 @@ def load_config():
             config['dreams']['engines'][engine] = {}
             config['dreams']['engines'][engine]['models'] = ["default"]
 
+    if 'gpus' in config['dreams']:
+        gpus = config['dreams']['gpus']
+        config['dreams']['gpus'] = {}
+        for gpu in gpus:
+            config['dreams']['gpus'][str(gpu)] = gpus[gpu]
+
     return DotWiz(config)
