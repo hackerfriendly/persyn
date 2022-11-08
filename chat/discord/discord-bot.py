@@ -11,6 +11,7 @@ import random
 import re
 import sys
 import tempfile
+import asyncio
 
 from pathlib import Path
 from hashlib import sha256
@@ -33,7 +34,7 @@ from utils.art import artists
 from utils.config import load_config
 
 # Reminders
-from interaction.reminders import reminders
+from interaction.reminders import async_reminders as reminders
 
 intents = discord.Intents.default()
 intents.message_content = True # pylint: disable=assigning-non-slot
@@ -63,7 +64,7 @@ def get_reply(guild, channel, msg, speaker_name, speaker_id):
     }
 
     try:
-        response = requests.post(f"{CFG.interact.url}/reply/", params=req)
+        response = requests.post(f"{CFG.interact.url}/reply/", params=req, timeout=30)
         response.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"🤖 Could not post /reply/ to interact: {err}")
@@ -83,23 +84,19 @@ def get_reply(guild, channel, msg, speaker_name, speaker_id):
     return (reply, goals_achieved)
 
 
-def say_something_later(say, channel, context, when, what=None):
+def say_something_later(ctx, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
-    return
+    reminders.cancel(ctx.channel.id)
 
-#     reminders.cancel(channel)
+    # response = requests.get("http://whatismyip.akamai.com/")
+    # print(response.text)
 
-#     if what:
-#         reminders.add(channel, when, say, [what])
-#     else:
-#         # yadda yadda yadda
-#         yadda = {
-#             'channel_id': channel,
-#             'user_id': context['user_id'],
-#             'matches': ['...']
-#         }
-#         reminders.add(channel, when, catch_all, [say, yadda])
-
+    if what:
+        reminders.add(ctx.channel.id, when, ctx.channel.send, [what])
+    else:
+        # Yadda yadda yadda
+        ctx.content = "..."
+        reminders.add(ctx.channel.id, when, on_message, ctx)
 
 @app.event
 async def on_ready():
@@ -111,7 +108,9 @@ async def on_message(ctx):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
 
     # Don't talk to yourself.
+    log.warning("AUTHOR:", f"{ctx.author} == {app.user}")
     if ctx.author == app.user:
+        log.warning(f"🤖 Ignoring my own message: {ctx.content}")
         return
 
     # Interrupt any rejoinder in progress
@@ -134,18 +133,14 @@ async def on_message(ctx):
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
-            ctx.channel.send,
-            ctx.channel.id,
             ctx,
             when=1
         )
         return
 
     # 5% chance of random interjection later
-    if random.random() < 0.05:
+    if random.random() < 10.05:
         say_something_later(
-            ctx.channel.send,
-            ctx.channel.id,
             ctx,
             when=random.randint(2, 5)
         )
@@ -166,11 +161,11 @@ async def on_raw_reaction_remove(ctx):
 
     log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.content})')
 
-@app.event
-async def on_error(event, *args, **kwargs):
-    ''' on_error '''
-    log.critical(f'ERROR: {event}')
-    log.critical(f'args: {args}')
-    log.critical(f'kwargs: {kwargs}')
+# @app.event
+# async def on_error(event, *args, **kwargs):
+#     ''' on_error '''
+#     log.critical(f'ERROR: {event}')
+#     log.critical(f'args: {args}')
+#     log.critical(f'kwargs: {kwargs}')
 
 app.run(CFG.chat.discord.token)
