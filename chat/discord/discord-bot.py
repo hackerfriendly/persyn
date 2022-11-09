@@ -34,7 +34,7 @@ from utils.art import artists
 from utils.config import load_config
 
 # Reminders
-from interaction.reminders import async_reminders as reminders
+from interaction.reminders import AsyncReminders
 
 intents = discord.Intents.default()
 intents.message_content = True # pylint: disable=assigning-non-slot
@@ -48,6 +48,9 @@ known_users = {}
 
 # Known bots
 known_bots = {}
+
+# Coroutine reminders
+reminders = AsyncReminders()
 
 def get_reply(guild, channel, msg, speaker_name, speaker_id):
     ''' Ask interact for an appropriate response. '''

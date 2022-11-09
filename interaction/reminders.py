@@ -15,7 +15,7 @@ sys.path.insert(0, str((Path(__file__) / '../').resolve()))
 
 from utils.color_logging import log
 
-__all__ = [ 'Reminders', 'reminders' ]
+__all__ = [ 'Reminders', 'AsyncReminders' ]
 
 class Reminders():
     ''' Container class for managing reminder threads '''
@@ -85,6 +85,3 @@ class AsyncReminders():
             return
 
         self.reminders[channel][name].cancel()
-
-async_reminders = AsyncReminders()
-reminders = Reminders()

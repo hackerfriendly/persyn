@@ -21,8 +21,6 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk.errors import SlackApiError
 
-from mastodon import Mastodon, MastodonError
-
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
 
@@ -36,42 +34,27 @@ from utils.art import artists
 from utils.config import load_config
 
 # Reminders
-from interaction.reminders import reminders
-
-CFG = load_config()
-
-# import json
-# raise SystemExit(json.dumps(CFG.dreams))
+from interaction.reminders import Reminders
 
 # Mastodon support for image posting
-# mastodon = os.environ.get('MASTODON_INSTANCE', None)
-# if mastodon:
-#     masto_secret = Path(os.environ.get('MASTODON_SECRET', ''))
-#     if not masto_secret.is_file():
-#         raise RuntimeError(
-#             f"Mastodon instance specified but secret file '{masto_secret}' does not exist.\nCheck your config."
-#         )
-#     try:
-#         mastodon = Mastodon(
-#             access_token = masto_secret,
-#             api_base_url = mastodon
-#         )
-#     except MastodonError:
-#         raise SystemExit("Invalid credentials, run masto-login.py and try again.") from MastodonError
+from chat.mastodon.login import mastodon
 
-mastodon = None
+CFG = load_config()
 
 # Slack bolt App
 app = App(token=CFG.chat.slack.bot_token)
 
 CFG.chat.service = app.client.auth_test().data['url']
-log.warning(f"Logged into chat.service: {CFG.chat.service}")
+log.info(f"Logged into chat.service: {CFG.chat.service}")
 
 # Username cache
 known_users = {}
 
 # Known bots
 known_bots = {}
+
+# Threaded reminders
+reminders = Reminders()
 
 # TODO: callback thread to poll(?) interact, or inbound API call for push notifications
 
@@ -573,7 +556,7 @@ def get_caption(url):
     # return caption_photo(resp.content)
 
     resp = requests.post(
-        f"{CFG.dreams.caption.url}/caption/",
+        f"{CFG.dreams.captions.url}/caption/",
         json={"data": base64.b64encode(resp.content).decode()}
     )
     if not resp.ok:
@@ -707,10 +690,10 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                                 idempotency_key=sha256(blk['image_url'].encode()).hexdigest()
                             )
                             if not resp or 'url' not in resp:
-                                raise MastodonError(resp)
+                                raise RuntimeError(resp)
                             log.info(f"🎺 Posted {blk['image_url']}: {resp['url']}")
 
-                    except MastodonError as err:
+                    except RuntimeError as err:
                         log.error(f"🎺 Could not post {blk['image_url']}: {err}")
                 else:
                     log.error(f"🎺 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
