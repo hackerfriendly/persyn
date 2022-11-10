@@ -36,6 +36,9 @@ from utils.config import load_config
 # Reminders
 from interaction.reminders import Reminders
 
+# Common chat library
+from chat.common import get_reply, take_a_photo, summarize_later, get_summary
+
 # Mastodon support for image posting
 from chat.mastodon.login import mastodon
 
@@ -87,86 +90,6 @@ def substitute_names(text):
 def speakers():
     ''' Everyone speaking in any channel '''
     return [CFG.id.name] + list(known_users.values())
-
-def take_a_photo(channel, prompt, engine=None, model=None, style=None):
-    ''' Pick an image engine and generate a photo '''
-    if not engine:
-        engine = random.choice(CFG.dreams.all_engines)
-
-    req = {
-        "engine": engine,
-        "channel": channel,
-        "prompt": prompt,
-        "model": model,
-        "slack_bot_token": CFG.chat.slack.bot_token,
-        "bot_name": CFG.id.name,
-        "style": style
-    }
-    reply = requests.post(f"{CFG.dreams.url}/generate/", params=req)
-    if reply.ok:
-        log.warning(f"{CFG.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
-    else:
-        log.error(f"{CFG.dreams.url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
-    return reply.ok
-
-def get_reply(channel, msg, speaker_name, speaker_id):
-    ''' Ask interact for an appropriate response. '''
-    if msg != '...':
-        log.info(f"[{channel}] {speaker_name}: {msg}")
-
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-        "msg": msg,
-        "speaker_name": speaker_name,
-        "speaker_id": speaker_id
-    }
-    try:
-        response = requests.post(f"{CFG.interact.url}/reply/", params=req)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /reply/ to interact: {err}")
-        return " :speech_balloon: :interrobang: "
-
-    resp = response.json()
-    reply = resp['reply']
-    goals_achieved = resp['goals_achieved']
-
-    log.warning(f"[{channel}] {CFG.id.name}: {reply}")
-    if goals_achieved:
-        log.warning(f"[{channel}] {CFG.id.name}: 🏆 {goals_achieved}")
-
-    if any(verb in reply for verb in ['look', 'see', 'show', 'imagine', 'idea', 'memory', 'remember']):
-        take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
-
-    return (reply, goals_achieved)
-
-def get_summary(channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
-    ''' Ask interact for a channel summary. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-        "save": save,
-        "max_tokens": max_tokens,
-        "include_keywords": include_keywords,
-        "context_lines": context_lines
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/summary/", params=req)
-        reply.raise_for_status()
-    except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-        log.critical(f"🤖 Could not post /summary/ to interact: {err}")
-        return " :writing_hand: :interrobang: "
-
-    summary = reply.json()['summary']
-    log.warning(f"∑ {reply.json()['summary']}")
-
-    if summary:
-        if photo:
-            take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}")
-        return summary
-
-    return " :spiral_note_pad: :interrobang: "
 
 def get_nouns(text):
     ''' Ask interact for all the nouns in text, excluding the speakers. '''
@@ -354,7 +277,7 @@ def selfie(say, context): # pylint: disable=unused-argument
 def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
     ''' Take a stable diffusion photo of this conversation '''
     channel = context['channel_id']
-    take_a_photo(channel, get_summary(channel, max_tokens=30), engine="stable-diffusion")
+    take_a_photo(channel, get_summary(CFG.chat.service, channel, max_tokens=30), engine="stable-diffusion")
 
 @app.message(re.compile(r"^:art:(.+)$"))
 def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
@@ -394,7 +317,7 @@ def summarize(say, context):
     ''' Say a condensed summary of this channel '''
     save = bool(context['matches'][0])
     channel = context['channel_id']
-    say("💭 " + get_summary(channel, save, include_keywords=True, photo=True))
+    say("💭 " + get_summary(CFG.chat.service, channel, save, include_keywords=True, photo=True))
 
 @app.message(re.compile(r"^status$", re.I))
 def status(say, context):
@@ -443,7 +366,7 @@ def daydream(say, context):
             say(f"🤔 *{noun}*: _{opinion[0]}_")
 
     say(f"_{CFG.id.name} blinks and looks around._")
-    summarize_later(channel, when=1)
+    summarize_later(CFG.chat.service, channel, reminders, when=1)
 
 @app.message(re.compile(r"^opinions (.*)$", re.I))
 def opine_all(say, context):
@@ -532,18 +455,6 @@ def say_something_later(say, channel, context, when, what=None):
         }
         reminders.add(channel, when, catch_all, [say, yadda])
 
-def summarize_later(channel, when=None):
-    '''
-    Summarize the train of thought later. When is in seconds.
-
-    Every time this thread executes, a new convo summary is saved. Only one
-    can run at a time.
-    '''
-    if not when:
-        when = 120 + random.randint(20,80)
-
-    reminders.add(channel, when, get_summary, [channel, True, True, 50, False, 0], 'summarizer')
-
 def get_caption(url):
     ''' Fetch the image caption using CLIP Interrogator '''
     log.warning("🖼  needs a caption")
@@ -586,14 +497,14 @@ def catch_all(say, context):
         if random.random() < 0.95:
             return
 
-    (the_reply, goals_achieved) = get_reply(channel, msg, speaker_name, speaker_id)
+    (the_reply, goals_achieved) = get_reply(CFG.chat.service, channel, msg, speaker_name, speaker_id)
 
     say(the_reply)
 
     for goal in goals_achieved:
         say(f"🏆 _achievement unlocked: {goal}_")
 
-    summarize_later(channel)
+    summarize_later(CFG.chat.service, channel, reminders)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
@@ -622,7 +533,7 @@ def handle_app_mention_events(body, client, say): # pylint: disable=unused-argum
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(body['event']['text'])
 
-    reply, goals_achieved = get_reply(channel, msg, speaker_name, speaker_id)
+    reply, goals_achieved = get_reply(CFG.chat.service, channel, msg, speaker_name, speaker_id)
 
     say(reply)
 
@@ -736,7 +647,7 @@ def handle_message_events(body, say):
             if not msg.strip():
                 msg = f"{speaker_name} posted a photo of {caption}"
 
-            reply, goals_achieved = get_reply(channel, msg, speaker_name, speaker_id)
+            reply, goals_achieved = get_reply(CFG.chat.service, channel, msg, speaker_name, speaker_id)
 
             say(reply)
 
