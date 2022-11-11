@@ -5,7 +5,6 @@ slack.py
 Chat with your persyn on Slack.
 """
 # pylint: disable=import-error, wrong-import-position
-import base64
 import os
 import random
 import re
@@ -27,28 +26,27 @@ sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
 # Color logging
 from utils.color_logging import log
 
-# Artist names
-from utils.art import artists
-
 # Bot config
 from utils.config import load_config
 
 # Reminders
 from interaction.reminders import Reminders
 
-# Common chat library
-from chat.common import get_reply, take_a_photo, summarize_later, get_summary
-
 # Mastodon support for image posting
 from chat.mastodon.login import mastodon
 
-CFG = load_config()
+# Common chat library
+from chat.common import Chat
+
+persyn_config = load_config()
 
 # Slack bolt App
-app = App(token=CFG.chat.slack.bot_token)
+app = App(token=persyn_config.chat.slack.bot_token)
 
-CFG.chat.service = app.client.auth_test().data['url']
-log.info(f"Logged into chat.service: {CFG.chat.service}")
+# Chat library
+chat = Chat(persyn_config, service=app.client.auth_test().data['url'])
+
+log.info(f"Logged into chat.service: {chat.service}")
 
 # Username cache
 known_users = {}
@@ -61,6 +59,9 @@ reminders = Reminders()
 
 # TODO: callback thread to poll(?) interact, or inbound API call for push notifications
 
+###
+# Slack helper functions
+###
 def is_bot(user_id):
     """ Returns true if the user_id is a Slack bot """
     get_display_name(user_id)
@@ -87,357 +88,16 @@ def substitute_names(text):
         text = re.sub(f'<@{user_id}>', get_display_name(user_id), text)
     return text
 
-def speakers():
-    ''' Everyone speaking in any channel '''
-    return [CFG.id.name] + list(known_users.values())
+def get_caption(url):
+    ''' Fetch the image caption using CLIP Interrogator '''
+    log.warning("🖼  needs a caption")
 
-def get_nouns(text):
-    ''' Ask interact for all the nouns in text, excluding the speakers. '''
-    req = {
-        "text": text
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/nouns/", params=req)
-        reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /nouns/ to interact: {err}")
-        return []
+    resp = requests.get(url, headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}, timeout=20)
+    if not resp.ok:
+        log.error(f"🖼  Could not retrieve image: {resp.text}")
+        return None
 
-    return [e for e in reply.json()['nouns'] if e not in speakers()]
-
-def get_entities(text):
-    ''' Ask interact for all the entities in text, excluding the speakers. '''
-    req = {
-        "text": text
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/entities/", params=req)
-        reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /entities/ to interact: {err}")
-        return []
-
-    return [e for e in reply.json()['entities'] if e not in speakers()]
-
-def get_daydream(channel):
-    ''' Ask interact to daydream about this channel. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/daydream/", params=req)
-        reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /daydream/ to interact: {err}")
-        return []
-
-    return reply.json()['daydream']
-
-def get_status(channel):
-    ''' Ask interact for status. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/status/", params=req)
-        reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /status/ to interact: {err}")
-        return " :moyai: :interrobang: "
-
-    return reply.json()['status']
-
-def get_opinions(channel, topic, condense=True):
-    ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-        "topic": topic,
-        "summarize": condense
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/opinion/", params=req)
-        reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
-        return []
-
-    ret = reply.json()
-    if 'opinions' in ret:
-        return ret['opinions']
-
-    return []
-    # return [e for e in reply.json()['nouns'] if e not in speakers()]
-
-def get_goals(channel):
-    ''' Return the goals for this channel, if any. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel
-    }
-    try:
-        reply = requests.post(f"{CFG.interact.url}/get_goals/", params=req)
-        reply.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /get_goals/ to interact: {err}")
-        return []
-
-    ret = reply.json()
-    if 'goals' in ret:
-        return ret['goals']
-
-    return []
-    # return [e for e in reply.json()['nouns'] if e not in speakers()]
-
-def inject_idea(channel, idea):
-    ''' Directly inject an idea into the stream of consciousness. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-        "idea": idea
-    }
-    try:
-        response = requests.post(f"{CFG.interact.url}/inject/", params=req)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /inject/ to interact: {err}")
-        return " :syringe: :interrobang: "
-
-    return response.json()['status']
-
-def forget_it(channel):
-    ''' There is no antimemetics division. '''
-    req = {
-        "service": CFG.chat.service,
-        "channel": channel,
-    }
-    try:
-        response = requests.post(f"{CFG.interact.url}/amnesia/", params=req)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not forget_it(): {err}")
-        return " :jigsaw: :interrobang: "
-
-    return " :exploding_head: "
-
-@app.message(re.compile(r"^help$", re.I))
-def help_me(say, context): # pylint: disable=unused-argument
-    ''' TODO: These should really be / commands. '''
-    say(f"""*Commands:*
-  `...`: Let {CFG.id.name} keep talking without interrupting
-  `summary`: Explain it all to me very briefly.
-  `status`: Say exactly what is on {CFG.id.name}'s mind.
-  `nouns`: Some things worth thinking about.
-  `reflect`: {CFG.id.name}'s opinion of those things.
-  `daydream`: Let {CFG.id.name}'s mind wander on the convo.
-  `goals`: See {CFG.id.name}'s current goals
-
-  *Image generation:*
-  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
-  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
-  :selfie: Take a selfie
-""")
-
-@app.message(re.compile(r"^goals$"))
-def goals(say, context): # pylint: disable=unused-argument
-    ''' What are we doing again? '''
-    channel = context['channel_id']
-
-    current_goals = get_goals(channel)
-    if current_goals:
-        for goal in current_goals:
-            say(f":goal_net: {goal}")
-    else:
-        say(":shrug:")
-
-@app.message(re.compile(r"^:selfie:$"))
-def selfie(say, context): # pylint: disable=unused-argument
-    ''' Take a picture, it'll last longer '''
-    them = get_display_name(context['user_id'])
-    channel = context['channel_id']
-
-    say(f"OK, {them}.\n_{CFG.id.name} takes out a camera and smiles awkwardly_.")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=8,
-        what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
-    )
-    take_a_photo(
-        channel,
-        context['matches'][0].strip(),
-        engine="stylegan2",
-        model=random.choice(["ffhq", "waifu"])
-    )
-
-@app.message(re.compile(r"^:art:$"))
-def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
-    ''' Take a stable diffusion photo of this conversation '''
-    channel = context['channel_id']
-    take_a_photo(channel, get_summary(CFG.chat.service, channel, max_tokens=30), engine="stable-diffusion")
-
-@app.message(re.compile(r"^:art:(.+)$"))
-def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture with stable diffusion '''
-    speaker_id = context['user_id']
-    speaker_name = get_display_name(speaker_id)
-    channel = context['channel_id']
-    prompt = context['matches'][0].strip()
-
-    take_a_photo(channel, prompt, engine="stable-diffusion")
-    say(f"OK, {speaker_name}.")
-    say_something_later(say, channel, context, 4, ":camera_with_flash:")
-    ents = get_entities(prompt)
-    if ents:
-        inject_idea(channel, ents)
-
-@app.message(re.compile(r"^:magic_wand:(.+)$"))
-def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
-    ''' Take a picture with stable diffusion '''
-    speaker_id = context['user_id']
-    speaker_name = get_display_name(speaker_id)
-    channel = context['channel_id']
-    prompt = context['matches'][0].strip()
-
-    parrot = prompt_parrot(prompt)
-    log.warning(f"🦜 {parrot}")
-    take_a_photo(channel, prompt, engine="stable-diffusion", style=parrot)
-    say(f"OK, {speaker_name}.")
-    say_something_later(say, channel, context, 4, ":camera_with_flash:")
-
-    ents = get_entities(prompt)
-    if ents:
-        inject_idea(channel, ents)
-
-@app.message(re.compile(r"^summary(\!)?$", re.I))
-def summarize(say, context):
-    ''' Say a condensed summary of this channel '''
-    save = bool(context['matches'][0])
-    channel = context['channel_id']
-    say("💭 " + get_summary(CFG.chat.service, channel, save, include_keywords=True, photo=True))
-
-@app.message(re.compile(r"^status$", re.I))
-def status(say, context):
-    ''' Say a condensed summary of this channel '''
-    channel = context['channel_id']
-    say("\n".join([f"> {line}" for line in get_status(channel).split("\n")]))
-
-@app.message(re.compile(r"^nouns$", re.I))
-def nouns(say, context):
-    ''' Say the nouns mentioned on this channel '''
-    channel = context['channel_id']
-    say("> " + ", ".join(get_nouns(get_status(channel))))
-
-@app.message(re.compile(r"^entities$", re.I))
-def entities(say, context):
-    ''' Say the entities mentioned on this channel '''
-    channel = context['channel_id']
-    say("> " + ", ".join(get_entities(get_status(channel))))
-
-@app.message(re.compile(r"^daydream$", re.I))
-def daydream(say, context):
-    ''' Let your mind wander '''
-    channel = context['channel_id']
-    say(f"_{CFG.id.name}'s mind starts to wander..._")
-
-    ideas = get_daydream(channel)
-
-    for idea in random.sample(list(ideas), min(len(ideas), 5)):
-        # skip anyone speaking in the channel
-        if idea in speakers():
-            continue
-
-        # skip eg. "4 months ago"
-        if 'ago' in str(idea):
-            continue
-
-        inject_idea(channel, ideas[idea])
-        say(f"💭 *{idea}*: _{ideas[idea]}_")
-
-    for noun in random.sample(get_nouns(get_status(channel)), 8):
-        opinion = get_opinions(channel, noun.lower(), condense=True)
-        if not opinion:
-            opinion = [judge(channel, noun.lower())]
-        if opinion:
-            inject_idea(channel, opinion[0])
-            say(f"🤔 *{noun}*: _{opinion[0]}_")
-
-    say(f"_{CFG.id.name} blinks and looks around._")
-    summarize_later(CFG.chat.service, channel, reminders, when=1)
-
-@app.message(re.compile(r"^opinions (.*)$", re.I))
-def opine_all(say, context):
-    ''' Fetch our opinion on a topic '''
-    topic = context['matches'][0]
-    channel = context['channel_id']
-
-    opinions = get_opinions(channel, topic, condense=False)
-    if opinions:
-        say('\n'.join(opinions))
-    else:
-        say('I have no opinion on that topic.')
-
-@app.message(re.compile(r"^opinion (.*)$", re.I))
-def opine(say, context):
-    ''' Fetch our opinion on a topic '''
-    topic = context['matches'][0]
-    channel = context['channel_id']
-
-    opinion = get_opinions(channel, topic, condense=True)
-    if opinion:
-        say(opinion[0])
-    else:
-        say('I have no opinion on that topic.')
-
-def prompt_parrot(prompt):
-    ''' Fetch a prompt from the parrot '''
-    try:
-        req = { "prompt": prompt }
-        response = requests.post(f"{CFG.dreams.parrot.url}/generate/", params=req)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
-        return prompt
-    return response.json()['parrot']
-
-def judge(channel, topic):
-    ''' Form an opinion on topic '''
-    try:
-        req = { "service": CFG.chat.service, "channel": channel, "topic": topic }
-        response = requests.post(f"{CFG.interact.url}/judge/", params=req)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        log.critical(f"🤖 Could not post /judge/ to interact: {err}")
-        return ""
-    return response.json()['opinion']
-
-@app.message(re.compile(r"^reflect$", re.I))
-def reflect(say, context):
-    ''' Fetch our opinion on all the nouns in the channel '''
-    channel = context['channel_id']
-
-    for noun in get_nouns(get_status(channel)):
-        opinion = get_opinions(channel, noun.lower(), condense=True)
-        if not opinion:
-            opinion = [judge(channel, noun.lower())]
-
-        say(f"{noun}: {opinion[0]}")
-
-@app.message(re.compile(r"^:bulb:$"))
-def lights(say, context): # pylint: disable=unused-argument
-    ''' Are the lights on? '''
-    them = get_display_name(context['user_id'])
-    channel = context['channel_id']
-
-    if os.path.isfile('/home/rob/.u16-lights'):
-        say(f'The lights are on, {them}.')
-        inject_idea(channel, "The lights are on.")
-    else:
-        say(f'The lights are off, {them}.')
-        inject_idea(channel, "The lights are off.")
+    return chat.get_caption(resp.content)
 
 def say_something_later(say, channel, context, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
@@ -455,29 +115,199 @@ def say_something_later(say, channel, context, when, what=None):
         }
         reminders.add(channel, when, catch_all, [say, yadda])
 
-def get_caption(url):
-    ''' Fetch the image caption using CLIP Interrogator '''
-    log.warning("🖼  needs a caption")
+###
+# Slack events
+###
+@app.message(re.compile(r"^help$", re.I))
+def help_me(say, context): # pylint: disable=unused-argument
+    ''' TODO: These should really be / commands. '''
+    say(f"""*Commands:*
+  `...`: Let {persyn_config.id.name} keep talking without interrupting
+  `summary`: Explain it all to me very briefly.
+  `status`: Say exactly what is on {persyn_config.id.name}'s mind.
+  `nouns`: Some things worth thinking about.
+  `reflect`: {persyn_config.id.name}'s opinion of those things.
+  `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
+  `goals`: See {persyn_config.id.name}'s current goals
 
-    resp = requests.get(url, headers={'Authorization': f'Bearer {CFG.chat.slack.bot_token}'})
-    if not resp.ok:
-        log.error(f"🖼  Could not retrieve image: {resp.text}")
-        return None
+  *Image generation:*
+  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
+  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
+  :selfie: Take a selfie
+""")
 
-    # return caption_photo(resp.content)
+@app.message(re.compile(r"^goals$"))
+def goals(say, context): # pylint: disable=unused-argument
+    ''' What are we doing again? '''
+    channel = context['channel_id']
 
-    resp = requests.post(
-        f"{CFG.dreams.captions.url}/caption/",
-        json={"data": base64.b64encode(resp.content).decode()}
+    current_goals = chat.get_goals(channel)
+    if current_goals:
+        for goal in current_goals:
+            say(f":goal_net: {goal}")
+    else:
+        say(":shrug:")
+
+@app.message(re.compile(r"^:selfie:$"))
+def selfie(say, context): # pylint: disable=unused-argument
+    ''' Take a picture, it'll last longer '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+
+    say(f"OK, {them}.\n_{persyn_config.id.name} takes out a camera and smiles awkwardly_.")
+    say_something_later(
+        say,
+        channel,
+        context,
+        when=8,
+        what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
     )
-    if not resp.ok:
-        log.error(f"🖼  Could not get_caption(): {resp.text}")
-        return None
+    chat.take_a_photo(
+        channel,
+        context['matches'][0].strip(),
+        engine="stylegan2",
+        model=random.choice(["ffhq", "waifu"])
+    )
 
-    caption = resp.json()['caption']
-    log.warning(f"🖼  got caption: '{caption}'")
-    return caption
+@app.message(re.compile(r"^:art:$"))
+def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
+    ''' Take a stable diffusion photo of this conversation '''
+    channel = context['channel_id']
+    chat.take_a_photo(channel, chat.get_summary(channel, max_tokens=30), engine="stable-diffusion")
 
+@app.message(re.compile(r"^:art:(.+)$"))
+def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with stable diffusion '''
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    chat.take_a_photo(channel, prompt, engine="stable-diffusion")
+    say(f"OK, {speaker_name}.")
+    say_something_later(say, channel, context, 4, ":camera_with_flash:")
+    ents = chat.get_entities(prompt)
+    if ents:
+        chat.inject_idea(channel, ents)
+
+@app.message(re.compile(r"^:magic_wand:(.+)$"))
+def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with stable diffusion '''
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    parrot = chat.prompt_parrot(prompt)
+    log.warning(f"🦜 {parrot}")
+    chat.take_a_photo(channel, prompt, engine="stable-diffusion", style=parrot)
+    say(f"OK, {speaker_name}.")
+    say_something_later(say, channel, context, 4, ":camera_with_flash:")
+
+    ents = chat.get_entities(prompt)
+    if ents:
+        chat.inject_idea(channel, ents)
+
+@app.message(re.compile(r"^summary(\!)?$", re.I))
+def summarize(say, context):
+    ''' Say a condensed summary of this channel '''
+    save = bool(context['matches'][0])
+    channel = context['channel_id']
+    say("💭 " + chat.get_summary(channel, save, include_keywords=True, photo=True))
+
+@app.message(re.compile(r"^status$", re.I))
+def status(say, context):
+    ''' Say a condensed summary of this channel '''
+    channel = context['channel_id']
+    say("\n".join([f"> {line}" for line in chat.get_status(channel).split("\n")]))
+
+@app.message(re.compile(r"^nouns$", re.I))
+def nouns(say, context):
+    ''' Say the nouns mentioned on this channel '''
+    channel = context['channel_id']
+    say("> " + ", ".join(chat.get_nouns(chat.get_status(channel))))
+
+@app.message(re.compile(r"^entities$", re.I))
+def entities(say, context):
+    ''' Say the entities mentioned on this channel '''
+    channel = context['channel_id']
+    say("> " + ", ".join(chat.get_entities(chat.get_status(channel))))
+
+@app.message(re.compile(r"^daydream$", re.I))
+def daydream(say, context):
+    ''' Let your mind wander '''
+    channel = context['channel_id']
+    say(f"_{persyn_config.id.name}'s mind starts to wander..._")
+
+    ideas = chat.get_daydream(channel)
+
+    for idea in random.sample(list(ideas), min(len(ideas), 5)):
+        # skip eg. "4 months ago"
+        if 'ago' in str(idea):
+            continue
+
+        chat.inject_idea(channel, ideas[idea])
+        say(f"💭 *{idea}*: _{ideas[idea]}_")
+
+    for noun in random.sample(chat.get_nouns(chat.get_status(channel)), 8):
+        opinion = chat.get_opinions(channel, noun.lower(), condense=True)
+        if not opinion:
+            opinion = [chat.judge(channel, noun.lower())]
+        if opinion:
+            chat.inject_idea(channel, opinion[0])
+            say(f"🤔 *{noun}*: _{opinion[0]}_")
+
+    say(f"_{persyn_config.id.name} blinks and looks around._")
+    chat.summarize_later(channel, reminders, when=1)
+
+@app.message(re.compile(r"^opinions (.*)$", re.I))
+def opine_all(say, context):
+    ''' Fetch our opinion on a topic '''
+    topic = context['matches'][0]
+    channel = context['channel_id']
+
+    opinions = chat.get_opinions(channel, topic, condense=False)
+    if opinions:
+        say('\n'.join(opinions))
+    else:
+        say('I have no opinion on that topic.')
+
+@app.message(re.compile(r"^opinion (.*)$", re.I))
+def opine(say, context):
+    ''' Fetch our opinion on a topic '''
+    topic = context['matches'][0]
+    channel = context['channel_id']
+
+    opinion = chat.get_opinions(channel, topic, condense=True)
+    if opinion:
+        say(opinion[0])
+    else:
+        say('I have no opinion on that topic.')
+
+@app.message(re.compile(r"^reflect$", re.I))
+def reflect(say, context):
+    ''' Fetch our opinion on all the nouns in the channel '''
+    channel = context['channel_id']
+
+    for noun in chat.get_nouns(chat.get_status(channel)):
+        opinion = chat.get_opinions(channel, noun.lower(), condense=True)
+        if not opinion:
+            opinion = [chat.judge(channel, noun.lower())]
+
+        say(f"{noun}: {opinion[0]}")
+
+@app.message(re.compile(r"^:bulb:$"))
+def lights(say, context): # pylint: disable=unused-argument
+    ''' Are the lights on? '''
+    them = get_display_name(context['user_id'])
+    channel = context['channel_id']
+
+    if os.path.isfile('/home/rob/.u16-lights'):
+        say(f'The lights are on, {them}.')
+        chat.inject_idea(channel, "The lights are on.")
+    else:
+        say(f'The lights are off, {them}.')
+        chat.inject_idea(channel, "The lights are off.")
 
 @app.message(re.compile(r"(.*)", re.I))
 def catch_all(say, context):
@@ -497,14 +327,14 @@ def catch_all(say, context):
         if random.random() < 0.95:
             return
 
-    (the_reply, goals_achieved) = get_reply(CFG.chat.service, channel, msg, speaker_name, speaker_id)
+    (the_reply, goals_achieved) = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
     say(the_reply)
 
     for goal in goals_achieved:
         say(f"🏆 _achievement unlocked: {goal}_")
 
-    summarize_later(CFG.chat.service, channel, reminders)
+    chat.summarize_later(channel, reminders)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
@@ -533,7 +363,7 @@ def handle_app_mention_events(body, client, say): # pylint: disable=unused-argum
     speaker_name = get_display_name(speaker_id)
     msg = substitute_names(body['event']['text'])
 
-    reply, goals_achieved = get_reply(CFG.chat.service, channel, msg, speaker_name, speaker_id)
+    reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
     say(reply)
 
@@ -566,11 +396,11 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                         log.warning("🎺 Not posting:", {msg['reactions'][0]['name']})
                         return
                     log.warning("🤯 All is forgotten.")
-                    forget_it(channel)
+                    chat.forget_it(channel)
                     return
                 try:
-                    req = { "service": CFG.chat.service, "channel": channel }
-                    response = requests.post(f"{CFG.interact.url}/amnesia/", params=req)
+                    req = { "service": chat.service, "channel": channel }
+                    response = requests.post(f"{persyn_config.interact.url}/amnesia/", params=req, timeout=10)
                     response.raise_for_status()
                 except requests.exceptions.RequestException as err:
                     log.critical(f"🤖 Could not post /amnesia/ to interact: {err}")
@@ -586,7 +416,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                         with tempfile.TemporaryDirectory() as tmpdir:
                             media_ids = []
                             for blk in msg['blocks']:
-                                response = requests.get(blk['image_url'])
+                                response = requests.get(blk['image_url'], timeout=30)
                                 response.raise_for_status()
                                 fname = f"{tmpdir}/{blk['image_url'].split('/')[-1]}"
                                 with open(fname, "wb") as f:
@@ -642,12 +472,12 @@ def handle_message_events(body, say):
             prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
             say(f"{prefix} {caption}")
 
-            inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
+            chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
 
             if not msg.strip():
                 msg = f"{speaker_name} posted a photo of {caption}"
 
-            reply, goals_achieved = get_reply(CFG.chat.service, channel, msg, speaker_name, speaker_id)
+            reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
             say(reply)
 
@@ -667,7 +497,7 @@ def handle_message_events(body, say):
             )
 
 if __name__ == "__main__":
-    handler = SocketModeHandler(app, CFG.chat.slack.app_token)
+    handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)
     try:
         handler.start()
     # Exit gracefully on ^C (so the wrapper script while loop continues)

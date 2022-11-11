@@ -36,18 +36,21 @@ from utils.config import load_config
 # Reminders
 from interaction.reminders import AsyncReminders
 
-# Common chat library
-from chat.common import get_reply, take_a_photo, summarize_later
-
 # Mastodon support for image posting
 from chat.mastodon.login import mastodon
+
+# Common chat library
+from chat.common import Chat
 
 intents = discord.Intents.default()
 intents.message_content = True # pylint: disable=assigning-non-slot
 
 app = discord.Client(intents=intents)
 
-CFG = load_config()
+persyn_config = load_config()
+
+# Chat library
+chat = Chat(persyn_config)
 
 # Username cache
 known_users = {}
@@ -77,7 +80,9 @@ async def on_ready():
 @app.event
 async def on_message(ctx):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
-    service = f"discord-{ctx.guild.id}"
+
+    # We don't know the guild until we receive a message, so set it here
+    chat.service = f"discord-{ctx.guild.id}"
 
     # Don't talk to yourself.
     if ctx.author == app.user:
@@ -96,14 +101,14 @@ async def on_message(ctx):
         say_something_later(ctx, when=0, what="echo echo echo...")
         return
 
-    (the_reply, goals_achieved) = get_reply(service, ctx.channel.id, ctx.content, ctx.author.name, ctx.author.id)
+    (the_reply, goals_achieved) = chat.get_reply(ctx.channel.id, ctx.content, ctx.author.name, ctx.author.id)
 
     await ctx.channel.send(the_reply)
 
     for goal in goals_achieved:
         await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
 
-    summarize_later(service, ctx.channel.id, reminders, when=5)
+    chat.summarize_later(ctx.channel.id, reminders, when=5)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
@@ -142,4 +147,4 @@ async def on_raw_reaction_remove(ctx):
 #     log.critical(f'args: {args}')
 #     log.critical(f'kwargs: {kwargs}')
 
-app.run(CFG.chat.discord.token)
+app.run(persyn_config.chat.discord.token)
