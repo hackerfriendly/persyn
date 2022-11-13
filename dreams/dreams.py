@@ -33,26 +33,30 @@ persyn_config = load_config()
 
 app = FastAPI()
 
-sqs = boto3.resource('sqs', region_name=persyn_config.id.aws_region)
-
-queue = sqs.get_queue_by_name(QueueName=persyn_config.id.sqs_queue)
+sqs = boto3.resource('sqs', region_name=getattr(persyn_config.id, 'aws_region', None))
 
 for g in persyn_config.dreams.gpus:
     persyn_config.dreams.gpus[g] = Lock()
 
 SCRIPT_PATH = Path(__file__).resolve().parent
 
-def post_to_queue(service, channel, prompt, images, bot_name):
+def post_to_queue(service, channel, queue, prompt, images, bot_name):
     ''' Post the completed image notification to SQS '''
+    if queue is None:
+        log.warning("No queue provided, not posting image.")
+        return
+
     data = {
+        "event_type": "image-ready",
         "service": service,
         "channel": channel,
         "images": images,
         "caption": prompt,
         "bot_name": bot_name,
     }
-    response = queue.send_message(MessageBody=json.dumps(data))
-    log.info(f"Posted to queue: {response['MessageId']}")
+    qurl = sqs.get_queue_by_name(QueueName=queue)
+    response = qurl.send_message(MessageBody=json.dumps(data))
+    log.info(f"Posted {response['MessageId']} to queue {queue}")
 
 def upload_files(files):
     ''' scp files to SCPDEST. Expects a Path glob generator. '''
@@ -69,7 +73,7 @@ def wait_for_gpu():
         if persyn_config.dreams.gpus[gpu].acquire(timeout=1):
             return gpu
 
-def process_prompt(cmd, service, channel, prompt, images, tmpdir, bot_name):
+def process_prompt(cmd, service, channel, queue, prompt, images, tmpdir, bot_name):
     ''' Generate the image files, upload them, post to Slack, and clean up. '''
     try:
         gpu = wait_for_gpu()
@@ -87,9 +91,9 @@ def process_prompt(cmd, service, channel, prompt, images, tmpdir, bot_name):
         return
 
     if service:
-        post_to_queue(service, channel, prompt, images, bot_name)
+        post_to_queue(service, channel, queue, prompt, images, bot_name)
 
-def vdiff_cfg(service, channel, prompt, model, image_id, steps, bot_name):
+def vdiff_cfg(service, channel, prompt, queue, model, image_id, steps, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch classifier-free guidance '''
 
     image = f"{image_id}.jpg"
@@ -106,9 +110,9 @@ def vdiff_cfg(service, channel, prompt, model, image_id, steps, bot_name):
             '--style', 'random',
             prompt[:250]
         ]
-        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
+        process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-def vdiff_clip(service, channel, prompt, model, image_id, steps, bot_name):
+def vdiff_clip(service, channel, prompt, queue, model, image_id, steps, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch '''
 
     image = f"{image_id}.jpg"
@@ -122,9 +126,9 @@ def vdiff_clip(service, channel, prompt, model, image_id, steps, bot_name):
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             prompt[:250]
         ]
-        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
+        process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-def vqgan(service, channel, prompt, model, image_id, steps, bot_name):
+def vqgan(service, channel, prompt, queue, model, image_id, steps, bot_name):
     ''' https://colab.research.google.com/drive/15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,9 +142,9 @@ def vqgan(service, channel, prompt, model, image_id, steps, bot_name):
             '--vqgan-checkpoint', f'models/{model}.ckpt',
             prompt[:250]
         ]
-        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
+        process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-def stylegan2(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
+def stylegan2(service, channel, prompt, queue, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/NVlabs/stylegan2 '''
     image = f"{image_id}.jpg"
     psi = random.uniform(0.6, 0.9)
@@ -152,9 +156,9 @@ def stylegan2(service, channel, prompt, model, image_id, bot_name, style): # pyl
             str(psi),
             f'{tmpdir}/{image}'
         ]
-        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
+        process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-def sdd(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
+def sdd(service, channel, prompt, queue, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' Fetch images from sdd.py '''
     url = getattr(persyn_config.dreams.stable_diffusion, 'url', None)
     if not url:
@@ -188,10 +192,10 @@ def sdd(service, channel, prompt, model, image_id, bot_name, style): # pylint: d
         upload_files([fname])
 
     if service:
-        post_to_queue(service, channel, prompt, [f"{image_id}.jpg"], bot_name)
+        post_to_queue(service, channel, queue, prompt, [f"{image_id}.jpg"], bot_name)
 
 
-def stable_diffusion(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
+def stable_diffusion(service, channel, prompt, queue, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/stable-diffusion '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -201,9 +205,9 @@ def stable_diffusion(service, channel, prompt, model, image_id, bot_name, style)
             '-p', prompt,
             '-t', style
         ]
-        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
+        process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-def latent_diffusion(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
+def latent_diffusion(service, channel, prompt, queue, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -212,7 +216,7 @@ def latent_diffusion(service, channel, prompt, model, image_id, bot_name, style)
             f'{tmpdir}/{image}',
             prompt[:250]
         ]
-        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
+        process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
 @app.get("/")
 async def root():
@@ -234,6 +238,7 @@ async def generate(
     model: str = None,
     service: str = None,
     channel: str = None,
+    queue: str = None,
     bot_name: str = None,
     style: str = None
     ):
@@ -322,6 +327,7 @@ async def generate(
             engines[engine],
             service=service,
             channel=channel,
+            queue=queue,
             prompt=prompt,
             model=models[engine][model]['name'],
             image_id=image_id,
@@ -333,6 +339,7 @@ async def generate(
             engines[engine],
             service=service,
             channel=channel,
+            queue=queue,
             prompt=prompt,
             model=models[engine][model]['name'],
             image_id=image_id,
