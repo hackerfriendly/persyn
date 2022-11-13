@@ -166,7 +166,7 @@ class Interact():
     def gather_memories(self, service, channel, entities, summaries, convo):
         ''' Take a trip down memory lane '''
         search_term = ' '.join(entities)
-        log.warning(f"ℹ️ look up '{search_term}' in memories")
+        log.warning(f"ℹ️  look up '{search_term}' in memories")
 
         for memory in self.recall.remember(service, channel, search_term, summaries=5):
             # Don't repeat yourself, loopy-lou.
@@ -218,7 +218,7 @@ class Interact():
                     self.recall.stm.add_bias(service, channel, opinion)
                     self.inject_idea(service, channel, opinion, f"thinks about {entity}")
 
-            log.warning(f'❇️ look up "{entity}" on Wikipeda')
+            log.warning(f'❇️  look up "{entity}" on Wikipedia')
 
             if entity in self.wikicache:
                 log.warning(f'🤑 wiki cache hit: "{entity}"')

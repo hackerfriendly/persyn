@@ -101,7 +101,7 @@ class GPT():
             stop=stop
         )
         reply = response.choices[0]['text'].strip()
-        log.warning(f"☝️ opinion of {entity}: {reply}")
+        log.warning(f"☝️  opinion of {entity}: {reply}")
 
         return reply
 
@@ -129,7 +129,7 @@ class GPT():
             stop=stop
         )
         reply = response.choices[0]['text'].strip()
-        log.warning(f"☺️ sentiment of conversation: {reply}")
+        log.warning(f"☺️  sentiment of conversation: {reply}")
 
         return reply
 
