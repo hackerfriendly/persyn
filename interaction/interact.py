@@ -1,30 +1,23 @@
 '''
 interact.py
 
-A REST API for the limbic system.
+The limbic system library.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order
-import os
-import sys
-import random
 import json
+import random
+import sys
 
-from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from spacy.lang.en.stop_words import STOP_WORDS
 
 # just-in-time Wikipedia
 import wikipedia
 from wikipedia.exceptions import WikipediaException
 
-from spacy.lang.en.stop_words import STOP_WORDS
-
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
-
-# Prompt completion
-from completion import LanguageModel
 
 # text-to-speech
 from voice import tts
@@ -35,569 +28,438 @@ from memory import Recall
 # Time handling
 from chrono import natural_time, ago, today
 
+# Prompt completion
+from completion import LanguageModel
+
 # Color logging
 from utils.color_logging import log
 
-# Bot config
-from utils.config import load_config
 
-CFG = load_config()
-
-# How are we feeling today?
-feels = {'current': "nothing in particular", 'goals': ["to learn about something new"]}
-
-# Pick a language model for completion
-completion = LanguageModel(config=CFG)
-
-# FastAPI
-app = FastAPI()
-
-# Elasticsearch memory
-recall = Recall(
-    bot_name=CFG.id.name,
-    bot_id=CFG.id.guid,
-    url=CFG.memory.elastic.url,
-    auth_name=CFG.memory.elastic.user,
-    auth_key=CFG.memory.elastic.key,
-    index_prefix=CFG.memory.elastic.index_prefix,
-    conversation_interval=600, # ten minutes
-    verify_certs=True
-)
-
-# local Wikipedia cache
-wikicache = {}
-
-def dialog(convo):
+class Interact():
     '''
-    Return only the words actually spoken in a convo
-    TODO: Convo lines should be better structured, but it would require overhauling memory.py
+    The Interact class contains all language handling routines and maintains
+    the short and long-term memories for each service+channel.
     '''
-    return [
-        line for line in convo
-        if not line.startswith(f"{CFG.id.name} remembers")
-        and not line.startswith(f"{CFG.id.name} recalls")
-        and not line.startswith(f"{CFG.id.name} thinks")
-    ]
+    def __init__(self, persyn_config):
+        self.config = persyn_config
 
-def summarize_convo(service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
-    '''
-    Generate a summary of the current conversation for this channel.
-    Also generate and save opinions about detected topics.
-    If save == True, save it to long term memory.
-    Returns the text summary.
-    '''
-    summaries, convo = recall.load(service, channel, summaries=0)
-    if not convo:
-        summaries, convo = recall.load(service, channel, summaries=3)
-        if not summaries:
-            summaries = [ f"{CFG.id.name} isn't sure what is happening." ]
+        # local Wikipedia cache
+        self.wikicache = {}
 
-        # No convo? summarize the summaries
-        convo = summaries
+        # How are we feeling today? TODO: This needs to be per-channel, particularly the goals.
+        self.feels = {'current': "nothing in particular", 'goals': ["to learn about something new"]}
 
-    spoken = dialog(convo)
-    log.warning(f"∑ summarizing convo: {json.dumps(spoken)}")
+        # Pick a language model for completion
+        self.completion = LanguageModel(config=persyn_config)
 
-    summary = completion.get_summary(
-        text='\n'.join(convo),
-        summarizer="To briefly summarize this conversation,",
-        max_tokens=max_tokens
-    )
-    keywords = completion.get_keywords(summary)
-
-    if save:
-        recall.summary(service, channel, summary, keywords)
-
-    for topic in keywords:
-        recall.judge(
-            service,
-            channel,
-            topic,
-            completion.get_opinions(summary, topic)
+        # Elasticsearch memory
+        self.recall = Recall(
+            bot_name=persyn_config.id.name,
+            bot_id=persyn_config.id.guid,
+            url=persyn_config.memory.elastic.url,
+            auth_name=persyn_config.memory.elastic.user,
+            auth_key=persyn_config.memory.elastic.key,
+            index_prefix=persyn_config.memory.elastic.index_prefix,
+            conversation_interval=600, # ten minutes
+            verify_certs=True
         )
 
-    if include_keywords:
-        return summary + f"\nKeywords: {keywords}"
+    def dialog(self, convo):
+        '''
+        Return only the words actually spoken in a convo
+        TODO: Convo lines should be better structured, but it would require overhauling memory.py
+        '''
+        return [
+            line for line in convo
+            if not line.startswith(f"{self.config.id.name} remembers")
+            and not line.startswith(f"{self.config.id.name} recalls")
+            and not line.startswith(f"{self.config.id.name} thinks")
+        ]
 
-    if context_lines:
-        return "\n".join(convo[-context_lines:] + [summary])
+    def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
+        '''
+        Generate a summary of the current conversation for this channel.
+        Also generate and save opinions about detected topics.
+        If save == True, save it to long term memory.
+        Returns the text summary.
+        '''
+        summaries, convo = self.recall.load(service, channel, summaries=0)
+        if not convo:
+            summaries, convo = self.recall.load(service, channel, summaries=3)
+            if not summaries:
+                summaries = [ f"{self.config.id.name} isn't sure what is happening." ]
 
-    return summary
+            # No convo? summarize the summaries
+            convo = summaries
 
-def choose_reply(prompt, convo, goals):
-    ''' Choose the best reply from a list of possibilities '''
-    if not convo:
-        convo = [f'{CFG.id.name} changes the subject.']
+        spoken = self.dialog(convo)
+        log.warning(f"∑ summarizing convo: {json.dumps(spoken)}")
 
-    scored = completion.get_replies(
-        prompt=prompt,
-        convo=convo,
-        goals=goals
-    )
+        summary = self.completion.get_summary(
+            text='\n'.join(convo),
+            summarizer="To briefly summarize this conversation,",
+            max_tokens=max_tokens
+        )
+        keywords = self.completion.get_keywords(summary)
 
-    if not scored:
-        log.warning("🤨 No surviving replies, try again.")
-        scored = completion.get_replies(
+        if save:
+            self.recall.summary(service, channel, summary, keywords)
+
+        for topic in keywords:
+            self.recall.judge(
+                service,
+                channel,
+                topic,
+                self.completion.get_opinions(summary, topic)
+            )
+
+        if include_keywords:
+            return summary + f"\nKeywords: {keywords}"
+
+        if context_lines:
+            return "\n".join(convo[-context_lines:] + [summary])
+
+        return summary
+
+    def choose_reply(self, prompt, convo, goals):
+        ''' Choose the best reply from a list of possibilities '''
+        if not convo:
+            convo = [f'{self.config.id.name} changes the subject.']
+
+        scored = self.completion.get_replies(
             prompt=prompt,
             convo=convo,
             goals=goals
         )
 
-    # Uh-oh. Just keep it brief.
-    if not scored:
-        log.warning("😳 No surviving replies, one last try.")
-        scored = completion.get_replies(
-            prompt=generate_prompt([], convo[-4:]),
-            convo=convo,
-            goals=goals
-        )
+        if not scored:
+            log.warning("🤨 No surviving replies, try again.")
+            scored = self.completion.get_replies(
+                prompt=prompt,
+                convo=convo,
+                goals=goals
+            )
 
-    if not scored:
-        log.warning("😩 No surviving replies, I give up.")
-        log.info("🤷‍♀️ Choice: none available")
-        return ":shrug:"
+        # Uh-oh. Just keep it brief.
+        if not scored:
+            log.warning("😳 No surviving replies, one last try.")
+            scored = self.completion.get_replies(
+                prompt=self.generate_prompt([], convo[-4:]),
+                convo=convo,
+                goals=goals
+            )
 
-    for item in sorted(scored.items()):
-        log.warning(f"{item[0]:0.2f}:", item[1])
+        if not scored:
+            log.warning("😩 No surviving replies, I give up.")
+            log.info("🤷‍♀️ Choice: none available")
+            return ":shrug:"
 
-    idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
-    reply = scored[idx]
-    log.info(f"✅ Choice: {idx:0.2f}", reply)
+        for item in sorted(scored.items()):
+            log.warning(f"{item[0]:0.2f}:", item[1])
 
-    return reply
+        idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
+        reply = scored[idx]
+        log.info(f"✅ Choice: {idx:0.2f}", reply)
 
-def gather_memories(service, channel, entities, summaries, convo):
-    ''' Take a trip down memory lane '''
-    search_term = ' '.join(entities)
-    log.warning(f"ℹ️ look up '{search_term}' in memories")
+        return reply
 
-    for memory in recall.remember(service, channel, search_term, summaries=5):
-        # Don't repeat yourself, loopy-lou.
-        if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
-            continue
+    def gather_memories(self, service, channel, entities, summaries, convo):
+        ''' Take a trip down memory lane '''
+        search_term = ' '.join(entities)
+        log.warning(f"ℹ️ look up '{search_term}' in memories")
 
-        # Stay on topic
-        prompt = '\n'.join(convo + [f"{CFG.id.name} remembers that {ago(memory['timestamp'])} ago: " + memory['text']])
-        on_topic = completion.get_summary(
-            prompt,
-            summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
-            max_tokens=10)
-
-        log.warning(f"🧐 Are we on topic? {on_topic}")
-        if 'true' not in on_topic.lower():
-            log.warning(f"🚫 Irrelevant memory discarded: {memory}")
-            continue
-
-        log.warning(f"🐘 Memory found: {memory}")
-        inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
-        break
-
-def gather_facts(service, channel, entities):
-    ''' Gather facts (from Wikipedia) and opinions (from memory) '''
-    if not entities:
-        return
-
-    for entity in random.sample(entities, k=min(3, len(entities))):
-        if entity == '' or entity in STOP_WORDS:
-            continue
-
-        opinions = recall.opine(service, channel, entity)
-        if opinions:
-            log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
-            if len(opinions) == 1:
-                opinion = opinions[0]
-            else:
-                opinion = completion.nlp(completion.get_summary(
-                    text='\n'.join(opinions),
-                    summarizer=f"{CFG.id.name}'s opinion about {entity} can be briefly summarized as:",
-                    max_tokens=75
-                )).text
-
-            if opinion not in recall.stm.get_bias(service, channel):
-                recall.stm.add_bias(service, channel, opinion)
-                inject_idea(service, channel, opinion, f"thinks about {entity}")
-
-        log.warning(f'❇️ look up "{entity}" on Wikipeda')
-
-        if entity in wikicache:
-            log.warning(f'🤑 wiki cache hit: "{entity}"')
-        else:
-            wiki = None
-            try:
-                if wikipedia.page(entity).original_title.lower() != entity.lower():
-                    log.warning("❎ no exact match found")
-                    continue
-
-                log.warning("✅ found it.")
-                wiki = wikipedia.summary(entity, sentences=3)
-
-                summary = completion.nlp(completion.get_summary(
-                    text=f"This Wikipedia article:\n{wiki}",
-                    summarizer="Can be briefly summarized as: ",
-                    max_tokens=75
-                ))
-                # 2 sentences max please.
-                wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
-
-            except WikipediaException:
-                log.warning("❎ no unambigous wikipedia entry found")
-                wikicache[entity] = None
+        for memory in self.recall.remember(service, channel, search_term, summaries=5):
+            # Don't repeat yourself, loopy-lou.
+            if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
                 continue
 
-            if entity in wikicache and wikicache[entity] is not None:
-                inject_idea(service, channel, wikicache[entity])
+            # Stay on topic
+            prompt = '\n'.join(
+                convo
+                + [f"{self.config.id.name} remembers that {ago(memory['timestamp'])} ago: "
+                + memory['text']]
+            )
+            on_topic = self.completion.get_summary(
+                prompt,
+                summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
+                max_tokens=10)
 
-def check_goals(service, channel, convo):
-    ''' Have we achieved our goals? '''
-    achieved = []
+            log.warning(f"🧐 Are we on topic? {on_topic}")
+            if 'true' not in on_topic.lower():
+                log.warning(f"🚫 Irrelevant memory discarded: {memory}")
+                continue
 
-    if feels['goals']:
-        goal = random.choice(feels['goals'])
-        goal_achieved = completion.get_summary(
-            '\n'.join(convo),
-            summarizer=f"Q: True or False: {CFG.id.name} achieved the goal of {goal}.\nA:",
-            max_tokens=10
-        )
+            log.warning(f"🐘 Memory found: {memory}")
+            self.inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
+            break
 
-        log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
-        if 'true' in goal_achieved.lower():
-            log.warning(f"🏆 Goal achieved: {goal}")
-            achieved.append(goal)
-            feels['goals'].remove(goal)
-        else:
-            log.warning(f"🚫 Goal not yet achieved: {goal}")
+    def gather_facts(self, service, channel, entities):
+        ''' Gather facts (from Wikipedia) and opinions (from memory) '''
+        if not entities:
+            return
 
-    summary = completion.nlp(completion.get_summary(
-        text='\n'.join(convo),
-        summarizer=f"{CFG.id.name}'s goal is",
-        max_tokens=100
-    ))
+        for entity in random.sample(entities, k=min(3, len(entities))):
+            if entity == '' or entity in STOP_WORDS:
+                continue
 
-    # 1 sentence max please.
-    the_goal = ' '.join([s.text for s in summary.sents][:1])
+            opinions = self.recall.opine(service, channel, entity)
+            if opinions:
+                log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
+                if len(opinions) == 1:
+                    opinion = opinions[0]
+                else:
+                    opinion = self.completion.nlp(self.completion.get_summary(
+                        text='\n'.join(opinions),
+                        summarizer=f"{self.config.id.name}'s opinion about {entity} can be briefly summarized as:",
+                        max_tokens=75
+                    )).text
 
-    for taboo in ['remember', 'learn']:
-        if taboo in the_goal:
-            return achieved
+                if opinion not in self.recall.stm.get_bias(service, channel):
+                    self.recall.stm.add_bias(service, channel, opinion)
+                    self.inject_idea(service, channel, opinion, f"thinks about {entity}")
 
-    recall.add_goal(service, channel, the_goal)
-    return achieved
+            log.warning(f'❇️ look up "{entity}" on Wikipeda')
 
-def get_reply(service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
-    '''
-    Get the best reply for the given channel. Saves to recall memory.
-
-    Returns the best reply, and any goals achieved.
-    '''
-    feels['goals'] = recall.get_goals(service, channel)
-
-    if recall.expired(service, channel):
-        summarize_convo(service, channel, save=True, context_lines=2)
-
-    if msg != '...':
-        recall.save(service, channel, msg, speaker_name, speaker_id)
-        tts(msg)
-
-    # Load summaries and conversation
-    summaries, convo = recall.load(service, channel, summaries=2)
-    convo_length = len(convo)
-    last_sentence = None
-
-    if convo:
-        last_sentence = convo[-1]
-
-    # Ruminate a bit
-    entities = extract_entities(msg)
-
-    if entities:
-        log.warning(f"🆔 extracted entities: {entities}")
-    else:
-        entities = completion.get_keywords(convo)
-        log.warning(f"🆔 extracted keywords: {entities}")
-
-    if entities:
-        # Memories
-        gather_memories(service, channel, entities, summaries, convo)
-
-        # Facts and opinions (interleaved)
-        gather_facts(service, channel, entities)
-
-    # Goals
-    achieved = check_goals(service, channel, convo)
-
-    # If our mind was wandering, remember the last thing that was said.
-    if convo_length != len(recall.load(service, channel, summaries=0)[1]):
-        inject_idea(service, channel, last_sentence)
-
-    prompt = generate_prompt(summaries, convo)
-
-    # Is this just too much to think about?
-    if len(prompt) > completion.max_prompt_length:
-        log.warning("🥱 get_reply(): prompt too long, summarizing.")
-        summarize_convo(service, channel, save=True, max_tokens=100)
-        summaries, _ = recall.load(service, channel, summaries=3)
-        prompt = generate_prompt(summaries, convo[-3:])
-
-    reply = choose_reply(prompt, convo, feels['goals'])
-
-    recall.save(service, channel, reply, CFG.id.name, CFG.id.guid)
-
-    # tts(reply, voice=CFG.voice.personality)
-
-    feels['current'] = completion.get_feels(f'{prompt} {reply}')
-
-    log.warning("😄 Feeling:", feels['current'])
-
-    return (reply, achieved)
-
-def default_prompt_prefix():
-    ''' The default prompt prefix '''
-    if feels['goals']:
-        goals = f"""\n{CFG.id.name}'s goals include {', '.join(feels['goals'])}."""
-    else:
-        goals = ""
-
-    return f"""It is {natural_time()} on {today()}. {CFG.id.name} is feeling {feels['current']}.{goals}"""
-
-def generate_prompt(summaries, convo):
-    ''' Generate the model prompt '''
-    newline = '\n'
-
-    return f"""{default_prompt_prefix()}
-{newline.join(summaries)}
-{newline.join(convo)}
-{CFG.id.name}:"""
-
-def get_status(service, channel):
-    ''' status report '''
-    paragraph = '\n\n'
-    newline = '\n'
-    summaries, convo = recall.load(service, channel, summaries=2)
-    return f"""{default_prompt_prefix()}
-
-{paragraph.join(summaries)}
-
-{newline.join(convo)}
-"""
-
-def amnesia(service, channel):
-    ''' forget it '''
-    return recall.forget(service, channel)
-
-def extract_nouns(text):
-    ''' return a list of all nouns (except pronouns) in text '''
-    nlp = completion.nlp(text)
-    nouns = {n.text.strip() for n in nlp.noun_chunks if n.text.strip() != CFG.id.name for t in n if t.pos_ != 'PRON'}
-    return list(nouns)
-
-def extract_entities(text):
-    ''' return a list of all entities in text '''
-    nlp = completion.nlp(text)
-    return list({n.text.strip() for n in nlp.ents if n.text.strip() != CFG.id.name})
-
-def daydream(service, channel):
-    ''' Chew on recent conversation '''
-    paragraph = '\n\n'
-    newline = '\n'
-    summaries, convo = recall.load(service, channel, summaries=5)
-
-    reply = {}
-    entities = extract_entities(paragraph.join(summaries) + newline.join(convo))
-
-    for entity in random.sample(entities, k=3):
-        if entity == '' or entity in STOP_WORDS:
-            continue
-
-        if entity in wikicache:
-            log.warning(f"🤑 wiki cache hit: {entity}")
-            reply[entity] = wikicache[entity]
-        else:
-            try:
-                hits = wikipedia.search(entity)
-                if hits:
-                    try:
-                        wiki = wikipedia.summary(hits[0:1], sentences=3)
-                        summary = completion.nlp(completion.get_summary(
-                            text=f"This Wikipedia article:\n{wiki}",
-                            summarizer="Can be summarized as: ",
-                            max_tokens=100
-                        ))
-                        # 2 sentences max please.
-                        reply[entity] = ' '.join([s.text for s in summary.sents][:2])
-                        wikicache[entity] = reply[entity]
-                    except WikipediaException:
+            if entity in self.wikicache:
+                log.warning(f'🤑 wiki cache hit: "{entity}"')
+            else:
+                wiki = None
+                try:
+                    if wikipedia.page(entity).original_title.lower() != entity.lower():
+                        log.warning("❎ no exact match found")
                         continue
 
-            except WikipediaException:
+                    log.warning("✅ found it.")
+                    wiki = wikipedia.summary(entity, sentences=3)
+
+                    summary = self.completion.nlp(self.completion.get_summary(
+                        text=f"This Wikipedia article:\n{wiki}",
+                        summarizer="Can be briefly summarized as: ",
+                        max_tokens=75
+                    ))
+                    # 2 sentences max please.
+                    self.wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
+
+                except WikipediaException:
+                    log.warning("❎ no unambigous wikipedia entry found")
+                    self.wikicache[entity] = None
+                    continue
+
+                if entity in self.wikicache and self.wikicache[entity] is not None:
+                    self.inject_idea(service, channel, self.wikicache[entity])
+
+    def check_goals(self, service, channel, convo):
+        ''' Have we achieved our goals? '''
+        achieved = []
+
+        if self.feels['goals']:
+            goal = random.choice(self.feels['goals'])
+            goal_achieved = self.completion.get_summary(
+                '\n'.join(convo),
+                summarizer=f"Q: True or False: {self.config.id.name} achieved the goal of {goal}.\nA:",
+                max_tokens=10
+            )
+
+            log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
+            if 'true' in goal_achieved.lower():
+                log.warning(f"🏆 Goal achieved: {goal}")
+                achieved.append(goal)
+                self.feels['goals'].remove(goal)
+            else:
+                log.warning(f"🚫 Goal not yet achieved: {goal}")
+
+        summary = self.completion.nlp(self.completion.get_summary(
+            text='\n'.join(convo),
+            summarizer=f"{self.config.id.name}'s goal is",
+            max_tokens=100
+        ))
+
+        # 1 sentence max please.
+        the_goal = ' '.join([s.text for s in summary.sents][:1])
+
+        for taboo in ['remember', 'learn']:
+            if taboo in the_goal:
+                return achieved
+
+        self.recall.add_goal(service, channel, the_goal)
+        return achieved
+
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
+        '''
+        Get the best reply for the given channel. Saves to recall memory.
+
+        Returns the best reply, and any goals achieved.
+        '''
+        self.feels['goals'] = self.recall.get_goals(service, channel)
+
+        if self.recall.expired(service, channel):
+            self.summarize_convo(service, channel, save=True, context_lines=2)
+
+        if msg != '...':
+            self.recall.save(service, channel, msg, speaker_name, speaker_id)
+            tts(msg)
+
+        # Load summaries and conversation
+        summaries, convo = self.recall.load(service, channel, summaries=2)
+        convo_length = len(convo)
+        last_sentence = None
+
+        if convo:
+            last_sentence = convo[-1]
+
+        # Ruminate a bit
+        entities = self.extract_entities(msg)
+
+        if entities:
+            log.warning(f"🆔 extracted entities: {entities}")
+        else:
+            entities = self.completion.get_keywords(convo)
+            log.warning(f"🆔 extracted keywords: {entities}")
+
+        if entities:
+            # Memories
+            self.gather_memories(service, channel, entities, summaries, convo)
+
+            # Facts and opinions (interleaved)
+            self.gather_facts(service, channel, entities)
+
+        # Goals
+        achieved = self.check_goals(service, channel, convo)
+
+        # If our mind was wandering, remember the last thing that was said.
+        if convo_length != len(self.recall.load(service, channel, summaries=0)[1]):
+            self.inject_idea(service, channel, last_sentence)
+
+        prompt = self.generate_prompt(summaries, convo)
+
+        # Is this just too much to think about?
+        if len(prompt) > self.completion.max_prompt_length:
+            log.warning("🥱 get_reply(): prompt too long, summarizing.")
+            self.summarize_convo(service, channel, save=True, max_tokens=100)
+            summaries, _ = self.recall.load(service, channel, summaries=3)
+            prompt = self.generate_prompt(summaries, convo[-3:])
+
+        reply = self.choose_reply(prompt, convo, self.feels['goals'])
+
+        self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid)
+
+        # tts(reply, voice=self.config.voice.personality)
+
+        self.feels['current'] = self.completion.get_feels(f'{prompt} {reply}')
+
+        log.warning("😄 Feeling:", self.feels['current'])
+
+        return (reply, achieved)
+
+    def default_prompt_prefix(self):
+        ''' The default prompt prefix '''
+        if self.feels['goals']:
+            goals = f"""\n{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}."""
+        else:
+            goals = ""
+
+        return f"""It is {natural_time()} on {today()}. {self.config.id.name} is feeling {self.feels['current']}.{goals}"""
+
+    def generate_prompt(self, summaries, convo):
+        ''' Generate the model prompt '''
+        newline = '\n'
+
+        return f"""{self.default_prompt_prefix()}
+    {newline.join(summaries)}
+    {newline.join(convo)}
+    {self.config.id.name}:"""
+
+    def get_status(self, service, channel):
+        ''' status report '''
+        paragraph = '\n\n'
+        newline = '\n'
+        summaries, convo = self.recall.load(service, channel, summaries=2)
+        return f"""{self.default_prompt_prefix()}
+
+    {paragraph.join(summaries)}
+
+    {newline.join(convo)}
+    """
+
+    def amnesia(self, service, channel):
+        ''' forget it '''
+        return self.recall.forget(service, channel)
+
+    def extract_nouns(self, text):
+        ''' return a list of all nouns (except pronouns) in text '''
+        nlp = self.completion.nlp(text)
+        nouns = {
+            n.text.strip()
+            for n in nlp.noun_chunks
+            if n.text.strip() != self.config.id.name
+            for t in n
+            if t.pos_ != 'PRON'
+        }
+        return list(nouns)
+
+    def extract_entities(self, text):
+        ''' return a list of all entities in text '''
+        nlp = self.completion.nlp(text)
+        return list({n.text.strip() for n in nlp.ents if n.text.strip() != self.config.id.name})
+
+    def daydream(self, service, channel):
+        ''' Chew on recent conversation '''
+        paragraph = '\n\n'
+        newline = '\n'
+        summaries, convo = self.recall.load(service, channel, summaries=5)
+
+        reply = {}
+        entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))
+
+        for entity in random.sample(entities, k=3):
+            if entity == '' or entity in STOP_WORDS:
                 continue
 
-    log.warning("💭 daydream entities:")
-    log.warning(reply)
-    return reply
+            if entity in self.wikicache:
+                log.warning(f"🤑 wiki cache hit: {entity}")
+                reply[entity] = self.wikicache[entity]
+            else:
+                try:
+                    hits = wikipedia.search(entity)
+                    if hits:
+                        try:
+                            wiki = wikipedia.summary(hits[0:1], sentences=3)
+                            summary = self.completion.nlp(self.completion.get_summary(
+                                text=f"This Wikipedia article:\n{wiki}",
+                                summarizer="Can be summarized as: ",
+                                max_tokens=100
+                            ))
+                            # 2 sentences max please.
+                            reply[entity] = ' '.join([s.text for s in summary.sents][:2])
+                            self.wikicache[entity] = reply[entity]
+                        except WikipediaException:
+                            continue
 
-def inject_idea(service, channel, idea, verb="recalls"):
-    ''' Directly inject an idea into recall memory. '''
-    if recall.expired(service, channel):
-        summarize_convo(service, channel, save=True, context_lines=2)
+                except WikipediaException:
+                    continue
 
-    recall.save(service, channel, idea, f"{CFG.id.name} {verb}", CFG.id.guid)
+        log.warning("💭 daydream entities:")
+        log.warning(reply)
+        return reply
 
-    log.warning(f"🤔 {verb}:", idea)
-    return "🤔"
+    def inject_idea(self, service, channel, idea, verb="recalls"):
+        ''' Directly inject an idea into recall memory. '''
+        if self.recall.expired(service, channel):
+            self.summarize_convo(service, channel, save=True, context_lines=2)
 
-@app.get("/")
-async def root():
-    ''' Hi there! '''
-    return {"message": "Interact server. Try /docs"}
+        self.recall.save(service, channel, idea, f"{self.config.id.name} {verb}", self.config.id.guid)
 
-@app.post("/reply/")
-async def handle_reply(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=5000),
-    speaker_id: str = Query(..., min_length=1, max_length=255),
-    speaker_name: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
+        log.warning(f"🤔 {verb}:", idea)
+        return "🤔"
 
-    if not msg.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Text must contain at least one non-space character."
-        )
+    def opine(self, service, channel, entity, speaker_id=None, size=10):
+        ''' Stub for recall '''
+        return self.recall.opine(service, channel, entity, speaker_id, size)
 
-    (reply, achieved) = get_reply(service, channel, msg, speaker_name, speaker_id)
-    return {
-        "reply": reply,
-        "goals_achieved": achieved
-    }
+    def add_goal(self, service, channel, goal):
+        ''' Stub for recall '''
+        return self.recall.add_goal(service, channel, goal)
 
-@app.post("/summary/")
-async def handle_summary(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    save: Optional[bool] = Query(True),
-    max_tokens: Optional[int] = Query(200),
-    include_keywords: Optional[bool] = Query(False),
-    context_lines: Optional[int] = Query(0)
-    ):
-    ''' Return the reply '''
-    return {
-        "summary": summarize_convo(service, channel, save, max_tokens, include_keywords, context_lines)
-    }
-
-@app.post("/status/")
-async def handle_status(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
-    return {
-        "status": get_status(service, channel)
-    }
-
-@app.post("/amnesia/")
-async def handle_amnesia(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
-    return {
-        "amnesia": amnesia(service, channel)
-    }
-
-@app.post("/nouns/")
-async def handle_nouns(
-    text: str = Query(..., min_length=1, max_length=16384),
-    ):
-    ''' Return the reply '''
-    return {
-        "nouns": extract_nouns(text)
-    }
-
-@app.post("/entities/")
-async def handle_entities(
-    text: str = Query(..., min_length=1, max_length=16384),
-    ):
-    ''' Return the reply '''
-    return {
-        "entities": extract_entities(text)
-    }
-
-@app.post("/daydream/")
-async def handle_daydream(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
-    return {
-        "daydream": daydream(service, channel)
-    }
-
-@app.post("/inject/")
-async def handle_inject(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    idea: str = Query(..., min_length=1, max_length=16384),
-    ):
-    ''' Inject an idea into the stream of consciousness '''
-    inject_idea(service, channel, idea)
-
-    return {
-        "status": get_status(service, channel)
-    }
-
-@app.post("/opinion/")
-async def handle_opinion(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    topic: str = Query(..., min_length=1, max_length=16384),
-    speaker_id: Optional[str] = Query(None, min_length=1, max_length=36),
-    size: Optional[int] = Query(10),
-    summarize: Optional[bool] = Query(True),
-    max_tokens: Optional[int] = Query(50)
-    ):
-    ''' Get our opinion about topic '''
-
-    opinions = recall.opine(service, channel, topic, speaker_id, size)
-
-    if summarize:
-        if not opinions:
-            return { "opinions": [] }
-
-        return {
-            "opinions": [
-                completion.get_summary(
-                    text='\n'.join(opinions),
-                    summarizer="To briefly summarize,",
-                    max_tokens=max_tokens
-                )
-            ]
-        }
-
-    # If not summarizing, just return them all
-    return {
-        "opinions": opinions
-    }
-
-@app.post("/add_goal/")
-async def add_goal(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    goal: str = Query(..., min_length=1, max_length=16384),
-    ):
-    ''' Add a short-term goal in a given context '''
-    recall.add_goal(service, channel, goal)
-    return {
-        "goals": recall.get_goals(service, channel)
-    }
-
-@app.post("/get_goals/")
-async def get_goals(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Fetch the current short-term goals for a given context '''
-    return {
-        "goals": recall.get_goals(service, channel)
-    }
+    def get_goals(self, service, channel):
+        ''' Stub for recall '''
+        return self.recall.get_goals(service, channel)

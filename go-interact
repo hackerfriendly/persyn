@@ -13,6 +13,6 @@ while :; do
 	figlet -f slant -w 100 Interact starting up | lolcat -a -d 5
 #	. ../config/anna.conf
 	export PERSYN_CONFIG='/home/rob/persyn/config/anna.yaml'
-	uvicorn interact:app --port ${INTERACT_SERVER_PORT} --host ${INTERACT_SERVER_HOST} ${DEV}
+	uvicorn interact-server:app --port ${INTERACT_SERVER_PORT} --host ${INTERACT_SERVER_HOST} ${DEV}
 	sleep 1
 done
