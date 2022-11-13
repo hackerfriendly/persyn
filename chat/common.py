@@ -109,12 +109,13 @@ class Chat():
 
         reminders.add(channel, when, self.get_summary, [channel, True, True, 50, False, 0], 'summarizer')
 
-    def inject_idea(self, channel, idea):
+    def inject_idea(self, channel, idea, verb=None):
         ''' Directly inject an idea into the stream of consciousness. '''
         req = {
             "service": self.service,
             "channel": channel,
-            "idea": idea
+            "idea": idea,
+            "verb": verb
         }
         try:
             response = requests.post(f"{self.config.interact.url}/inject/", params=req, timeout=10)
@@ -133,6 +134,7 @@ class Chat():
         req = {
             "engine": engine,
             "channel": channel,
+            "service": self.service,
             "prompt": prompt,
             "model": model,
             "slack_bot_token": self.config.chat.slack.bot_token,

@@ -121,9 +121,10 @@ async def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     idea: str = Query(..., min_length=1, max_length=16384),
+    verb: Optional[str] = Query('recalls', min_length=1, max_length=16384),
     ):
     ''' Inject an idea into the stream of consciousness '''
-    interact.inject_idea(service, channel, idea)
+    interact.inject_idea(service, channel, idea, verb)
 
     return {
         "status": interact.get_status(service, channel)

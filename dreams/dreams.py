@@ -3,6 +3,7 @@ dreams.py
 
 A REST API for generating chat bot hallucinations.
 '''
+# pylint: disable=import-error, wrong-import-position, wrong-import-order
 import json
 import os
 import random
@@ -14,6 +15,7 @@ from pathlib import Path
 from subprocess import run, CalledProcessError
 from threading import Lock
 
+import boto3
 import requests
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
@@ -27,58 +29,47 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
-CFG = load_config()
+persyn_config = load_config()
 
 app = FastAPI()
 
-for gpu in CFG.dreams.gpus:
-    CFG.dreams.gpus[gpu] = Lock()
+sqs = boto3.resource('sqs', region_name=persyn_config.id.aws_region)
+
+queue = sqs.get_queue_by_name(QueueName=persyn_config.id.sqs_queue)
+
+for g in persyn_config.dreams.gpus:
+    persyn_config.dreams.gpus[g] = Lock()
 
 SCRIPT_PATH = Path(__file__).resolve().parent
 
-def post_to_slack(channel, prompt, images, slack_bot_token, bot_name):
-    ''' Post the image URL to Slack '''
-
-    # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
-    blocks = []
-    for i, image in enumerate(images):
-        blocks.append(
-            {
-                "type": "image",
-                "title": {
-                    "type": "plain_text",
-                    "text": prompt if i == 0 else " "
-                },
-                "image_url" : f"{CFG.dreams.upload.url_base}/{image}",
-                "alt_text": prompt
-            }
-        )
-    req = {
-        "token": slack_bot_token,
+def post_to_queue(service, channel, prompt, images, bot_name):
+    ''' Post the completed image notification to SQS '''
+    data = {
+        "service": service,
         "channel": channel,
-        "username": bot_name,
-        "text": prompt,
-        "blocks": json.dumps(blocks)
+        "images": images,
+        "caption": prompt,
+        "bot_name": bot_name,
     }
-    reply = requests.post('https://slack.com/api/chat.postMessage', data=req)
-    print(reply.status_code, reply.text)
+    response = queue.send_message(MessageBody=json.dumps(data))
+    log.info(f"Posted to queue: {response['MessageId']}")
 
 def upload_files(files):
     ''' scp files to SCPDEST. Expects a Path glob generator. '''
-    scpopts = getattr(CFG.dreams.upload, 'opts', None)
+    scpopts = getattr(persyn_config.dreams.upload, 'opts', None)
     if scpopts:
-        run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [CFG.dreams.upload.dest_path], check=True)
+        run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
     else:
-        run(['/usr/bin/scp'] + [str(f) for f in files] + [CFG.dreams.upload.dest_path], check=True)
+        run(['/usr/bin/scp'] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
 
 def wait_for_gpu():
     ''' Return the device name of first available GPU. Blocks until one is available and sets the lock. '''
     while True:
-        gpu = random.choice(list(CFG.dreams.gpus))
-        if CFG.dreams.gpus[gpu].acquire(timeout=1):
+        gpu = random.choice(list(persyn_config.dreams.gpus))
+        if persyn_config.dreams.gpus[gpu].acquire(timeout=1):
             return gpu
 
-def process_prompt(cmd, channel, prompt, images, tmpdir, slack_bot_token, bot_name):
+def process_prompt(cmd, service, channel, prompt, images, tmpdir, bot_name):
     ''' Generate the image files, upload them, post to Slack, and clean up. '''
     try:
         gpu = wait_for_gpu()
@@ -88,17 +79,17 @@ def process_prompt(cmd, channel, prompt, images, tmpdir, slack_bot_token, bot_na
             env['CUDA_VISIBLE_DEVICES'] = gpu
             run(cmd, check=True, env=env)
         finally:
-            CFG.dreams.gpus[gpu].release()
+            persyn_config.dreams.gpus[gpu].release()
 
         upload_files(Path(tmpdir).glob('*'))
 
     except CalledProcessError:
         return
 
-    if channel:
-        post_to_slack(channel, prompt, images, slack_bot_token, bot_name)
+    if service:
+        post_to_queue(service, channel, prompt, images, bot_name)
 
-def vdiff_cfg(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
+def vdiff_cfg(service, channel, prompt, model, image_id, steps, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch classifier-free guidance '''
 
     image = f"{image_id}.jpg"
@@ -115,9 +106,9 @@ def vdiff_cfg(channel, prompt, model, image_id, steps, slack_bot_token, bot_name
             '--style', 'random',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
 
-def vdiff_clip(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
+def vdiff_clip(service, channel, prompt, model, image_id, steps, bot_name):
     ''' https://github.com/crowsonkb/v-diffusion-pytorch '''
 
     image = f"{image_id}.jpg"
@@ -131,9 +122,9 @@ def vdiff_clip(channel, prompt, model, image_id, steps, slack_bot_token, bot_nam
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
 
-def vqgan(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
+def vqgan(service, channel, prompt, model, image_id, steps, bot_name):
     ''' https://colab.research.google.com/drive/15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -147,9 +138,9 @@ def vqgan(channel, prompt, model, image_id, steps, slack_bot_token, bot_name):
             '--vqgan-checkpoint', f'models/{model}.ckpt',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
 
-def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
+def stylegan2(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/NVlabs/stylegan2 '''
     image = f"{image_id}.jpg"
     psi = random.uniform(0.6, 0.9)
@@ -161,11 +152,11 @@ def stylegan2(channel, prompt, model, image_id, slack_bot_token, bot_name, style
             str(psi),
             f'{tmpdir}/{image}'
         ]
-        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
 
-def sdd(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
+def sdd(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' Fetch images from sdd.py '''
-    url = getattr(CFG.dreams.stable_diffusion, 'url', None)
+    url = getattr(persyn_config.dreams.stable_diffusion, 'url', None)
     if not url:
         raise HTTPException(
             status_code=400,
@@ -196,11 +187,11 @@ def sdd(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # p
 
         upload_files([fname])
 
-    if channel:
-        post_to_slack(channel, prompt, [f"{image_id}.jpg"], slack_bot_token, bot_name)
+    if service:
+        post_to_queue(service, channel, prompt, [f"{image_id}.jpg"], bot_name)
 
 
-def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
+def stable_diffusion(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/stable-diffusion '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -210,9 +201,9 @@ def stable_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name
             '-p', prompt,
             '-t', style
         ]
-        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
 
-def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name, style): # pylint: disable=unused-argument
+def latent_diffusion(service, channel, prompt, model, image_id, bot_name, style): # pylint: disable=unused-argument
     ''' https://github.com/hackerfriendly/latent-diffusion '''
     image = f"{image_id}.jpg"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -221,7 +212,7 @@ def latent_diffusion(channel, prompt, model, image_id, slack_bot_token, bot_name
             f'{tmpdir}/{image}',
             prompt[:250]
         ]
-        process_prompt(cmd, channel, prompt, [image], tmpdir, slack_bot_token, bot_name)
+        process_prompt(cmd, service, channel, prompt, [image], tmpdir, bot_name)
 
 @app.get("/")
 async def root():
@@ -232,7 +223,7 @@ async def root():
 async def image_url(image_id):
     ''' Redirect to BASEURL '''
     response = Response(status_code=301)
-    response.headers['Location'] = f"{CFG.dreams.upload.url_base}/{image_id}.jpg"
+    response.headers['Location'] = f"{persyn_config.dreams.upload.url_base}/{image_id}.jpg"
     return response
 
 @app.post("/generate/")
@@ -241,8 +232,8 @@ async def generate(
     background_tasks: BackgroundTasks,
     engine: str = 'v-diffusion-pytorch-cfg',
     model: str = None,
+    service: str = None,
     channel: str = None,
-    slack_bot_token: str = None,
     bot_name: str = None,
     style: str = None
     ):
@@ -329,23 +320,23 @@ async def generate(
     if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2', 'sdd']:
         background_tasks.add_task(
             engines[engine],
+            service=service,
             channel=channel,
             prompt=prompt,
             model=models[engine][model]['name'],
             image_id=image_id,
-            slack_bot_token=slack_bot_token,
             bot_name=bot_name,
             style=style
         )
     else:
         background_tasks.add_task(
             engines[engine],
+            service=service,
             channel=channel,
             prompt=prompt,
             model=models[engine][model]['name'],
             image_id=image_id,
             steps=models[engine][model]['steps'],
-            slack_bot_token=slack_bot_token,
             bot_name=bot_name
         )
 
