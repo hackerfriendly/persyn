@@ -5,18 +5,10 @@ discord-bot.py
 Chat with your persyn on Discord.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
-import base64
-import os
 import random
-import re
 import sys
-import tempfile
-import asyncio
 
 from pathlib import Path
-from hashlib import sha256
-
-import requests
 
 # discord.py
 import discord
@@ -26,9 +18,6 @@ sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
 
 # Color logging
 from utils.color_logging import log
-
-# Artist names
-from utils.art import artists
 
 # Bot config
 from utils.config import load_config
@@ -51,12 +40,6 @@ persyn_config = load_config()
 
 # Chat library
 chat = Chat(persyn_config)
-
-# Username cache
-known_users = {}
-
-# Known bots
-known_bots = {}
 
 # Coroutine reminders
 reminders = AsyncReminders()
