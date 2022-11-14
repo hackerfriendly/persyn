@@ -138,7 +138,6 @@ class Chat():
             "queue": getattr(self.config.id, "sqs_queue", None),
             "prompt": prompt,
             "model": model,
-            "slack_bot_token": self.config.chat.slack.bot_token,
             "bot_name": self.config.id.name,
             "style": style
         }
