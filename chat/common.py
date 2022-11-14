@@ -291,11 +291,18 @@ class Chat():
         ''' Fetch the image caption using CLIP Interrogator '''
         log.warning("🖼  needs a caption")
 
-        resp = requests.post(
-            f"{self.config.dreams.captions.url}/caption/",
-            json={"data": base64.b64encode(image_data).decode()},
-            timeout=20
-        )
+        if image_data[:4] == "http":
+            resp = requests.post(
+                    f"{self.config.dreams.captions.url}/caption/",
+                    json={"data": image_data},
+                    timeout=20
+                )
+        else:
+            resp = requests.post(
+                f"{self.config.dreams.captions.url}/caption/",
+                json={"data": base64.b64encode(image_data).decode()},
+                timeout=20
+            )
         if not resp.ok:
             log.error(f"🖼  Could not get_caption(): {resp.text}")
             return None
