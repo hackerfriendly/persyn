@@ -76,12 +76,22 @@ async def on_message(ctx):
 
     if ctx.author.bot:
         log.warning(f'🤖 BOT DETECTED ({ctx.author.name})')
+        log.info(ctx)
         # 95% chance to just ignore them
         if random.random() < 0.95:
             return
 
     if ctx.content.startswith('🎨'):
-        chat.take_a_photo(ctx.channel.id, ctx.content, engine="stable-diffusion")
+        chat.take_a_photo(ctx.channel.id, ctx.content[1:], engine="stable-diffusion")
+        return
+
+    if ctx.content == '🤳':
+        chat.take_a_photo(
+            ctx.channel.id,
+            ctx.content[1:],
+            engine="stylegan2",
+            model=random.choice(["ffhq", "waifu"])
+        )
         return
 
     if ctx.content == 'echo':
