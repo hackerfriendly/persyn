@@ -20,7 +20,7 @@ from botocore.exceptions import ClientError
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 # Common chat library
-from chat.common import Chat
+# from chat.common import Chat
 
 # Color logging
 from utils.color_logging import log
@@ -34,7 +34,7 @@ sqs = boto3.resource('sqs', region_name=persyn_config.id.aws_region)
 
 try:
     queue = sqs.get_queue_by_name(QueueName=persyn_config.id.sqs_queue)
-except ClientError as error:
+except ClientError as sqserr:
     try:
         queue = sqs.create_queue(
             QueueName=persyn_config.id.sqs_queue,
@@ -43,8 +43,8 @@ except ClientError as error:
                 'MessageRetentionPeriod': '345600'
             }
         )
-    except ClientError as error:
-        raise RuntimeError(error)
+    except ClientError as sqserr:
+        raise RuntimeError from sqserr
 
 def post_to_slack(channel, prompt, images, bot_name):
     ''' Post the image URL to Slack '''
@@ -78,43 +78,47 @@ def post_to_slack(channel, prompt, images, bot_name):
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Slack: {err}")
 
-def post_to_discord(channel, prompt, images, bot_name):
+def post_to_discord(prompt, images, bot_name):
     ''' Post the image URL to Discord '''
-    for i, image in enumerate(images):
-        req = {
-            # "content": prompt,
-            "username": persyn_config.id.name,
-            "embeds": [
-                {
-                    "description": prompt[1:],
-                    "image": {
-                        "url": f"{persyn_config.dreams.upload.url_base}/{image}"
-                    }
-                }
-            ]
-        }
+    req = {
+        "username": persyn_config.id.name,
+        "avatar_url": getattr(persyn_config.id, "avatar", "https://hackerfriendly.com/pub/anna/anna.png")
+    }
 
-        try:
-            reply = requests.post(persyn_config.chat.discord.webhook, json=req)
-            reply.raise_for_status()
-            log.info(f"⚡️ Posted image to Discord as {bot_name}")
-        except requests.exceptions.RequestException as err:
-            log.critical(f"⚡️ Could not post image to Discord: {err}")
+    embeds = []
+    for image in images:
+        embeds.append(
+            {
+                "description": prompt[1:],
+                "image": {
+                    "url": f"{persyn_config.dreams.upload.url_base}/{image}"
+                }
+            }
+        )
+
+    req['embeds'] = embeds
+
+    try:
+        reply = requests.post(persyn_config.chat.discord.webhook, json=req)
+        reply.raise_for_status()
+        log.info(f"⚡️ Posted image to Discord as {bot_name}")
+    except requests.exceptions.RequestException as err:
+        log.critical(f"⚡️ Could not post image to Discord: {err}")
 
 def image_ready(msg):
     ''' An image has been generated '''
-    chat = Chat(persyn_config, service=msg['service'])
+    # chat = Chat(persyn_config, service=msg['service'])
 
     if 'slack.com' in msg['service']:
         post_to_slack(msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
     elif 'discord' in msg['service']:
-        post_to_discord(msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
+        post_to_discord(msg['caption'], msg['images'], msg['bot_name'])
     else:
         log.error(f"Unknown service {msg['service']}, cannot post photo")
 
 
-def new_idea(msg):
-    pass
+# def new_idea(msg):
+    # ''' Inject a new idea '''
     # chat.inject_idea(
     #     channel=msg['channel'],
     #     idea=f"an image of '{msg['caption']}' was posted to {persyn_config.dreams.upload.url_base}/{msg['guid']}.jpg",
@@ -126,15 +130,15 @@ while True:
         log.info(f"⚡️ {message.body}")
 
         try:
-            msg = json.loads(message.body)
+            event = json.loads(message.body)
 
-            if msg['event_type'] == 'image-ready':
-                image_ready(msg)
+            if event['event_type'] == 'image-ready':
+                image_ready(event)
 
             else:
-                log.critical(f"⚡️ Unknown event type: {msg['event_type']}")
+                log.critical(f"⚡️ Unknown event type: {event['event_type']}")
 
-        except (json.JSONDecodeError, AttributeError) as err:
+        except (json.JSONDecodeError, AttributeError):
             log.critical(f"Bad json, skipping message: {message.body}")
 
         message.delete()
