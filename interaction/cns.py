@@ -20,7 +20,7 @@ from botocore.exceptions import ClientError
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 # Common chat library
-# from chat.common import Chat
+from chat.common import Chat
 
 # Color logging
 from utils.color_logging import log
@@ -46,12 +46,14 @@ except ClientError as sqserr:
     except ClientError as sqserr:
         raise RuntimeError from sqserr
 
-def post_to_slack(channel, prompt, images, bot_name):
+def post_to_slack(chat, channel, prompt, images, bot_name):
     ''' Post the image URL to Slack '''
 
     # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
     blocks = []
+    url = ""
     for i, image in enumerate(images):
+        url = f"{persyn_config.dreams.upload.url_base}/{image}"
         blocks.append(
             {
                 "type": "image",
@@ -59,7 +61,7 @@ def post_to_slack(channel, prompt, images, bot_name):
                     "type": "plain_text",
                     "text": prompt if i == 0 else " "
                 },
-                "image_url" : f"{persyn_config.dreams.upload.url_base}/{image}",
+                "image_url" : url,
                 "alt_text": prompt
             }
         )
@@ -78,20 +80,23 @@ def post_to_slack(channel, prompt, images, bot_name):
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Slack: {err}")
 
-def post_to_discord(prompt, images, bot_name):
+    chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
+
+def post_to_discord(chat, channel, prompt, images, bot_name):
     ''' Post the image URL to Discord '''
     req = {
         "username": persyn_config.id.name,
         "avatar_url": getattr(persyn_config.id, "avatar", "https://hackerfriendly.com/pub/anna/anna.png")
     }
-
     embeds = []
+    url = ""
     for image in images:
+        url =  f"{persyn_config.dreams.upload.url_base}/{image}"
         embeds.append(
             {
-                "description": prompt[1:],
+                "description": prompt or "Untitled",
                 "image": {
-                    "url": f"{persyn_config.dreams.upload.url_base}/{image}"
+                    "url": url
                 }
             }
         )
@@ -105,17 +110,20 @@ def post_to_discord(prompt, images, bot_name):
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Discord: {err}")
 
+    chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
+
 def image_ready(msg):
     ''' An image has been generated '''
-    # chat = Chat(persyn_config, service=msg['service'])
+
+    chat = Chat(persyn_config, service=msg['service'])
 
     if 'slack.com' in msg['service']:
-        post_to_slack(msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
+        post_to_slack(chat, msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
     elif 'discord' in msg['service']:
-        post_to_discord(msg['caption'], msg['images'], msg['bot_name'])
+        post_to_discord(chat, msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
     else:
         log.error(f"Unknown service {msg['service']}, cannot post photo")
-
+        return
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
@@ -138,7 +146,7 @@ while True:
             else:
                 log.critical(f"⚡️ Unknown event type: {event['event_type']}")
 
-        except (json.JSONDecodeError, AttributeError):
+        except json.JSONDecodeError as e:
             log.critical(f"Bad json, skipping message: {message.body}")
 
         message.delete()
