@@ -82,8 +82,16 @@ def post_to_discord(channel, prompt, images, bot_name):
     ''' Post the image URL to Discord '''
     for i, image in enumerate(images):
         req = {
-            "content": f"{prompt[1:]}\n{persyn_config.dreams.upload.url_base}/{image}",
+            # "content": prompt,
             "username": persyn_config.id.name,
+            "embeds": [
+                {
+                    "description": prompt[1:],
+                    "image": {
+                        "url": f"{persyn_config.dreams.upload.url_base}/{image}"
+                    }
+                }
+            ]
         }
 
         try:
