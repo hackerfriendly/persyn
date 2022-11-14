@@ -315,7 +315,7 @@ async def generate(
     prompt = prompt.strip().replace('\n', ' ').replace(':', ' ')
 
     if not prompt:
-        prompt = "Untitled"
+        prompt = ""
 
     if style is None:
         style = ""
