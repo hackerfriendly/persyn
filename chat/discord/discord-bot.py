@@ -97,6 +97,10 @@ async def on_message(ctx):
         if random.random() < 0.95:
             return
 
+    if ctx.content.startswith('🎨'):
+        chat.take_a_photo(ctx.channel.id, ctx.content, engine="stable-diffusion")
+        return
+
     if ctx.content == 'echo':
         say_something_later(ctx, when=0, what="echo echo echo...")
         return

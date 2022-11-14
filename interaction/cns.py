@@ -78,12 +78,29 @@ def post_to_slack(channel, prompt, images, bot_name):
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Slack: {err}")
 
+def post_to_discord(channel, prompt, images, bot_name):
+    ''' Post the image URL to Discord '''
+    for i, image in enumerate(images):
+        req = {
+            "content": f"{prompt[1:]}\n{persyn_config.dreams.upload.url_base}/{image}",
+            "username": persyn_config.id.name,
+        }
+
+        try:
+            reply = requests.post(persyn_config.chat.discord.webhook, json=req)
+            reply.raise_for_status()
+            log.info(f"⚡️ Posted image to Discord as {bot_name}")
+        except requests.exceptions.RequestException as err:
+            log.critical(f"⚡️ Could not post image to Discord: {err}")
+
 def image_ready(msg):
     ''' An image has been generated '''
     chat = Chat(persyn_config, service=msg['service'])
 
     if 'slack.com' in msg['service']:
         post_to_slack(msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
+    elif 'discord' in msg['service']:
+        post_to_discord(msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
     else:
         log.error(f"Unknown service {msg['service']}, cannot post photo")
 
