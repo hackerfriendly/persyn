@@ -57,8 +57,6 @@ known_bots = {}
 # Threaded reminders
 reminders = Reminders()
 
-# TODO: callback thread to poll(?) interact, or inbound API call for push notifications
-
 ###
 # Slack helper functions
 ###
