@@ -65,7 +65,7 @@ def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
     chat.take_a_photo(channel, prompt, engine=engine, style=style)
-    say_something_later(ctx, when=4, what=":camera_with_flash:")
+    say_something_later(ctx, when=3, what=":camera_with_flash:")
 
     ents = chat.get_entities(prompt)
     if ents:
