@@ -118,7 +118,7 @@ class Chat():
             "verb": verb
         }
         try:
-            response = requests.post(f"{self.config.interact.url}/inject/", params=req, timeout=10)
+            response = requests.post(f"{self.config.interact.url}/inject/", params=req, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /inject/ to interact: {err}")
