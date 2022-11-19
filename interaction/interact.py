@@ -16,6 +16,8 @@ from spacy.lang.en.stop_words import STOP_WORDS
 import wikipedia
 from wikipedia.exceptions import WikipediaException
 
+from Levenshtein import ratio
+
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
@@ -47,7 +49,7 @@ class Interact():
         self.wikicache = {}
 
         # How are we feeling today? TODO: This needs to be per-channel, particularly the goals.
-        self.feels = {'current': "nothing in particular", 'goals': ["to learn about something new"]}
+        self.feels = {'current': "nothing in particular", 'goals': []}
 
         # Pick a language model for completion
         self.completion = LanguageModel(config=persyn_config)
@@ -105,7 +107,7 @@ class Interact():
         if save:
             self.recall.summary(service, channel, summary, keywords)
 
-        for topic in keywords:
+        for topic in random.sample(keywords, k=min(3, len(keywords))):
             self.recall.judge(
                 service,
                 channel,
@@ -277,11 +279,20 @@ class Interact():
         # 1 sentence max please.
         the_goal = ' '.join([s.text for s in summary.sents][:1])
 
+        # some goals are too easy
         for taboo in ['remember', 'learn']:
             if taboo in the_goal:
                 return achieved
 
-        self.recall.add_goal(service, channel, the_goal)
+        # don't repeat yourself
+        for goal in self.recall.get_goals(service, channel):
+            if ratio(goal, the_goal) > 0.6:
+                return achieved
+
+        # we've been handing out too many trophies
+        if random.random() < 0.5:
+            self.recall.add_goal(service, channel, the_goal)
+
         return achieved
 
     def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
@@ -411,7 +422,7 @@ class Interact():
         reply = {}
         entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))
 
-        for entity in random.sample(entities, k=3):
+        for entity in random.sample(entities, k=min(3, len(entities))):
             if entity == '' or entity in STOP_WORDS:
                 continue
 
