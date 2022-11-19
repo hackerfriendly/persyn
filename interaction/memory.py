@@ -113,7 +113,7 @@ class ShortTermMemory():
         self.convo[service][channel]['convo'] = []
         self.convo[service][channel]['id'] = su.encode(uuid.uuid4())
         self.convo[service][channel]['opinions'] = []
-        self.convo[service][channel]['goals'] = ['to learn about something new']
+        self.convo[service][channel]['goals'] = []
 
     def exists(self, service, channel):
         ''' True if a channel already exists, else False '''
