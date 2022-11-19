@@ -211,7 +211,7 @@ def summarize(say, context):
     ''' Say a condensed summary of this channel '''
     save = bool(context['matches'][0])
     channel = context['channel_id']
-    say("💭 " + chat.get_summary(channel, save, include_keywords=True, photo=True))
+    say("💭 " + chat.get_summary(channel, save, include_keywords=False, photo=True))
 
 @app.message(re.compile(r"^status$", re.I))
 def status(say, context):
@@ -239,7 +239,7 @@ def daydream(say, context):
 
     ideas = chat.get_daydream(channel)
 
-    for idea in random.sample(list(ideas), min(len(ideas), 5)):
+    for idea in random.sample(list(ideas), k=min(len(ideas), 5)):
         # skip eg. "4 months ago"
         if 'ago' in str(idea):
             continue
@@ -247,7 +247,8 @@ def daydream(say, context):
         chat.inject_idea(channel, ideas[idea])
         say(f"💭 *{idea}*: _{ideas[idea]}_")
 
-    for noun in random.sample(chat.get_nouns(chat.get_status(channel)), 8):
+    the_nouns = chat.get_nouns(chat.get_status(channel))
+    for noun in random.sample(the_nouns, k=min(3, len(the_nouns))):
         opinion = chat.get_opinions(channel, noun.lower(), condense=True)
         if not opinion:
             opinion = [chat.judge(channel, noun.lower())]
