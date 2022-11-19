@@ -55,6 +55,90 @@ def say_something_later(ctx, when, what=None):
         ctx.content = "..."
         reminders.add(ctx.channel.id, when, on_message, ctx)
 
+def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
+    ''' It's not AI art. It's _image synthesis_ '''
+    chat.take_a_photo(ctx.channel.id, prompt, engine=engine, style=style)
+    say_something_later(ctx, when=4, what=":camera_with_flash:")
+
+    ents = chat.get_entities(prompt)
+    if ents:
+        chat.inject_idea(ctx.channel.id, ents)
+
+async def dispatch(ctx):
+    ''' Handle commands '''
+    if ctx.content.startswith('🎨'):
+        await ctx.channel.send(f"OK, {ctx.author.name}.")
+        synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion")
+        return
+
+    if ctx.content.startswith('🪄'):
+        await ctx.channel.send(f"OK, {ctx.author.name}.")
+        prompt = ctx.content[1:].strip()
+        style = chat.prompt_parrot(prompt)
+        log.warning(f"🦜 {style}")
+        synthesize_image(ctx, prompt, engine="stable-diffusion", style=style)
+        return
+
+    if ctx.content == '🤳':
+        await ctx.channel.send(
+            f"OK, {ctx.author.name}.\n_{persyn_config.id.name} takes out a camera and smiles awkwardly_."
+        )
+        say_something_later(
+            ctx,
+            when=9,
+            what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
+        )
+        chat.take_a_photo(
+            ctx.channel.id,
+            f"A selfie for {ctx.author.name}",
+            engine="stylegan2",
+            model=random.choice(["ffhq", "waifu"])
+        )
+        return
+
+    if ctx.content == 'help':
+        await ctx.channel.send(f"""*Commands:*
+  `...`: Let {persyn_config.id.name} keep talking without interrupting
+  `summary`: Explain it all to me very briefly.
+  `status`: Say exactly what is on {persyn_config.id.name}'s mind.
+  `nouns`: Some things worth thinking about.
+  `reflect`: {persyn_config.id.name}'s opinion of those things.
+  `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
+  `goals`: See {persyn_config.id.name}'s current goals
+
+  *Image generation:*
+  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
+  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
+  :selfie: Take a selfie
+""")
+        return
+
+    if ctx.content == 'status':
+        status = "\n".join([f"> {line.strip()}" for line in chat.get_status(ctx.channel.id).split("\n")][:-1])
+        if len(status) < 2000:
+            await ctx.channel.send(status)
+        else:
+            # 2000 character limit for messages
+            reply = ""
+            for line in status.split("\n"):
+                if len(reply) + len(line) < 1999:
+                    reply = reply + line + "\n"
+                else:
+                    await ctx.channel.send(reply)
+                    reply = line + "\n"
+            if reply:
+                await ctx.channel.send(reply)
+
+        return
+
+    if ctx.content == 'summary':
+        await ctx.channel.send("💭 " + chat.get_summary(ctx.channel.id, save=False, include_keywords=False, photo=True))
+        return
+
+    if ctx.content == 'nouns':
+        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(ctx.channel.id))))
+        return
+
 @app.event
 async def on_ready():
     ''' Ready player 0! '''
@@ -81,21 +165,7 @@ async def on_message(ctx):
         if random.random() < 0.95:
             return
 
-    if ctx.content.startswith('🎨'):
-        chat.take_a_photo(ctx.channel.id, ctx.content[1:], engine="stable-diffusion")
-        return
-
-    if ctx.content == '🤳':
-        chat.take_a_photo(
-            ctx.channel.id,
-            ctx.content[1:],
-            engine="stylegan2",
-            model=random.choice(["ffhq", "waifu"])
-        )
-        return
-
-    if ctx.content == 'echo':
-        say_something_later(ctx, when=0, what="echo echo echo...")
+    if await dispatch(ctx):
         return
 
     (the_reply, goals_achieved) = chat.get_reply(ctx.channel.id, ctx.content, ctx.author.name, ctx.author.id)
