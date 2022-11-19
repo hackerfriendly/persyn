@@ -39,47 +39,51 @@ app = discord.Client(intents=intents)
 persyn_config = load_config()
 
 # Chat library
-chat = Chat(persyn_config)
+chat = Chat(persyn_config, service='discord')
 
 # Coroutine reminders
 reminders = AsyncReminders()
 
+def get_channel(ctx):
+    ''' Return the unique identifier for this guild+channel '''
+    return f"{ctx.guild.id}|{ctx.channel.id}"
+
 def say_something_later(ctx, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
-    reminders.cancel(ctx.channel.id)
+    channel = get_channel(ctx)
+    reminders.cancel(channel)
 
     if what:
-        reminders.add(ctx.channel.id, when, ctx.channel.send, what)
+        reminders.add(channel, when, ctx.channel.send, what)
     else:
         # Yadda yadda yadda
         ctx.content = "..."
-        reminders.add(ctx.channel.id, when, on_message, ctx)
+        reminders.add(channel, when, on_message, ctx)
 
 def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
     ''' It's not AI art. It's _image synthesis_ '''
-    chat.take_a_photo(ctx.channel.id, prompt, engine=engine, style=style)
+    channel = get_channel(ctx)
+    chat.take_a_photo(channel, prompt, engine=engine, style=style)
     say_something_later(ctx, when=4, what=":camera_with_flash:")
 
     ents = chat.get_entities(prompt)
     if ents:
-        chat.inject_idea(ctx.channel.id, ents)
+        chat.inject_idea(channel, ents)
 
 async def dispatch(ctx):
     ''' Handle commands '''
     if ctx.content.startswith('🎨'):
         await ctx.channel.send(f"OK, {ctx.author.name}.")
         synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion")
-        return
 
-    if ctx.content.startswith('🪄'):
+    elif ctx.content.startswith('🪄'):
         await ctx.channel.send(f"OK, {ctx.author.name}.")
         prompt = ctx.content[1:].strip()
         style = chat.prompt_parrot(prompt)
         log.warning(f"🦜 {style}")
         synthesize_image(ctx, prompt, engine="stable-diffusion", style=style)
-        return
 
-    if ctx.content == '🤳':
+    elif ctx.content == '🤳':
         await ctx.channel.send(
             f"OK, {ctx.author.name}.\n_{persyn_config.id.name} takes out a camera and smiles awkwardly_."
         )
@@ -89,14 +93,13 @@ async def dispatch(ctx):
             what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
         )
         chat.take_a_photo(
-            ctx.channel.id,
+            get_channel(ctx),
             f"A selfie for {ctx.author.name}",
             engine="stylegan2",
             model=random.choice(["ffhq", "waifu"])
         )
-        return
 
-    if ctx.content == 'help':
+    elif ctx.content == 'help':
         await ctx.channel.send(f"""*Commands:*
   `...`: Let {persyn_config.id.name} keep talking without interrupting
   `summary`: Explain it all to me very briefly.
@@ -111,12 +114,12 @@ async def dispatch(ctx):
   :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
   :selfie: Take a selfie
 """)
-        return
 
-    if ctx.content == 'status':
-        status = "\n".join([f"> {line.strip()}" for line in chat.get_status(ctx.channel.id).split("\n")][:-1])
+    elif ctx.content == 'status':
+        channel = get_channel(ctx)
+        status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel).split("\n")])).rstrip("> \n")
         if len(status) < 2000:
-            await ctx.channel.send(status)
+            await ctx.channel.send(status.strip())
         else:
             # 2000 character limit for messages
             reply = ""
@@ -129,15 +132,19 @@ async def dispatch(ctx):
             if reply:
                 await ctx.channel.send(reply)
 
-        return
+    elif ctx.content == 'summary':
+        await ctx.channel.send("💭 " + chat.get_summary(get_channel(ctx), save=False, include_keywords=False, photo=True))
 
-    if ctx.content == 'summary':
-        await ctx.channel.send("💭 " + chat.get_summary(ctx.channel.id, save=False, include_keywords=False, photo=True))
-        return
+    elif ctx.content == 'summary!':
+        await ctx.channel.send("💭 " + chat.get_summary(get_channel(ctx), save=True, include_keywords=True, photo=False))
 
-    if ctx.content == 'nouns':
-        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(ctx.channel.id))))
-        return
+    elif ctx.content == 'nouns':
+        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(get_channel(ctx)))))
+
+    else:
+        return False
+
+    return True
 
 @app.event
 async def on_ready():
@@ -148,15 +155,14 @@ async def on_ready():
 async def on_message(ctx):
     ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
 
-    # We don't know the guild until we receive a message, so set it here
-    chat.service = f"discord-{ctx.guild.id}"
+    channel = get_channel(ctx)
 
     # Don't talk to yourself.
     if ctx.author == app.user:
         return
 
     # Interrupt any rejoinder in progress
-    reminders.cancel(ctx.channel.id)
+    reminders.cancel(channel)
 
     if ctx.author.bot:
         log.warning(f'🤖 BOT DETECTED ({ctx.author.name})')
@@ -168,14 +174,14 @@ async def on_message(ctx):
     if await dispatch(ctx):
         return
 
-    (the_reply, goals_achieved) = chat.get_reply(ctx.channel.id, ctx.content, ctx.author.name, ctx.author.id)
+    (the_reply, goals_achieved) = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
 
     await ctx.channel.send(the_reply)
 
     for goal in goals_achieved:
         await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
 
-    chat.summarize_later(ctx.channel.id, reminders, when=5)
+    chat.summarize_later(channel, reminders)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
@@ -194,7 +200,7 @@ async def on_message(ctx):
 @app.event
 async def on_raw_reaction_add(ctx):
     ''' on_raw_reaction_add '''
-    channel = await app.fetch_channel(ctx.channel_id)
+    channel = await app.fetch_channel(ctx.channel.id)
     message = await channel.fetch_message(ctx.message_id)
 
     log.info(f'Reaction added: {ctx.member} : {ctx.emoji} ({message.content})')
@@ -202,7 +208,7 @@ async def on_raw_reaction_add(ctx):
 @app.event
 async def on_raw_reaction_remove(ctx):
     ''' on_raw_reaction_remove '''
-    channel = await app.fetch_channel(ctx.channel_id)
+    channel = await app.fetch_channel(ctx.channel.id)
     message = await channel.fetch_message(ctx.message_id)
 
     log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.content})')
