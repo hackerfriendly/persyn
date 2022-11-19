@@ -4,7 +4,7 @@ cns.py
 
 The central nervous system. Listen for events and inject them into interact.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import json
 import sys
 # import uuid
@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 
 import boto3
-import requests
 
 from botocore.exceptions import ClientError
 
@@ -21,6 +20,7 @@ sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 # Common chat library
 from chat.common import Chat
+from chat.simple import slack_msg, discord_msg
 
 # Color logging
 from utils.color_logging import log
@@ -46,84 +46,15 @@ except ClientError as sqserr:
     except ClientError as sqserr:
         raise RuntimeError from sqserr
 
-def post_image_to_slack(chat, channel, prompt, images, bot_name):
-    ''' Post the image URL to Slack '''
-
-    # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
-    blocks = []
-    url = ""
-    for i, image in enumerate(images):
-        url = f"{persyn_config.dreams.upload.url_base}/{image}"
-        blocks.append(
-            {
-                "type": "image",
-                "title": {
-                    "type": "plain_text",
-                    "text": prompt if i == 0 else " "
-                },
-                "image_url" : url,
-                "alt_text": prompt
-            }
-        )
-    req = {
-        "token": persyn_config.chat.slack.bot_token,
-        "channel": channel,
-        "username": bot_name,
-        "text": prompt,
-        "blocks": json.dumps(blocks)
-    }
-
-    try:
-        reply = requests.post('https://slack.com/api/chat.postMessage', data=req)
-        reply.raise_for_status()
-        log.info(f"⚡️ Posted image to Slack as {bot_name}")
-    except requests.exceptions.RequestException as err:
-        log.critical(f"⚡️ Could not post image to Slack: {err}")
-
-    chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
-
-def post_image_to_discord(chat, channel, prompt, images, bot_name):
-    ''' Post the image URL to Discord '''
-    req = {
-        "username": persyn_config.id.name,
-        "avatar_url": getattr(persyn_config.id, "avatar", "https://hackerfriendly.com/pub/anna/anna.png")
-    }
-    embeds = []
-    url = ""
-    for image in images:
-        url =  f"{persyn_config.dreams.upload.url_base}/{image}"
-        embeds.append(
-            {
-                "description": prompt or "Untitled",
-                "image": {
-                    "url": url
-                }
-            }
-        )
-
-    req['embeds'] = embeds
-
-    try:
-        reply = requests.post(persyn_config.chat.discord.webhook, json=req)
-        reply.raise_for_status()
-        log.info(f"⚡️ Posted image to Discord as {bot_name}")
-    except requests.exceptions.RequestException as err:
-        log.critical(f"⚡️ Could not post image to Discord: {err}")
-
-    chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
-
-def image_ready(event):
+def image_ready(event, service):
     ''' An image has been generated '''
-
     chat = Chat(persyn_config, service=event['service'])
+    services[service](chat, event['channel'], event['bot_name'], event['caption'], event['images'])
 
-    if 'slack.com' in event['service']:
-        post_image_to_slack(chat, event['channel'], event['caption'], event['images'], event['bot_name'])
-    elif 'discord' in event['service']:
-        post_image_to_discord(chat, event['channel'], event['caption'], event['images'], event['bot_name'])
-    else:
-        log.error(f"Unknown service {event['service']}, cannot post photo")
-        return
+def say_something(event, service):
+    ''' Send a message to a service + channel '''
+    chat = Chat(persyn_config, service=event['service'])
+    services[service](chat, event['channel'], event['bot_name'], event['message'])
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
@@ -135,7 +66,13 @@ def image_ready(event):
 
 # Map all event types to the relevant functions
 events = {
-    'image-ready': image_ready
+    'image-ready': image_ready,
+    'say': say_something
+}
+
+services = {
+    'slack': slack_msg,
+    'discord': discord_msg
 }
 
 if __name__ == '__main__':
@@ -146,6 +83,14 @@ if __name__ == '__main__':
             try:
                 msg = json.loads(sqsm.body)
 
+                if 'slack.com' in msg['service']:
+                    chat_service = 'slack'
+                elif msg['service'] == 'discord':
+                    chat_service = 'discord'
+                else:
+                    log.critical(f"Unknown service {chat_service}, skipping message: {sqsm.body}")
+                    continue
+
             except json.JSONDecodeError as e:
                 log.critical(f"Bad json, skipping message: {sqsm.body}")
                 continue
@@ -154,7 +99,7 @@ if __name__ == '__main__':
                 sqsm.delete()
 
             try:
-                events[msg['event_type']](msg)
+                events[msg['event_type']](msg, chat_service)
 
             except AttributeError:
                 log.critical(f"⚡️ Unknown event type: {msg['event_type']}")
