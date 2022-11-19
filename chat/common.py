@@ -101,13 +101,13 @@ class Chat():
         '''
         Summarize the train of thought later. When is in seconds.
 
-        Every time this thread executes, a new convo summary is saved. Only one
+        Every time this executes, a new convo summary is saved. Only one
         can run at a time.
         '''
         if not when:
             when = 120 + random.randint(20,80)
 
-        reminders.add(channel, when, self.get_summary, [channel, True, True, 50, False, 0], 'summarizer')
+        reminders.add(channel, when, self.get_summary, name='summarizer', args=[channel, True, True, 50, False, 0])
 
     def inject_idea(self, channel, idea, verb=None):
         ''' Directly inject an idea into the stream of consciousness. '''

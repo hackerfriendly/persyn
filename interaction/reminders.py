@@ -29,7 +29,7 @@ class Reminders():
             'default': th.Timer(0, log.warning, ["New default reminder for channel:", channel])
         }
 
-    def add(self, channel, when, func, args=None, name='default'):
+    def add(self, channel, when, func, name='default', args=None):
         ''' Add a reminder '''
         if channel not in self.reminders:
             self.new_channel(channel)
@@ -49,6 +49,14 @@ class Reminders():
 
         self.reminders[channel][name].cancel()
 
+async def wait_for_it(when, func, args):
+    ''' Wait then execute '''
+    await asyncio.sleep(when)
+
+    if asyncio.iscoroutinefunction(func):
+        return await func(*args)
+
+    return func(*args)
 
 class AsyncReminders():
     ''' Container class for managing reminder coroutines '''
@@ -59,15 +67,10 @@ class AsyncReminders():
     def new_channel(self, channel):
         ''' Initialize a new channel. '''
         self.reminders[channel] = {
-            'default': asyncio.create_task(self.wait_for_it(0, log.warning, f"New default reminder for channel: {channel}"))
+            'default': asyncio.create_task(wait_for_it(0, log.warning, f"New default reminder for channel: {channel}"))
         }
 
-    async def wait_for_it(self, when, func, args):
-        ''' Wait then execute '''
-        await asyncio.sleep(when)
-        await func(args)
-
-    def add(self, channel, when, func, args=None, name='default'):
+    def add(self, channel, when, func, name='default', args=None):
         ''' Add a reminder '''
         if channel not in self.reminders:
             self.new_channel(channel)
@@ -76,7 +79,7 @@ class AsyncReminders():
             # one at a time
             self.reminders[channel][name].cancel()
 
-        self.reminders[channel][name] = asyncio.create_task(self.wait_for_it(when, func, args))
+        self.reminders[channel][name] = asyncio.create_task(wait_for_it(when, func, args))
 
     def cancel(self, channel, name='default'):
         ''' Cancel a reminder '''

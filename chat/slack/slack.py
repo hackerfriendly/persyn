@@ -111,7 +111,7 @@ def say_something_later(say, channel, context, when, what=None):
             'user_id': context['user_id'],
             'matches': ['...']
         }
-        reminders.add(channel, when, catch_all, [say, yadda])
+        reminders.add(channel, when, catch_all, args=[say, yadda])
 
 ###
 # Slack events

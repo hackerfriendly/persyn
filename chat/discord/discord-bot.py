@@ -54,11 +54,11 @@ def say_something_later(ctx, when, what=None):
     reminders.cancel(channel)
 
     if what:
-        reminders.add(channel, when, ctx.channel.send, what)
+        reminders.add(channel, when, ctx.channel.send, args=what)
     else:
         # Yadda yadda yadda
         ctx.content = "..."
-        reminders.add(channel, when, on_message, ctx)
+        reminders.add(channel, when, on_message, args=ctx)
 
 def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
     ''' It's not AI art. It's _image synthesis_ '''
