@@ -101,7 +101,7 @@ class GPT():
             stop=stop
         )
         reply = response.choices[0]['text'].strip()
-        log.warning(f"☝️ opinion of {entity}: {reply}")
+        log.warning(f"☝️  opinion of {entity}: {reply}")
 
         return reply
 
@@ -129,7 +129,7 @@ class GPT():
             stop=stop
         )
         reply = response.choices[0]['text'].strip()
-        log.warning(f"☺️ sentiment of conversation: {reply}")
+        log.warning(f"☺️  sentiment of conversation: {reply}")
 
         return reply
 
@@ -232,6 +232,10 @@ class GPT():
             if not text:
                 continue
 
+            if text in choices:
+                self.stats.update(['pure repetition'])
+                continue
+
             log.debug(f"text: {text}")
             log.debug(f"convo: {convo}")
 
@@ -276,7 +280,7 @@ class GPT():
             all_scores['total'] = score
             log.warning(
                 ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
-                "❌" if (score < self.min_score or all_scores['profanity'] < -1.0) else f"👍 {raw}"
+                "❌" if (score < self.min_score or all_scores['profanity'] < -1.0) else f"👍 {text}"
             )
 
             if score < self.min_score:

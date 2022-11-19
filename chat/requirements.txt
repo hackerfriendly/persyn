@@ -1,0 +1,7 @@
+click
+discord.py
+dotwiz
+Mastodon.py
+pyyaml
+requests
+slack_bolt

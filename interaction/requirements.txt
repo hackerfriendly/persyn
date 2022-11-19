@@ -1,14 +1,15 @@
 alt-profanity-check
 certifi
 click
+dotwiz
 elasticsearch
 fastapi
 flair
 humanize
+Levenshtein
 nlpcloud
 nltk
 openai
 requests
 shortuuid
 spacy
-Levenshtein

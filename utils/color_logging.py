@@ -7,6 +7,8 @@ import sys
 
 from click import style
 
+__all__ = [ 'ColorLog', 'log' ]
+
 class ColorLog():
     ''' two-color logging class. prefix is colorized, msg is not. '''
     def __init__(
@@ -40,3 +42,5 @@ class ColorLog():
     def critical(self, prefix, msg=''):
         ''' critical level '''
         logging.critical(' '.join([f"{style(prefix, fg='bright_red')}", str(msg)]))
+
+log = ColorLog()

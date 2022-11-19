@@ -1,6 +1,4 @@
 ''' Generic completion engine wrapper '''
-import os
-
 from collections import Counter
 
 import spacy
@@ -12,47 +10,58 @@ class LanguageModel():
     ''' Container for language model completion requests '''
     def __init__(
         self,
-        engine,
-        bot_name,
-        min_score=0.0,
+        config,
         forbidden=None
        ):
-        self.engine = engine
-        self.bot_name = bot_name
+        self.config = config
+        self.engine = config.completion.engine
+        self.bot_name = config.id.name
         self.stats = Counter()
         self.nlp = spacy.load("en_core_web_lg")
         # Absolutely forbidden words
         self.forbidden = forbidden or []
         # Minimum completion reply quality. Lower numbers get more dark + sleazy.
-        self.min_score = min_score or float(os.environ.get('MINIMUM_QUALITY_SCORE', -1.0))
+        self.min_score = float(getattr(config.completion, 'minimum_quality_score', -1.0))
         # Temperature. 0.0 == repetitive, 1.0 == chaos
-        self.temperature = float(os.environ.get('TEMPERATURE', 0.99))
+        self.temperature = float(getattr(config.completion, 'temperature', 0.99))
 
-        if engine in ['openai', 'gooseai']:
-            if 'OPENAI_API_KEY' not in os.environ:
-                raise RuntimeError('Please specify OPENAI_API_KEY.')
-            api_key = os.environ['OPENAI_API_KEY']
-            if engine == 'openai':
+        if not hasattr(config.completion, 'api_key'):
+            raise RuntimeError('Please specify completion.api_key in your config file.')
+
+        if self.engine in ['openai', 'gooseai']:
+            if self.engine == 'openai':
                 api_base = 'https://api.openai.com/v1'
-                model_name = os.environ.get('OPENAI_MODEL', 'text-davinci-002')
+                model_name = getattr(config.completion, 'model', 'text-davinci-002')
             else:
                 api_base = 'https://api.goose.ai/v1'
-                model_name = os.environ.get('OPENAI_MODEL', 'gpt-neo-20b')
+                model_name = getattr(config.completion, 'model', 'gpt-neo-20b')
 
-            self.model = gpt.GPT(bot_name, self.min_score, api_key, api_base, model_name, forbidden, self.nlp)
+            self.model = gpt.GPT(
+                self.bot_name,
+                self.min_score,
+                config.completion.api_key,
+                api_base,
+                model_name,
+                forbidden,
+                self.nlp
+            )
             self.max_prompt_length = self.model.max_prompt_length
 
-        elif engine == 'nlpcloud':
-            if 'NLPCLOUD_TOKEN' not in os.environ:
-                raise RuntimeError('Please specify NLPCLOUD_TOKEN.')
-            api_key = os.environ['NLPCLOUD_TOKEN']
-            model_name = os.environ.get('NLPCLOUD_MODEL', 'finetuned-gpt-neox-20b')
+        elif self.engine == 'nlpcloud':
+            model_name = getattr(config.completion, 'model', 'finetuned-gpt-neox-20b')
 
-            self.model = nlp_cloud.NLPCLOUD(bot_name, self.min_score, api_key, model_name, forbidden, self.nlp)
+            self.model = nlp_cloud.NLPCLOUD(
+                self.bot_name,
+                self.min_score,
+                config.completion.api_key,
+                model_name,
+                forbidden,
+                self.nlp
+            )
             self.max_prompt_length = self.model.max_prompt_length
 
         else:
-            raise RuntimeError(f'Unknown engine: {engine}')
+            raise RuntimeError(f'Unknown engine: {self.engine}')
 
     def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
         '''
