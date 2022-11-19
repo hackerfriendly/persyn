@@ -46,7 +46,7 @@ except ClientError as sqserr:
     except ClientError as sqserr:
         raise RuntimeError from sqserr
 
-def post_to_slack(chat, channel, prompt, images, bot_name):
+def post_image_to_slack(chat, channel, prompt, images, bot_name):
     ''' Post the image URL to Slack '''
 
     # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
@@ -82,7 +82,7 @@ def post_to_slack(chat, channel, prompt, images, bot_name):
 
     chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
 
-def post_to_discord(chat, channel, prompt, images, bot_name):
+def post_image_to_discord(chat, channel, prompt, images, bot_name):
     ''' Post the image URL to Discord '''
     req = {
         "username": persyn_config.id.name,
@@ -112,17 +112,17 @@ def post_to_discord(chat, channel, prompt, images, bot_name):
 
     chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
 
-def image_ready(msg):
+def image_ready(event):
     ''' An image has been generated '''
 
-    chat = Chat(persyn_config, service=msg['service'])
+    chat = Chat(persyn_config, service=event['service'])
 
-    if 'slack.com' in msg['service']:
-        post_to_slack(chat, msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
-    elif 'discord' in msg['service']:
-        post_to_discord(chat, msg['channel'], msg['caption'], msg['images'], msg['bot_name'])
+    if 'slack.com' in event['service']:
+        post_image_to_slack(chat, event['channel'], event['caption'], event['images'], event['bot_name'])
+    elif 'discord' in event['service']:
+        post_image_to_discord(chat, event['channel'], event['caption'], event['images'], event['bot_name'])
     else:
-        log.error(f"Unknown service {msg['service']}, cannot post photo")
+        log.error(f"Unknown service {event['service']}, cannot post photo")
         return
 
 # def new_idea(msg):
@@ -133,20 +133,28 @@ def image_ready(msg):
     #     verb="notices"
     # )
 
-while True:
-    for message in queue.receive_messages(WaitTimeSeconds=20):
-        log.info(f"⚡️ {message.body}")
+# Map all event types to the relevant functions
+events = {
+    'image-ready': image_ready
+}
 
-        try:
-            event = json.loads(message.body)
+if __name__ == '__main__':
+    while True:
+        for sqsm in queue.receive_messages(WaitTimeSeconds=20):
+            log.info(f"⚡️ {sqsm.body}")
 
-            if event['event_type'] == 'image-ready':
-                image_ready(event)
+            try:
+                msg = json.loads(sqsm.body)
 
-            else:
-                log.critical(f"⚡️ Unknown event type: {event['event_type']}")
+            except json.JSONDecodeError as e:
+                log.critical(f"Bad json, skipping message: {sqsm.body}")
+                continue
 
-        except json.JSONDecodeError as e:
-            log.critical(f"Bad json, skipping message: {message.body}")
+            finally:
+                sqsm.delete()
 
-        message.delete()
+            try:
+                events[msg['event_type']](msg)
+
+            except AttributeError:
+                log.critical(f"⚡️ Unknown event type: {msg['event_type']}")
