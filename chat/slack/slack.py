@@ -103,7 +103,7 @@ def say_something_later(say, channel, context, when, what=None):
     reminders.cancel(channel)
 
     if what:
-        reminders.add(channel, when, say, [what])
+        reminders.add(channel, when, say, args=what)
     else:
         # yadda yadda yadda
         yadda = {
