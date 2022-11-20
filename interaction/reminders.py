@@ -38,6 +38,9 @@ class Reminders():
             # one at a time
             self.reminders[channel][name].cancel()
 
+        if not isinstance(args, list):
+            args = [args]
+
         self.reminders[channel][name] = th.Timer(when, func, args)
         self.reminders[channel][name].start()
 
@@ -52,6 +55,8 @@ class Reminders():
 async def wait_for_it(when, func, args):
     ''' Wait then execute '''
     await asyncio.sleep(when)
+    if not isinstance(args, list):
+        args = [args]
 
     if asyncio.iscoroutinefunction(func):
         return await func(*args)

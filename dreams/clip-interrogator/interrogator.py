@@ -25,7 +25,8 @@ from torchvision.transforms.functional import InterpolationMode
 from tqdm import tqdm
 
 from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
+
 from pydantic import BaseModel
 
 import clip # argparse: disable=wrong-import-position
@@ -249,10 +250,10 @@ app = FastAPI()
 class ImageToCaption(BaseModel):
     data: str
 
-@app.get("/")
+@app.get("/", status_code=302)
 async def root():
     ''' Hi there! '''
-    return {"message": "clip-interrogator server. Try /docs"}
+    return RedirectResponse("/docs")
 
 @app.post("/caption/")
 async def caption(

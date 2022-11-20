@@ -19,6 +19,7 @@ import boto3
 import requests
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi.responses import RedirectResponse
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
@@ -218,10 +219,10 @@ def latent_diffusion(service, channel, prompt, queue, model, image_id, bot_name,
         ]
         process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-@app.get("/")
+@app.get("/", status_code=302)
 async def root():
     ''' Hi there! '''
-    return {"message": "dreams server. Try /docs"}
+    return RedirectResponse("/docs")
 
 @app.get("/view/{image_id}")
 async def image_url(image_id):
@@ -231,7 +232,7 @@ async def image_url(image_id):
     return response
 
 @app.post("/generate/")
-async def generate(
+def generate(
     prompt: str,
     background_tasks: BackgroundTasks,
     engine: str = 'v-diffusion-pytorch-cfg',

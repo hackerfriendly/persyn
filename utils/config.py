@@ -7,7 +7,7 @@ Loads a yaml file and returns a SimpleNamespace.
 '''
 import os
 from pathlib import Path
-# from urllib.parse import urlparse
+from urllib.parse import urlparse
 
 import yaml
 from dotwiz import DotWiz
@@ -38,5 +38,13 @@ def load_config():
         config['dreams']['gpus'] = {}
         for gpu in gpus:
             config['dreams']['gpus'][str(gpu)] = gpus[gpu]
+
+    if 'discord' in config['chat']:
+        config['chat']['discord']['webhook_id'] = None
+        if 'webhook' in config['chat']['discord']:
+            try:
+                config['chat']['discord']['webhook_id'] = int(urlparse(config['chat']['discord']['webhook']).path.split('/')[3])
+            except (AttributeError, TypeError, ValueError):
+                raise RuntimeError("chat.discord.webhook is not valid. Check your yaml config.")
 
     return DotWiz(config)

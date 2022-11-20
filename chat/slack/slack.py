@@ -103,7 +103,7 @@ def say_something_later(say, channel, context, when, what=None):
     reminders.cancel(channel)
 
     if what:
-        reminders.add(channel, when, say, [what])
+        reminders.add(channel, when, say, args=what)
     else:
         # yadda yadda yadda
         yadda = {
@@ -183,7 +183,7 @@ def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
 
     chat.take_a_photo(channel, prompt, engine="stable-diffusion")
     say(f"OK, {speaker_name}.")
-    say_something_later(say, channel, context, 4, ":camera_with_flash:")
+    say_something_later(say, channel, context, 3, ":camera_with_flash:")
     ents = chat.get_entities(prompt)
     if ents:
         chat.inject_idea(channel, ents)
@@ -200,7 +200,7 @@ def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
     log.warning(f"🦜 {parrot}")
     chat.take_a_photo(channel, prompt, engine="stable-diffusion", style=parrot)
     say(f"OK, {speaker_name}.")
-    say_something_later(say, channel, context, 4, ":camera_with_flash:")
+    say_something_later(say, channel, context, 3, ":camera_with_flash:")
 
     ents = chat.get_entities(prompt)
     if ents:

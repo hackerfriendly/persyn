@@ -8,6 +8,8 @@ from typing import Optional
 from io import BytesIO
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi.responses import RedirectResponse
+
 from gtts import gTTS
 
 app = FastAPI()
@@ -44,10 +46,10 @@ def speak(voice, text):
             detail="Could not play audio, see console for error."
         ) from procerr
 
-@app.get("/")
+@app.get("/", status_code=302)
 async def root():
     ''' Hi there! '''
-    return {"message": "Google Text To Speech server. Try /docs"}
+    return RedirectResponse("/docs")
 
 @app.get("/voices/")
 async def voices():
