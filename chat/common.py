@@ -63,6 +63,9 @@ class Chat():
 
     def get_reply(self, channel, msg, speaker_name, speaker_id):
         ''' Ask interact for an appropriate response. '''
+        if not msg:
+            msg = '...'
+
         if msg != '...':
             log.info(f"[{channel}] {speaker_name}:", msg)
 

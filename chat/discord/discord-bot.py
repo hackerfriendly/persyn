@@ -7,12 +7,16 @@ Chat with your persyn on Discord.
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import random
 import sys
+import tempfile
 import uuid
 
 from pathlib import Path
+from hashlib import sha256
 
 # discord.py
 import discord
+
+import requests
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
@@ -45,6 +49,10 @@ chat = Chat(persyn_config, service='discord')
 # Coroutine reminders
 reminders = AsyncReminders()
 
+def it_me(author_id):
+    ''' Return True if the given id is one of ours '''
+    return author_id in [app.user.id, persyn_config.chat.discord.webhook_id]
+
 def get_channel(ctx):
     ''' Return the unique identifier for this guild+channel '''
     return f"{ctx.guild.id}|{ctx.channel.id}"
@@ -71,14 +79,44 @@ def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
     if ents:
         chat.inject_idea(channel, ents)
 
+def fetch_and_post_to_masto(url, toot):
+    ''' Download the image at URL and post it to Mastodon '''
+    if not mastodon:
+        log.error("🎺 Mastodon not configured, check your yaml config.")
+        return
+
+    media_ids = []
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            fname = f"{tmpdir}/{uuid.uuid4()}.{url[-3:]}"
+            with open(fname, "wb") as f:
+                for chunk in response.iter_content():
+                    f.write(chunk)
+            caption = chat.get_caption(url)
+            media_ids.append(mastodon.media_post(fname, description=caption).id)
+
+            resp = mastodon.status_post(
+                toot,
+                media_ids=media_ids,
+                idempotency_key=sha256(url.encode()).hexdigest()
+            )
+            if not resp or 'url' not in resp:
+                raise RuntimeError(resp)
+            log.info(f"🎺 Posted {url}: {resp['url']}")
+
+    except RuntimeError as err:
+        log.error(f"🎺 Could not post {url}: {err}")
+
+
 async def schedule_reply(ctx):
     ''' Gather a reply and say it when ready '''
     channel = get_channel(ctx)
 
-    log.warning("⏰ schedule_reply:", ctx)
+    log.warning("⏰ schedule_reply")
 
     (the_reply, goals_achieved) = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
-
     await ctx.channel.send(the_reply)
 
     for goal in goals_achieved:
@@ -100,11 +138,49 @@ async def schedule_reply(ctx):
             when=random.randint(2, 5)
         )
 
+async def handle_attachments(ctx):
+    ''' Caption photos posted to the channel '''
+    channel = get_channel(ctx)
+    for attachment in ctx.attachments:
+        caption = chat.get_caption(attachment.url)
+
+        if caption:
+            prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
+            await ctx.channel.send(f"{prefix} {caption}")
+
+            chat.inject_idea(channel, f"{ctx.author.name} posted a photo of {caption}")
+
+            msg = ctx.content
+            if not msg.strip():
+                msg = f"{ctx.author.name} posted a photo of {caption}"
+
+            reply, goals_achieved = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
+
+            await ctx.channel.send(reply)
+
+            for goal in goals_achieved:
+                await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
+        else:
+            await ctx.channel.send(
+                random.choice([
+                    "I'm not sure.",
+                    ":face_with_monocle:",
+                    ":face_with_spiral_eyes:",
+                    "What the...?",
+                    "Um.",
+                    "No idea.",
+                    "Beats me."
+                ])
+            )
+
 async def dispatch(ctx):
     ''' Handle commands '''
     channel = get_channel(ctx)
 
-    if ctx.content.startswith('🎨'):
+    if ctx.attachments:
+        await handle_attachments(ctx)
+
+    elif ctx.content.startswith('🎨'):
         await ctx.channel.send(f"OK, {ctx.author.name}.")
         synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion")
 
@@ -186,7 +262,7 @@ async def on_message(ctx):
     channel = get_channel(ctx)
 
     # Don't talk to yourself.
-    if ctx.author.id in [app.user.id, persyn_config.chat.discord.webhook_id]:
+    if it_me(ctx.author.id):
         return
 
     # Interrupt any rejoinder in progress
@@ -204,18 +280,31 @@ async def on_message(ctx):
 @app.event
 async def on_raw_reaction_add(ctx):
     ''' on_raw_reaction_add '''
-    channel = await app.fetch_channel(ctx.channel.id)
+    channel = await app.fetch_channel(ctx.channel_id)
     message = await channel.fetch_message(ctx.message_id)
 
-    log.info(f'Reaction added: {ctx.member} : {ctx.emoji} ({message.content})')
+    if not it_me(message.author.id):
+        log.warning("👎 Not posting image that isn't mine.")
+        return
+
+    for embed in message.embeds:
+        fetch_and_post_to_masto(embed.image.url, embed.description)
+
+        # log.critical(embed.image.url)
+
+    # if len(message.embeds) > 0:
+    #     log.critical(message.embeds[0])
+
+
+    log.info(f'Reaction added: {ctx.member} : {ctx.emoji} ({message.id})')
 
 @app.event
 async def on_raw_reaction_remove(ctx):
     ''' on_raw_reaction_remove '''
-    channel = await app.fetch_channel(ctx.channel.id)
+    channel = await app.fetch_channel(ctx.channel_id)
     message = await channel.fetch_message(ctx.message_id)
 
-    log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.content})')
+    log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.id})')
 
 # @app.event
 # async def on_error(event, *args, **kwargs):
