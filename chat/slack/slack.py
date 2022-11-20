@@ -10,6 +10,7 @@ import random
 import re
 import sys
 import tempfile
+import uuid
 
 from pathlib import Path
 from hashlib import sha256
@@ -417,7 +418,7 @@ def handle_reaction_added_events(body, logger): # pylint: disable=unused-argumen
                             for blk in msg['blocks']:
                                 response = requests.get(blk['image_url'], timeout=30)
                                 response.raise_for_status()
-                                fname = f"{tmpdir}/{blk['image_url'].split('/')[-1]}"
+                                fname = f"{tmpdir}/{uuid.uuid4()}.{blk['image_url'][-3:]}"
                                 with open(fname, "wb") as f:
                                     for chunk in response.iter_content():
                                         f.write(chunk)
