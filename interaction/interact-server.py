@@ -10,6 +10,7 @@ from typing import Optional
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import RedirectResponse
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
@@ -27,10 +28,10 @@ interact = Interact(load_config())
 # FastAPI
 app = FastAPI()
 
-@app.get("/")
+@app.get("/", status_code=302)
 async def root():
     ''' Hi there! '''
-    return {"message": "Interact server. Try /docs"}
+    return RedirectResponse("/docs")
 
 @app.post("/reply/")
 async def handle_reply(

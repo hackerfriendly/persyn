@@ -12,6 +12,8 @@ import torch
 from color_logging import ColorLog
 
 from fastapi import FastAPI, Query
+from fastapi.responses import RedirectResponse
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 start_token = "<BOP>"
@@ -30,10 +32,10 @@ tokenizer = AutoTokenizer.from_pretrained(
     "distilgpt2", cache_dir="./model", bos_token=start_token, eos_token=end_token, pad_token=pad_token
 )
 
-@app.get("/")
+@app.get("/", status_code=302)
 async def root():
     ''' Hi there! '''
-    return {"message": "prompt parrot server. Try /docs"}
+    return RedirectResponse("/docs")
 
 @app.post("/generate/")
 async def generate(
