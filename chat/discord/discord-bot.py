@@ -198,9 +198,8 @@ async def on_message(ctx):
         if random.random() < 0.95:
             return
 
+    # Handle commands and schedule a reply (if any)
     await dispatch(ctx)
-
-    # Any reply is scheduled
 
 @app.event
 async def on_raw_reaction_add(ctx):
