@@ -41,36 +41,50 @@ from chat.common import Chat
 persyn_config = load_config()
 
 # Chat library
-chat = Chat(persyn_config, service='discord')
+chat = Chat(persyn_config, service='mastodon')
 
 # Coroutine reminders
 reminders = Reminders()
+
+try:
+    mastodon = Mastodon(
+        access_token = persyn_config.chat.mastodon.secret,
+        api_base_url = persyn_config.chat.mastodon.instance
+    )
+except (MastodonError, AttributeError):
+    raise SystemExit("Invalid credentials, run masto-login.py and try again.") #pylint: disable=raise-missing-from
+
+log.info(f"🎺 Logged in as: {mastodon.me().url}")
+
+
+# def defaultconverter(o):
+#     if isinstance(o, datetime.datetime):
+#         return o.__str__()
 
 # def it_me(author_id):
 #     ''' Return True if the given id is one of ours '''
 #     return author_id in [app.user.id, persyn_config.chat.discord.webhook_id]
 
-# def say_something_later(ctx, when, what=None):
-#     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
-#     channel = get_channel(ctx)
-#     reminders.cancel(channel)
+def say_something_later(channel, when=1, what=None, status=None):
+    ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
+    reminders.cancel(channel)
 
-#     if what:
-#         reminders.add(channel, when, ctx.channel.send, args=what)
-#     else:
-#         # Yadda yadda yadda
-#         ctx.content = "..."
-#         reminders.add(channel, when, on_message, args=ctx)
+    if what:
+        if status:
+            reminders.add(channel, when, toot, args=[what, status])
+        else:
+            reminders.add(channel, when, toot, args=[what])
+    else:
+        # Yadda yadda yadda
+        reminders.add(channel, when, dispatch, args=[channel, '...', status])
 
-# def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
-#     ''' It's not AI art. It's _image synthesis_ '''
-#     channel = get_channel(ctx)
-#     chat.take_a_photo(channel, prompt, engine=engine, style=style)
-#     say_something_later(ctx, when=3, what=":camera_with_flash:")
+def synthesize_image(channel, prompt, engine="stable-diffusion", style=None):
+    ''' It's not AI art. It's _image synthesis_ '''
+    chat.take_a_photo(channel, prompt, engine=engine, style=style)
 
-#     ents = chat.get_entities(prompt)
-#     if ents:
-#         chat.inject_idea(channel, ents)
+    ents = chat.get_entities(prompt)
+    if ents:
+        chat.inject_idea(channel, ents)
 
 # def fetch_and_post_to_masto(url, toot):
 #     ''' Download the image at URL and post it to Mastodon '''
@@ -166,16 +180,46 @@ reminders = Reminders()
 #                 ])
 #             )
 
+def following(account_id):
+    ''' Return true if we are following this account '''
+    return account_id in [follower.id for follower in mastodon.account_following(id=mastodon.me().id)]
+
+def get_text(msg):
+    ''' Extract just the text from a message (no HTML or @username) '''
+    return BeautifulSoup(msg, features="html.parser").text.strip().replace(f'@{mastodon.me().username} ','')
+
+def fetch_and_post_image(url, msg):
+    ''' Download the image at URL and post it to Mastodon '''
+    media_ids = []
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            fname = f"{tmpdir}/{uuid.uuid4()}.{url[-3:]}"
+            with open(fname, "wb") as f:
+                for chunk in response.iter_content():
+                    f.write(chunk)
+            caption = chat.get_caption(url)
+            media_ids.append(mastodon.media_post(fname, description=caption).id)
+
+            resp = mastodon.status_post(
+                msg,
+                media_ids=media_ids,
+                idempotency_key=sha256(url.encode()).hexdigest()
+            )
+            if not resp or 'url' not in resp:
+                raise RuntimeError(resp)
+            log.info(f"🎺 Posted {url}: {resp['url']}")
+
+    except RuntimeError as err:
+        log.error(f"🎺 Could not post {url}: {err}")
+
+
 class TheListener(StreamListener):
+    ''' Handle streaming events from Mastodon.py '''
 
     def __init__(self):
-        self.service = "mastodon"
         self.channel = mastodon.me().url
-        # Note: Restart if your bot follows new people.
-        self.followers = [follower.id for follower in mastodon.account_followers(id=mastodon.me().id)]
-
-    def get_text(self, msg):
-        return BeautifulSoup(msg).text.strip().replace(f'@{mastodon.me().username} ','')
 
      # def on_update(self, update):
      #      print(f"Got update: {update}")
@@ -185,21 +229,79 @@ class TheListener(StreamListener):
 
     def on_notification(self, notification):
         ''' Handle notifications '''
-        log.info(f"📫 Notification: {notification.status.id}")
-
-        if notification.status.account.id not in self.followers:
-            log.warning("📪 Ignoring notification from non-follower:", notification.status.account.acct)
+        if 'status' not in notification:
+            log.info("📪 Ignoring non-status notification")
             return
 
-        msg = self.get_text(notification.status.content)
+        log.info("📫 Notification:", notification.status.url)
+
+        if notification.type == "favourite":
+            log.info("⭐️")
+            return
+
+        if not following(notification.status.account.id):
+            log.warning("📪 Not following, so ignoring:", notification) #notification.status.account.acct)
+            return
+
+        msg = get_text(notification.status.content)
         log.info(f"📬 {notification.status.account.acct}:", msg)
+
+        dispatch(self.channel, msg, notification.status)
 
     def handle_heartbeat(self):
         print("💓")
 
-# async def dispatch(ctx):
-#     ''' Handle commands '''
-#     channel = get_channel(ctx)
+
+def toot(status, to_status=None, **kwargs):
+    ''' Quick send a toot or reply '''
+    if to_status:
+        resp = mastodon.status_reply(to_status, status, **kwargs)
+        log.info("🎺 Posted reply:", resp.url)
+    else:
+        resp = mastodon.status_post(status, **kwargs)
+        log.info("🎺 Posted:", resp.url)
+    return resp
+    # print(json.dumps(resp, default=defaultconverter))
+
+def dispatch(channel, msg, status=None):
+    ''' Handle commands and replies '''
+
+    if msg.startswith('🎨'):
+        synthesize_image(channel, msg[1:].strip(), engine="stable-diffusion")
+
+    else:
+        if status:
+            (the_reply, goals_achieved) = chat.get_reply(channel, msg, status.account.username, status.account.id)
+            my_response = toot(
+                the_reply,
+                to_status=status
+            )
+        else:
+            (the_reply, goals_achieved) = chat.get_reply(channel, msg, persyn_config.id.name, persyn_config.id.guid)
+            my_response = toot(the_reply)
+
+        for goal in goals_achieved:
+            log.info(f"🏆 _achievement unlocked: {goal}_")
+
+        chat.summarize_later(channel, reminders)
+
+        if the_reply.endswith('…') or the_reply.endswith('...'):
+            say_something_later(
+                channel,
+                when=1,
+                status=my_response
+            )
+            return
+
+        # 5% chance of random interjection later
+        if random.random() < 0.05:
+            say_something_later(
+                channel,
+                when=random.randint(2, 5),
+                status=my_response
+            )
+
+# -=-=-=-=-=-=-
 
 #     if ctx.attachments:
 #         await handle_attachments(ctx)
@@ -295,23 +397,11 @@ class TheListener(StreamListener):
 #     # Handle commands and schedule a reply (if any)
 #     await dispatch(ctx)
 
+if __name__ == "__main__":
+    listener = TheListener()
 
-
-try:
-    mastodon = Mastodon(
-        access_token = persyn_config.chat.mastodon.secret,
-        api_base_url = persyn_config.chat.mastodon.instance
-    )
-except (MastodonError, AttributeError):
-    raise SystemExit("Invalid credentials, run masto-login.py and try again.")
-
-log.info(f"🎺 Logged in as: {mastodon.me().url}")
-
-listener = TheListener()
-
-while True:
-    try:
-        mastodon.stream_user(listener)
-    except MastodonMalformedEventError:
-        log.critical("MastodonMalformedEventError, continuing.")
-
+    while True:
+        try:
+            mastodon.stream_user(listener)
+        except MastodonMalformedEventError as mastoerr:
+            log.critical(f"MastodonMalformedEventError, continuing.\n{mastoerr}")

@@ -6,3 +6,18 @@ Persyn makes it easy to integrate cutting-edge machine learning research project
 The resulting gestalt can be executed on any combination of local compute resources (CPU + GPU) and third-party APIs (OpenAI, ConceptNet, online dictionaries, Twitter, etc.)
 
 The name "Personality Syndrome" was chosen by the first proto-Persyn instance itself, @AnnaTheBot.
+
+Major features:
+
+  * Chat with any large language model over Slack, Discord, or Mastodon
+  * Maintain a consistent and arbitrarily long train of thought
+  * Short-term and long-term memory
+  * Opinions
+  * Auto-wikipedia
+  * Auto-summarization of previous conversations over time or as the prompt size grows too long
+  * Generate images on demand
+  * Identify images dropped into the chat
+  * Optional automatic image enhancement with Prompt Parrot
+
+
+

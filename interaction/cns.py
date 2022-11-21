@@ -22,6 +22,9 @@ sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 from chat.common import Chat
 from chat.simple import slack_msg, discord_msg
 
+# Mastodon support for image posting
+from chat.mastodon.donbot import fetch_and_post_image
+
 # Color logging
 from utils.color_logging import log
 
@@ -45,6 +48,11 @@ except ClientError as sqserr:
         )
     except ClientError as sqserr:
         raise RuntimeError from sqserr
+
+def mastodon_msg(chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
+    ''' Post images to Mastodon '''
+    for image in images:
+        fetch_and_post_image(f"{persyn_config.dreams.upload.url_base}/{image}", caption)
 
 def image_ready(event, service):
     ''' An image has been generated '''
@@ -72,10 +80,12 @@ events = {
 
 services = {
     'slack': slack_msg,
-    'discord': discord_msg
+    'discord': discord_msg,
+    'mastodon': mastodon_msg
 }
 
 if __name__ == '__main__':
+    log.info(f"⚡️ CNS online")
     while True:
         for sqsm in queue.receive_messages(WaitTimeSeconds=20):
             log.info(f"⚡️ {sqsm.body}")
@@ -87,8 +97,10 @@ if __name__ == '__main__':
                     chat_service = 'slack'
                 elif msg['service'] == 'discord':
                     chat_service = 'discord'
+                elif msg['service'] == 'mastodon':
+                    chat_service = 'mastodon'
                 else:
-                    log.critical(f"Unknown service {chat_service}, skipping message: {sqsm.body}")
+                    log.critical(f"Unknown service {msg['service']}, skipping message: {sqsm.body}")
                     continue
 
             except json.JSONDecodeError as e:
