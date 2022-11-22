@@ -52,7 +52,7 @@ except ClientError as sqserr:
 def mastodon_msg(chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
     for image in images:
-        fetch_and_post_image(f"{persyn_config.dreams.upload.url_base}/{image}", caption)
+        fetch_and_post_image(f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn")
 
 def image_ready(event, service):
     ''' An image has been generated '''
@@ -85,7 +85,7 @@ services = {
 }
 
 if __name__ == '__main__':
-    log.info(f"⚡️ CNS online")
+    log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
     while True:
         for sqsm in queue.receive_messages(WaitTimeSeconds=20):
             log.info(f"⚡️ {sqsm.body}")
