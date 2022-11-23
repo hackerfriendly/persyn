@@ -472,10 +472,10 @@ def handle_message_events(body, say):
             prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
             say(f"{prefix} {caption}")
 
-            chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
+            chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}", verb="notices")
 
             if not msg.strip():
-                msg = f"{speaker_name} posted a photo of {caption}"
+                msg = f"..."
 
             reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
