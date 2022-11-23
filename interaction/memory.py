@@ -385,10 +385,13 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         return convo_id, cur_ts
 
     # TODO: set refresh=False after separate summary thread is implemented.
-    def save_summary(self, service, channel, convo_id, summary, keywords, refresh=True):
+    def save_summary(self, service, channel, convo_id, summary, keywords=None, refresh=True):
         '''
         Save a conversation summary to ElasticSearch.
         '''
+        if keywords is None:
+            keywords = []
+
         cur_ts = get_cur_ts()
         doc = {
             "convo_id": convo_id,

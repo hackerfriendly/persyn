@@ -14,8 +14,10 @@ from chrono import elapsed, get_cur_ts, natural_time
 def test_elapsed_time():
     ''' Elapsed time '''
     assert elapsed("2022-01-27T10:54:31.000000-08:00", "2022-01-27T10:54:31.000000-08:00") == 0.0
+    assert elapsed("2022-01-28T10:54:31.000000-08:00", "2022-01-28T10:54:31.010000-08:00") == 0.01
     assert elapsed("2022-01-28T10:54:31.000000-08:00", "2022-01-29T10:54:31.100000-08:00") == 86400.1
     assert elapsed("2022-01-29T10:54:31.000000-08:00", "2022-01-28T10:54:31.100000-08:00") == 86399.9
+    assert elapsed("2022-01-28T10:54:31.100000-08:00", "2022-01-29T10:54:31.000000-08:00") == 86399.9
 
     now = get_cur_ts()
     sleep(0.1)
@@ -30,5 +32,3 @@ def test_natural_time():
     assert natural_time(13) == "afternoon"
     assert natural_time(17) == "evening"
     assert natural_time(21) == "night"
-
-# def test_circadian():

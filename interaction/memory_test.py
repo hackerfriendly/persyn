@@ -4,32 +4,43 @@ memory (elasticsearch) tests
 import os
 import datetime as dt
 import uuid
+import sys
 
+from pathlib import Path
 from time import sleep
+
+# Add persyn root to sys.path
+sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 from memory import LongTermMemory, ShortTermMemory, Recall
 
+# Bot config
+from utils.config import load_config
+
+persyn_config = load_config()
+
+prefix = f"{persyn_config.id.name.lower()}-test"
+
 # Dynamic test index names
-prefix = f"{os.environ['BOT_NAME'].lower()}-test"
 now = dt.datetime.now().isoformat().replace(':','.').lower()
 
 ltm = LongTermMemory(
-    bot_name=os.environ["BOT_NAME"],
-    bot_id=os.environ["BOT_ID"],
-    url=os.environ["ELASTIC_URL"],
-    auth_name=os.environ["BOT_NAME"],
-    auth_key=os.environ.get("ELASTIC_KEY", None),
+    bot_name=persyn_config.id.name,
+    bot_id=persyn_config.id.guid,
+    url=persyn_config.memory.elastic.url,
+    auth_name=persyn_config.memory.elastic.user,
+    auth_key=persyn_config.memory.elastic.key,
     index_prefix=prefix,
     version=now,
     verify_certs=True
 )
 
 recall = Recall(
-    bot_name=os.environ["BOT_NAME"],
-    bot_id=os.environ["BOT_ID"],
-    url=os.environ["ELASTIC_URL"],
-    auth_name=os.environ["BOT_NAME"],
-    auth_key=os.environ.get("ELASTIC_KEY", None),
+    bot_name=persyn_config.id.name,
+    bot_id=persyn_config.id.guid,
+    url=persyn_config.memory.elastic.url,
+    auth_name=persyn_config.memory.elastic.user,
+    auth_key=persyn_config.memory.elastic.key,
     index_prefix=prefix,
     version=now,
     conversation_interval=0.5,
@@ -283,4 +294,4 @@ def test_recall():
 def test_cleanup():
     ''' Delete indices '''
     for i in ltm.index.items():
-        ltm.es.indices.delete(index=i[1], ignore=[400, 404]) # pylint: disable=unexpected-keyword-arg
+        ltm.es.options(ignore_status=[400, 404]).indices.delete(index=i[1]) # pylint: disable=unexpected-keyword-arg
