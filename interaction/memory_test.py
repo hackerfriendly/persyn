@@ -1,10 +1,10 @@
 '''
 memory (elasticsearch) tests
 '''
-import os
+# pylint: disable=import-error, wrong-import-position
 import datetime as dt
-import uuid
 import sys
+import uuid
 
 from pathlib import Path
 from time import sleep
@@ -294,4 +294,4 @@ def test_recall():
 def test_cleanup():
     ''' Delete indices '''
     for i in ltm.index.items():
-        ltm.es.options(ignore_status=[400, 404]).indices.delete(index=i[1]) # pylint: disable=unexpected-keyword-arg
+        ltm.es.options(ignore_status=[400, 404]).indices.delete(index=i[1])
