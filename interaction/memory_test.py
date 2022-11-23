@@ -12,10 +12,13 @@ from time import sleep
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
-from memory import LongTermMemory, ShortTermMemory, Recall
-
 # Bot config
 from utils.config import load_config
+
+from chrono import elapsed
+
+from memory import LongTermMemory, ShortTermMemory, Recall
+
 
 persyn_config = load_config()
 
@@ -190,7 +193,9 @@ def test_save_convo():
                 speaker_name="speaker_name",
                 convo_id=cid0)
             assert cid1 == cid2
-            assert ts1 != ts2
+            assert elapsed(ts1, ts2) < 1.0
+
+            sleep(0.1)
 
             # Assert refresh on the last msg so we can fetch later
             cid3, ts3 = ltm.save_convo(
@@ -201,7 +206,8 @@ def test_save_convo():
                 refresh=True
             )
             assert cid1 == cid3
-            assert ts1 != ts3
+            assert elapsed(ts1, ts3) > 0.1
+            assert elapsed(ts1, ts3) < 1.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''

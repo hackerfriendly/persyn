@@ -348,12 +348,16 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         speaker_name=None,
         speaker_id=None,
         convo_id=None,
-        prev_ts=get_cur_ts(),
         refresh=False
     ):
         '''
         Save a line of conversation to ElasticSearch. Returns the convo_id and current timestamp.
         '''
+        try:
+            prev_ts = self.get_last_message(service, channel)['_source']['@timestamp']
+        except (KeyError, TypeError):
+            prev_ts = get_cur_ts()
+
         if not convo_id:
             convo_id = su.encode(uuid.uuid4())
 
