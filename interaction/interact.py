@@ -28,7 +28,7 @@ from voice import tts
 from memory import Recall
 
 # Time handling
-from chrono import natural_time, ago, today
+from chrono import natural_time, ago, today, elapsed, get_cur_ts
 
 # Prompt completion
 from completion import LanguageModel
@@ -85,9 +85,9 @@ class Interact():
         If save == True, save it to long term memory.
         Returns the text summary.
         '''
-        summaries, convo = self.recall.load(service, channel, summaries=0)
+        summaries, convo, _ = self.recall.load(service, channel, summaries=0)
         if not convo:
-            summaries, convo = self.recall.load(service, channel, summaries=3)
+            summaries, convo, _ = self.recall.load(service, channel, summaries=3)
             if not summaries:
                 summaries = [ f"{self.config.id.name} isn't sure what is happening." ]
 
@@ -311,7 +311,7 @@ class Interact():
             tts(msg)
 
         # Load summaries and conversation
-        summaries, convo = self.recall.load(service, channel, summaries=2)
+        summaries, convo, lts = self.recall.load(service, channel, summaries=2)
         convo_length = len(convo)
         last_sentence = None
 
@@ -341,14 +341,14 @@ class Interact():
         if convo_length != len(self.recall.load(service, channel, summaries=0)[1]):
             self.inject_idea(service, channel, last_sentence)
 
-        prompt = self.generate_prompt(summaries, convo)
+        prompt = self.generate_prompt(summaries, convo, lts)
 
         # Is this just too much to think about?
         if len(prompt) > self.completion.max_prompt_length:
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             self.summarize_convo(service, channel, save=True, max_tokens=100)
-            summaries, _ = self.recall.load(service, channel, summaries=3)
-            prompt = self.generate_prompt(summaries, convo[-3:])
+            summaries, _, _ = self.recall.load(service, channel, summaries=3)
+            prompt = self.generate_prompt(summaries, convo[-3:], lts)
 
         reply = self.choose_reply(prompt, convo, self.feels['goals'])
 
@@ -371,26 +371,31 @@ class Interact():
 
         return f"""It is {natural_time()} on {today()}. {self.config.id.name} is feeling {self.feels['current']}.{goals}"""
 
-    def generate_prompt(self, summaries, convo):
+    def generate_prompt(self, summaries, convo, lts=None):
         ''' Generate the model prompt '''
         newline = '\n'
+        timediff = ''
+        if lts and elapsed(lts, get_cur_ts()) > 600:
+            timediff = f"It has been {ago(lts)} since they last spoke."
 
         return f"""{self.default_prompt_prefix()}
-    {newline.join(summaries)}
-    {newline.join(convo)}
-    {self.config.id.name}:"""
+{newline.join(summaries)}
+{newline.join(convo)}
+{timediff}
+{self.config.id.name}:"""
 
     def get_status(self, service, channel):
         ''' status report '''
         paragraph = '\n\n'
         newline = '\n'
-        summaries, convo = self.recall.load(service, channel, summaries=2)
+        summaries, convo, lts = self.recall.load(service, channel, summaries=2)
+        timediff = f"It has been {ago(lts)} since they last spoke."
         return f"""{self.default_prompt_prefix()}
+{paragraph.join(summaries)}
 
-    {paragraph.join(summaries)}
-
-    {newline.join(convo)}
-    """
+{newline.join(convo)}
+{timediff}
+"""
 
     def amnesia(self, service, channel):
         ''' forget it '''
@@ -417,7 +422,7 @@ class Interact():
         ''' Chew on recent conversation '''
         paragraph = '\n\n'
         newline = '\n'
-        summaries, convo = self.recall.load(service, channel, summaries=5)
+        summaries, convo, _ = self.recall.load(service, channel, summaries=5)
 
         reply = {}
         entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))

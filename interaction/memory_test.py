@@ -262,13 +262,15 @@ def test_recall():
     channel = "channel_a"
 
     # contains only the summary
-    assert recall.load(service, channel) == (['my_nice_summary'], [])
+    s, c, _ = recall.load(service, channel)
+    assert (s, c) == (["my_nice_summary"], [])
 
     # new convo
     assert recall.save(service, channel, "message_another", "speaker_name_2", "speaker_id")
 
     # contains the summary + new convo
-    assert recall.load(service, channel) == (
+    s, c, _ = recall.load(service, channel)
+    assert (s, c) == (
         ["my_nice_summary"],
         ["speaker_name_2: message_another"]
     )
@@ -277,7 +279,8 @@ def test_recall():
     assert recall.save(service, channel, "message_yet_another", "speaker_name_1", "speaker_id")
 
     # contains the summary + new convo
-    assert recall.load(service, channel) == (
+    s, c, _ = recall.load(service, channel)
+    assert (s, c) == (
         ["my_nice_summary"],
         ["speaker_name_2: message_another", "speaker_name_1: message_yet_another"]
     )
@@ -292,7 +295,8 @@ def test_recall():
     assert recall.expired(service, channel)
 
     # only summaries
-    assert recall.load(service, channel) == (
+    s, c, _ = recall.load(service, channel)
+    assert (s, c) == (
         ["my_nice_summary", "this_is_another_summary"],
         []
     )

@@ -44,9 +44,12 @@ class Recall(): # pylint: disable=too-many-arguments
         )
 
     def load(self, service, channel, summaries=3):
-        ''' Return some summaries and the contents of the stm '''
-        the_summaries = self.ltm.load_summaries(service, channel, summaries)
-        return the_summaries, self.stm.fetch(service, channel)
+        ''' Return summaries, the contents of the stm, and the last timestamp '''
+        return (
+            self.ltm.load_summaries(service, channel, summaries),
+            self.stm.fetch(service, channel),
+            self.ltm.get_last_timestamp(service, channel)
+        )
 
     def save(self, service, channel, msg, speaker_name, speaker_id):
         ''' Save to stm and ltm. Clears stm if it expired. '''
@@ -340,6 +343,15 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"load_summaries(): {ret}")
         return ret
 
+    def get_last_timestamp(self, service, channel):
+        '''
+        Get the timestamp of the last message, or the current ts if there is none.
+        '''
+        try:
+            return self.get_last_message(service, channel)['_source']['@timestamp']
+        except (KeyError, TypeError):
+            return get_cur_ts()
+
     def save_convo(
         self,
         service,
@@ -353,10 +365,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Save a line of conversation to ElasticSearch. Returns the convo_id and current timestamp.
         '''
-        try:
-            prev_ts = self.get_last_message(service, channel)['_source']['@timestamp']
-        except (KeyError, TypeError):
-            prev_ts = get_cur_ts()
+        prev_ts = self.get_last_timestamp(service, channel)
 
         if not convo_id:
             convo_id = su.encode(uuid.uuid4())
