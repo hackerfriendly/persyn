@@ -54,8 +54,10 @@ def it_me(author_id):
     return author_id in [app.user.id, persyn_config.chat.discord.webhook_id]
 
 def get_channel(ctx):
-    ''' Return the unique identifier for this guild+channel '''
-    return f"{ctx.guild.id}|{ctx.channel.id}"
+    ''' Return the unique identifier for this guild+channel or DM '''
+    if getattr(ctx, 'guild'):
+        return f"{ctx.guild.id}|{ctx.channel.id}"
+    return f"dm|{ctx.author.id}|{ctx.channel.id}"
 
 def say_something_later(ctx, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
@@ -69,10 +71,13 @@ def say_something_later(ctx, when, what=None):
         ctx.content = "..."
         reminders.add(channel, when, on_message, args=ctx)
 
-def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None):
+def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None, hq=False):
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
-    chat.take_a_photo(channel, prompt, engine=engine, style=style)
+    if hq:
+        chat.take_a_photo(channel, prompt, engine=engine, style=style, width=768, height=768, guidance=15)
+    else:
+        chat.take_a_photo(channel, prompt, engine=engine, style=style)
     say_something_later(ctx, when=3, what=":camera_with_flash:")
 
     ents = chat.get_entities(prompt)
@@ -152,7 +157,7 @@ async def handle_attachments(ctx):
 
             msg = ctx.content
             if not msg.strip():
-                msg = f"..."
+                msg = "..."
 
             reply, goals_achieved = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
 
@@ -191,6 +196,10 @@ async def dispatch(ctx):
         log.warning(f"🦜 {style}")
         synthesize_image(ctx, prompt, engine="stable-diffusion", style=style)
 
+    elif ctx.content.startswith('🖼'):
+        await ctx.channel.send(f"OK, {ctx.author.name}.")
+        synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion", hq=True)
+
     elif ctx.content == '🤳':
         await ctx.channel.send(
             f"OK, {ctx.author.name}.\n_{persyn_config.id.name} takes out a camera and smiles awkwardly_."
@@ -218,9 +227,10 @@ async def dispatch(ctx):
   `goals`: See {persyn_config.id.name}'s current goals
 
   *Image generation:*
-  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
-  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
-  :selfie: Take a selfie
+  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
+  :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
+  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
+  :selfie: Take a selfie with StyleGAN 2
 """)
 
     elif ctx.content == 'status':

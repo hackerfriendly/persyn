@@ -68,7 +68,7 @@ def say_something_later(channel, when=1, what=None, status=None):
 
 def synthesize_image(channel, prompt, engine="stable-diffusion", style=None, model=None):
     ''' It's not AI art. It's _image synthesis_ '''
-    chat.take_a_photo(channel, prompt, engine=engine, style=style, model=model)
+    chat.take_a_photo(channel, prompt, engine=engine, style=style, model=model, width=768, height=768, guidance=15)
 
     ents = chat.get_entities(prompt)
     if ents:

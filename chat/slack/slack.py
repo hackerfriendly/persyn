@@ -130,9 +130,10 @@ def help_me(say, context): # pylint: disable=unused-argument
   `goals`: See {persyn_config.id.name}'s current goals
 
   *Image generation:*
-  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
-  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
-  :selfie: Take a selfie
+  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
+  :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
+  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
+  :selfie: Take a selfie with StyleGAN 2
 """)
 
 @app.message(re.compile(r"^goals$"))
@@ -172,7 +173,7 @@ def selfie(say, context): # pylint: disable=unused-argument
 def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
     ''' Take a stable diffusion photo of this conversation '''
     channel = context['channel_id']
-    chat.take_a_photo(channel, chat.get_summary(channel, max_tokens=30), engine="stable-diffusion")
+    chat.take_a_photo(channel, chat.get_summary(channel, max_tokens=30), engine="stable-diffusion", width=768, height=768, guidance=15)
 
 @app.message(re.compile(r"^:art:(.+)$"))
 def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
@@ -183,6 +184,21 @@ def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
     prompt = context['matches'][0].strip()
 
     chat.take_a_photo(channel, prompt, engine="stable-diffusion")
+    say(f"OK, {speaker_name}.")
+    say_something_later(say, channel, context, 3, ":camera_with_flash:")
+    ents = chat.get_entities(prompt)
+    if ents:
+        chat.inject_idea(channel, ents)
+
+@app.message(re.compile(r"^:frame_with_picture:(.+)$"))
+def stable_diffusion_picture_hq(say, context): # pylint: disable=unused-argument
+    ''' Take a picture with stable diffusion '''
+    speaker_id = context['user_id']
+    speaker_name = get_display_name(speaker_id)
+    channel = context['channel_id']
+    prompt = context['matches'][0].strip()
+
+    chat.take_a_photo(channel, prompt, engine="stable-diffusion", width=768, height=768, guidance=15)
     say(f"OK, {speaker_name}.")
     say_something_later(say, channel, context, 3, ":camera_with_flash:")
     ents = chat.get_entities(prompt)

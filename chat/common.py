@@ -56,7 +56,8 @@ class Chat():
 
         if summary:
             if photo:
-                self.take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}")
+                # HQ summaries: slower, but worth the wait.
+                self.take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}", width=768, height=768, guidance=15)
             return summary
 
         return " :spiral_note_pad: :interrobang: "
@@ -129,7 +130,7 @@ class Chat():
 
         return response.json()['status']
 
-    def take_a_photo(self, channel, prompt, engine=None, model=None, style=None):
+    def take_a_photo(self, channel, prompt, engine=None, model=None, style=None, seed=None, steps=None, width=None, height=None, guidance=None):
         ''' Pick an image engine and generate a photo '''
         if not engine:
             engine = random.choice(self.config.dreams.all_engines)
@@ -142,7 +143,12 @@ class Chat():
             "prompt": prompt,
             "model": model,
             "bot_name": self.config.id.name,
-            "style": style
+            "style": style,
+            "seed": seed,
+            "steps": steps,
+            "width": width,
+            "height": height,
+            "guidance": guidance
         }
         reply = requests.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
         if reply.ok:

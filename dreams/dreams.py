@@ -159,7 +159,7 @@ def stylegan2(service, channel, prompt, queue, model, image_id, bot_name, style)
         ]
         process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
-def sdd(service, channel, prompt, queue, model, image_id, bot_name, style): # pylint: disable=unused-argument
+def sdd(service, channel, prompt, queue, model, image_id, bot_name, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
     ''' Fetch images from sdd.py '''
     url = getattr(persyn_config.dreams.stable_diffusion, 'url', None)
     if not url:
@@ -170,10 +170,11 @@ def sdd(service, channel, prompt, queue, model, image_id, bot_name, style): # py
 
     req = {
         "prompt": prompt,
-        # "seed": seed,
-        # "steps": steps,
-        # "width": width,
-        # "height": height
+        "seed": seed,
+        "steps": steps,
+        "width": width,
+        "height": height,
+        "guidance": guidance
     }
 
     response = requests.post(f"{url}/generate/", params=req, stream=True)
@@ -235,13 +236,18 @@ async def image_url(image_id):
 def generate(
     prompt: str,
     background_tasks: BackgroundTasks,
-    engine: str = 'v-diffusion-pytorch-cfg',
+    engine: str = 'sdd',
     model: str = None,
     service: str = None,
     channel: str = None,
     queue: str = None,
     bot_name: str = None,
-    style: str = None
+    style: str = None,
+    seed: int = -1,
+    steps: int = 50,
+    width: int = 512,
+    height: int = 512,
+    guidance: int = 10
     ):
     ''' Make an image and post it '''
     image_id = uuid.uuid4()
@@ -323,7 +329,7 @@ def generate(
 
     prompt = prompt[:max(len(prompt) + len(style), 300)]
 
-    if engine in ['stylegan2', 'latent-diffusion', 'stable-diffusion', 'dalle2', 'sdd']:
+    if engine in ['stylegan2', 'latent-diffusion', 'dalle2']:
         background_tasks.add_task(
             engines[engine],
             service=service,
@@ -344,8 +350,13 @@ def generate(
             prompt=prompt,
             model=models[engine][model]['name'],
             image_id=image_id,
-            steps=models[engine][model]['steps'],
-            bot_name=bot_name
+            bot_name=bot_name,
+            style=style,
+            steps=steps,
+            seed=seed,
+            width=width,
+            height=height,
+            guidance=guidance
         )
 
     return {
