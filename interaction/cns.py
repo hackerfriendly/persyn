@@ -23,7 +23,10 @@ from chat.common import Chat
 from chat.simple import slack_msg, discord_msg
 
 # Mastodon support for image posting
-from chat.mastodon.donbot import fetch_and_post_image
+from chat.mastodon.login import mastodon
+
+if mastodon:
+    from chat.mastodon.donbot import fetch_and_post_image
 
 # Color logging
 from utils.color_logging import log
@@ -51,6 +54,9 @@ except ClientError as sqserr:
 
 def mastodon_msg(chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
+    if not mastodon:
+        return
+
     for image in images:
         fetch_and_post_image(f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn")
 
