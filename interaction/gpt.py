@@ -232,9 +232,9 @@ class GPT():
             if not text:
                 continue
 
-            if text in choices:
-                self.stats.update(['pure repetition'])
-                continue
+            # if text in choices:
+            #     self.stats.update(['pure repetition'])
+            #     continue
 
             log.debug(f"text: {text}")
             log.debug(f"convo: {convo}")

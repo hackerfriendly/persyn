@@ -52,13 +52,22 @@ class Recall(): # pylint: disable=too-many-arguments
         )
 
     def save(self, service, channel, msg, speaker_name, speaker_id):
-        ''' Save to stm and ltm. Clears stm if it expired. '''
+        ''' Save to stm and ltm. Clears stm if it expired. Returns the current convo_id. '''
         if self.stm.expired(service, channel):
             self.stm.clear(service, channel)
 
-        convo_id = self.stm.append(service, channel, f"{speaker_name}: {msg}")
-        self.ltm.save_convo(service, channel, msg, speaker_name, speaker_id, convo_id)
-        return True
+        return self.stm.append(
+            service,
+            channel,
+            self.ltm.save_convo(
+                service,
+                channel,
+                msg,
+                speaker_name,
+                speaker_id,
+                self.stm.convo_id(service, channel)
+            )
+        )
 
     def summary(self, service, channel, summary, keywords=None):
         ''' Save a summary. Clears stm. '''
@@ -102,7 +111,7 @@ class Recall(): # pylint: disable=too-many-arguments
     def opine(self, service, channel, topic, speaker_id=None, size=10):
         ''' Everyone's got an opinion '''
         log.warning(f"🧷 opinion on {topic}")
-        return self.ltm.lookup_opinion(service, channel, topic, speaker_id, size)
+        return self.ltm.lookup_opinion(topic, service, channel, speaker_id, size)
 
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
@@ -143,9 +152,9 @@ class ShortTermMemory():
             return True
         return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
 
-    def append(self, service, channel, line):
+    def append(self, service, channel, convo_obj):
         '''
-        Append a line to a channel. If the current channel expired, clear it first.
+        Append a convo object to a channel. If the current channel expired, clear it first.
         Returns the convo_id.
         '''
         if not self.exists(service, channel):
@@ -154,7 +163,7 @@ class ShortTermMemory():
             self.clear(service, channel)
 
         self.convo[service][channel]['ts'] = get_cur_ts()
-        self.convo[service][channel]['convo'].append(line)
+        self.convo[service][channel]['convo'].append(convo_obj)
 
         return self.convo_id(service, channel)
 
@@ -363,7 +372,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         refresh=False
     ):
         '''
-        Save a line of conversation to ElasticSearch. Returns the convo_id and current timestamp.
+        Save a line of conversation to ElasticSearch. Returns the convo doc.
         '''
         prev_ts = self.get_last_timestamp(service, channel)
 
@@ -394,8 +403,11 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             refresh='true' if refresh else 'false'
         )["_id"]
 
-        log.debug("doc:", _id)
-        return convo_id, cur_ts
+        doc['_id'] = _id
+        doc['_index'] = self.index['convo']
+
+        log.debug("doc:", doc)
+        return doc
 
     # TODO: set refresh=False after separate summary thread is implemented.
     def save_summary(self, service, channel, convo_id, summary, keywords=None, refresh=True):
@@ -443,8 +455,11 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             return None
 
     def get_convo_by_id(self, convo_id):
-        ''' Extract a full conversation by its convo_id. Returns a list of strings. '''
-        history = self.es.search( # pylint: disable=unexpected-keyword-arg
+        '''
+        Extract a full conversation by its convo_id.
+        Returns a list convo objects.
+        '''
+        ret = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
             query={
                 "term": {"convo_id.keyword": convo_id}
@@ -452,10 +467,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             sort=[{"@timestamp":{"order":"asc"}}],
             size=10000
         )['hits']['hits']
-
-        ret = []
-        for line in history:
-            ret.append(f"{line['_source']['speaker']}: {line['_source']['msg']}")
 
         log.debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
@@ -471,9 +482,10 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             query={
                 "bool": {
                     "must": [
-                        {"match": {"service.keyword": service}},
-                        {"match": {"channel.keyword": channel}},
-                        {"match": {"summary": { "query": search}}}
+# rjf match speaker id HERE
+                        # {"match": {"service.keyword": service}},
+                        # {"match": {"channel.keyword": channel}},
+                        {"match": {"summary": {"query": search}}}
                     ]
                 }
             },
@@ -580,20 +592,24 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         )
         # return something here?
 
-    def lookup_opinion(self, service, channel, topic, speaker_id=None, size=10):
+    def lookup_opinion(self, topic, service=None, channel=None, speaker_id=None, size=10):
         ''' Look up an opinion in Elasticsearch. '''
-        if not speaker_id:
-            speaker_id = self.bot_id
-
         query = {
             "bool": {
                 "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
                     {"match": {"topic.keyword": topic}}
                 ]
             }
         }
+
+        if service:
+            query["bool"]["must"].append({"match": {"service.keyword": service}})
+
+        if channel:
+            query["bool"]["must"].append({"match": {"channel.keyword": channel}})
+
+        if speaker_id:
+            query["bool"]["must"].append({"match": {"speaker_id.keyword": speaker_id}})
 
         ret = []
         for opinion in self.es.search( # pylint: disable=unexpected-keyword-arg

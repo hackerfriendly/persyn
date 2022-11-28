@@ -22,7 +22,7 @@ from Levenshtein import ratio
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 # text-to-speech
-from voice import tts
+# from voice import tts
 
 # Long and short term memory
 from memory import Recall
@@ -76,6 +76,7 @@ class Interact():
             if not line.startswith(f"{self.config.id.name} remembers")
             and not line.startswith(f"{self.config.id.name} recalls")
             and not line.startswith(f"{self.config.id.name} thinks")
+            and not line.startswith(f"{self.config.id.name} posted")
         ]
 
     def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
@@ -177,7 +178,7 @@ class Interact():
 
             # Stay on topic
             prompt = '\n'.join(
-                convo
+                convo[:-1]
                 + [f"{self.config.id.name} remembers that {ago(memory['timestamp'])} ago: "
                 + memory['text']]
             )
@@ -308,7 +309,7 @@ class Interact():
 
         if msg != '...':
             self.recall.save(service, channel, msg, speaker_name, speaker_id)
-            tts(msg)
+            # tts(msg)
 
         # Load summaries and conversation
         summaries, convo, lts = self.recall.load(service, channel, summaries=2)
