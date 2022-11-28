@@ -53,3 +53,4 @@ ices/example.xml
 ices/logs/ices.log
 interaction/hf-transformers.py
 voice/tortoise-tts/
+.vscode/
