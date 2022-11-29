@@ -43,7 +43,6 @@ chat/discord/basic.py
 chat/discord/Untitled.ipynb
 chat/mastodon/masto experiments.ipynb
 chat/mastodon/masto-stream.py
-config/anna.yaml
 config/pbg.yaml
 dreams/exif_fun.ipynb
 dreams/receive-sqs.py
