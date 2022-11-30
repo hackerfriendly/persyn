@@ -122,6 +122,7 @@ class TheListener(StreamListener):
 
     def on_notification(self, notification):
         ''' Handle notifications '''
+
         if 'status' not in notification:
             log.info("📪 Ignoring non-status notification")
             return
@@ -129,7 +130,10 @@ class TheListener(StreamListener):
         log.info("📫 Notification:", notification.status.url)
 
         if notification.type == "favourite":
-            log.info("⭐️")
+            log.info(f"⭐️ by", notification.account.acct)
+            return
+
+        if notification.status.account.id == mastodon.me().id:
             return
 
         if not following(notification.status.account.id):
