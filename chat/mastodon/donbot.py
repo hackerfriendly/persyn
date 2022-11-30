@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-don-bot.py
+donbot.py
 
 Chat with your persyn on Mastodon.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
-import datetime
-import json
 import random
 import sys
 import tempfile
@@ -19,6 +17,7 @@ from bs4 import BeautifulSoup
 from mastodon import Mastodon, MastodonError, MastodonMalformedEventError, StreamListener
 
 import requests
+import spacy
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../../').resolve()))
@@ -134,7 +133,7 @@ class TheListener(StreamListener):
             return
 
         if not following(notification.status.account.id):
-            log.warning("📪 Not following, so ignoring:", notification) #notification.status.account.acct)
+            log.warning("📪 Not following, so ignoring:", notification.status.account.acct)
             return
 
         msg = get_text(notification.status.content)
@@ -145,15 +144,48 @@ class TheListener(StreamListener):
     def handle_heartbeat(self):
         log.debug("💓")
 
+def paginate(text, maxlen=persyn_config.chat.mastodon.toot_length):
+    ''' Break a single status string into a list of toots < the posting limit. '''
+    nlp = spacy.load("en_core_web_sm")
+    nlp.add_pipe('sentencizer')
+
+    doc = nlp(text)
+    posts = []
+    post = ""
+    for sent in [str(sent) for sent in doc.sents]:
+        if len(sent) > maxlen:
+            # edge case, just truncate it
+            sent = sent[:maxlen - 1] + '…'
+        if len(post) + len(sent) < maxlen - 1:
+            post = f"{post} {sent}"
+        else:
+            posts.append(post)
+            post = f"{sent}"
+
+    if post:
+        posts.append(post)
+
+    return posts
+
 def toot(status, to_status=None, **kwargs):
-    ''' Quick send a toot or reply '''
-    if to_status:
-        resp = mastodon.status_reply(to_status, status, **kwargs)
-        log.info("🎺 Posted reply:", resp.url)
-    else:
-        resp = mastodon.status_post(status, **kwargs)
-        log.info("🎺 Posted:", resp.url)
-    return resp
+    '''
+    Quick send a toot or reply.
+
+    If status is longer than the max toot length, post a thread.
+
+    Returns a list of all status messages posted.
+    '''
+    rets = []
+    for post in paginate(status):
+        if to_status:
+            rets.append(mastodon.status_reply(to_status, post, **kwargs))
+            log.info("🎺 Posted reply:", rets[-1].url)
+        else:
+            rets.append(mastodon.status_post(post, **kwargs))
+            log.info("🎺 Posted:", rets[-1].url)
+            to_status = rets[-1]
+
+    return rets
 
 def dispatch(channel, msg, status=None):
     ''' Handle commands and replies '''
@@ -195,7 +227,7 @@ def dispatch(channel, msg, status=None):
             say_something_later(
                 channel,
                 when=1,
-                status=my_response
+                status=my_response[-1]
             )
             return
 
@@ -204,7 +236,7 @@ def dispatch(channel, msg, status=None):
             say_something_later(
                 channel,
                 when=random.randint(2, 5),
-                status=my_response
+                status=my_response[-1]
             )
 
 # -=-=-=-=-=-=-
