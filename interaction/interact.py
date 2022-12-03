@@ -69,15 +69,15 @@ class Interact():
     def dialog(self, convo):
         '''
         Return only the words actually spoken in a convo
-        TODO: Convo lines should be better structured, but it would require overhauling memory.py
         '''
-        return [
-            line for line in convo
-            if not line.startswith(f"{self.config.id.name} remembers")
-            and not line.startswith(f"{self.config.id.name} recalls")
-            and not line.startswith(f"{self.config.id.name} thinks")
-            and not line.startswith(f"{self.config.id.name} posted")
-        ]
+        log.critical(convo)
+        ret = []
+        for c in convo:
+            if c['speaker'].endswith(" remembers") or c['speaker'].endswith(" recalls") or c['speaker'].endswith(" thinks") or c['speaker'].endswith(" posted"):
+                continue
+            ret.append(f"{c['speaker']}: {c['msg']}")
+
+        return ret
 
     def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
         '''
@@ -86,8 +86,10 @@ class Interact():
         If save == True, save it to long term memory.
         Returns the text summary.
         '''
-        summaries, convo, _ = self.recall.load(service, channel, summaries=0)
-        if not convo:
+        summaries, convo_, _ = self.recall.load(service, channel, summaries=0)
+        if convo_:
+            convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
+        else:
             summaries, convo, _ = self.recall.load(service, channel, summaries=3)
             if not summaries:
                 summaries = [ f"{self.config.id.name} isn't sure what is happening." ]
@@ -95,7 +97,7 @@ class Interact():
             # No convo? summarize the summaries
             convo = summaries
 
-        spoken = self.dialog(convo)
+        spoken = self.dialog(convo_)
         log.warning(f"∑ summarizing convo: {json.dumps(spoken)}")
 
         summary = self.completion.get_summary(
@@ -127,7 +129,8 @@ class Interact():
     def choose_reply(self, prompt, convo, goals):
         ''' Choose the best reply from a list of possibilities '''
         if not convo:
-            convo = [f'{self.config.id.name} changes the subject.']
+            # convo = [f'{self.config.id.name} changes the subject.']
+            convo = []
 
         scored = self.completion.get_replies(
             prompt=prompt,
@@ -312,7 +315,8 @@ class Interact():
             # tts(msg)
 
         # Load summaries and conversation
-        summaries, convo, lts = self.recall.load(service, channel, summaries=2)
+        summaries, convo_, lts = self.recall.load(service, channel, summaries=2)
+        convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
         convo_length = len(convo)
         last_sentence = None
 
@@ -389,7 +393,8 @@ class Interact():
         ''' status report '''
         paragraph = '\n\n'
         newline = '\n'
-        summaries, convo, lts = self.recall.load(service, channel, summaries=2)
+        summaries, convo_, lts = self.recall.load(service, channel, summaries=2)
+        convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
         timediff = f"It has been {ago(lts)} since they last spoke."
         return f"""{self.default_prompt_prefix()}
 {paragraph.join(summaries)}
@@ -423,7 +428,8 @@ class Interact():
         ''' Chew on recent conversation '''
         paragraph = '\n\n'
         newline = '\n'
-        summaries, convo, _ = self.recall.load(service, channel, summaries=5)
+        summaries, convo_, _ = self.recall.load(service, channel, summaries=5)
+        convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
 
         reply = {}
         entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))
