@@ -203,14 +203,6 @@ def dispatch(channel, msg, status=None):
         log.warning(f"🦜 {style}")
         synthesize_image(channel, prompt, engine="stable-diffusion", style=style)
 
-    elif msg.strip() == '🤳':
-        synthesize_image(
-            channel,
-            f"{persyn_config.id.name} takes a selfie",
-            engine="stylegan2",
-            model=random.choice(["ffhq", "waifu"])
-        )
-
     else:
         if status:
             (the_reply, goals_achieved) = chat.get_reply(channel, msg, status.account.username, status.account.id)
