@@ -121,6 +121,7 @@ async def schedule_reply(ctx):
 
     log.warning("⏰ schedule_reply")
 
+    # TODO: implement async get_reply in chat/common.py. Consider converting _everything_ to async.
     (the_reply, goals_achieved) = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
     await ctx.channel.send(the_reply)
 
