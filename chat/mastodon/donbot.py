@@ -156,11 +156,13 @@ def paginate(text, maxlen=persyn_config.chat.mastodon.toot_length):
     doc = nlp(text)
     posts = []
     post = ""
+    trimmed = max(50, maxlen - 30)
     for sent in [str(sent) for sent in doc.sents]:
-        if len(sent) > maxlen:
+        if len(sent) > trimmed:
             # edge case, just truncate it
-            sent = sent[:maxlen - 5] + '…'
-        if len(post) + len(sent) < maxlen - 10:
+            sent = sent[:trimmed] + '…'
+        # save some margin for error
+        if len(post) + len(sent) < trimmed:
             post = f"{post} {sent}"
         else:
             posts.append(post)
