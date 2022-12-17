@@ -12,5 +12,6 @@ nltk
 openai
 requests
 shortuuid
-spacy
 wikipedia
+spacy
+coreferee
