@@ -25,7 +25,7 @@ chat:
     # From Slack management, Apps > Basic Information > App-Level Tokens
     app_token: xapp-your-app-token-here
     # From OAuth & Permission > Bot User OAuth Token
-    bot_token: xoxb-446264641686-2770929984357-oTEIKrxWwxp3eIOHXxhhwC71
+    bot_token: xoxb-your-bot-token-here
 
   # Discord chat module
   # discord:
