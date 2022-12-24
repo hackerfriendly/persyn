@@ -19,7 +19,7 @@ import spacy
 
 from spacy.tokens import Doc
 
-# import networkx as nx
+import networkx as nx
 
 # !pip install coreferee
 # !python3 -m coreferee install en
@@ -32,18 +32,9 @@ nlp = spacy.load('en_core_web_lg')
 nlp.add_pipe('coreferee')
 nlp.add_pipe('sentencizer')
 
-# patterns = [[{"LOWER": "hackerfriendly"}]]
-# attrs = {"TAG": "NNP", "POS": "PROPN", "DEP": "nsubj"}
-
-# ruler = nlp.get_pipe("attribute_ruler")
-# ruler.add(patterns=patterns, attrs=attrs)
-
 nlp_merged = spacy.load('en_core_web_lg')
 nlp_merged.add_pipe('merge_entities')
 nlp_merged.add_pipe('merge_noun_chunks')
-
-# ruler = nlp_merged.get_pipe("attribute_ruler")
-# ruler.add(patterns=patterns, attrs=attrs)
 
 archetypes = [
     "Alice", "Bob", "Carol", "Dave", "Eve",
@@ -208,6 +199,7 @@ def get_relationships(doc, depth=0):
                 if child.dep_ in ['attr', 'xcomp', 'ccomp']:
                     ret['right'] = [' '.join([child.text] + find_all_singletons(child) + find_all_modifiers(child))]
 
+        # lower everything
         for k in ['left', 'right']:
             ret[k] = [w.lower() for w in ret[k]]
 
@@ -258,3 +250,25 @@ def to_archetype(doc):
                 ret.append(tok.text)
 
     return ' '.join(ret)
+
+def jaccard_similarity(g, h):
+    '''
+    Return the normalized similarity of two sets.
+    https://en.wikipedia.org/wiki/Jaccard_index
+    '''
+    i = set(g).intersection(h)
+    return round(len(i) / (len(g) + len(h) - len(i)),3)
+
+
+def relations_to_graph(relations):
+    ''' Construct a directed graph from a list of relationships '''
+    return nx.from_edgelist(
+        [
+            (
+                ' '.join(rel['left']).strip(),
+                ' '.join(rel['right']).strip(),
+                {'edge': rel['rel']}
+            )
+            for relation in relations for rel in relation
+        ]
+    )
