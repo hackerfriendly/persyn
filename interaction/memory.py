@@ -483,8 +483,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                 "bool": {
                     "must": [
 # rjf match speaker id HERE
-                        # {"match": {"service.keyword": service}},
-                        # {"match": {"channel.keyword": channel}},
+                        {"match": {"service.keyword": service}},
+                        {"match": {"channel.keyword": channel}},
                         {"match": {"summary": {"query": search}}}
                     ]
                 }
