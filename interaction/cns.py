@@ -55,6 +55,7 @@ except ClientError as sqserr:
 def mastodon_msg(chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
     if not mastodon:
+        log.error("🚫 Mastodon not configured, cannot post image.")
         return
 
     for image in images:

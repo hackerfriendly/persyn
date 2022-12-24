@@ -121,6 +121,7 @@ async def schedule_reply(ctx):
 
     log.warning("⏰ schedule_reply")
 
+    # TODO: implement async get_reply in chat/common.py. Consider converting _everything_ to async.
     (the_reply, goals_achieved) = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
     await ctx.channel.send(the_reply)
 
@@ -200,22 +201,6 @@ async def dispatch(ctx):
         await ctx.channel.send(f"OK, {ctx.author.name}.")
         synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion", hq=True)
 
-    elif ctx.content == '🤳':
-        await ctx.channel.send(
-            f"OK, {ctx.author.name}.\n_{persyn_config.id.name} takes out a camera and smiles awkwardly_."
-        )
-        say_something_later(
-            ctx,
-            when=9,
-            what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
-        )
-        chat.take_a_photo(
-            get_channel(ctx),
-            f"A selfie for {ctx.author.name}",
-            engine="stylegan2",
-            model=random.choice(["ffhq", "waifu"])
-        )
-
     elif ctx.content == 'help':
         await ctx.channel.send(f"""*Commands:*
   `...`: Let {persyn_config.id.name} keep talking without interrupting
@@ -230,7 +215,6 @@ async def dispatch(ctx):
   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
   :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
   :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
-  :selfie: Take a selfie with StyleGAN 2
 """)
 
     elif ctx.content == 'status':

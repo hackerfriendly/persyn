@@ -21,8 +21,8 @@ dreams/disco-diffusion-1/
 dreams/latent-diffusion/
 dreams/prompt-parrot/model/
 *~
+*.pkl
 .ipynb_checkpoints/
-notebooks/
 go-interact-anna-toorcamp
 go-interact-bender
 go-interact-furiosa

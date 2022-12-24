@@ -29,12 +29,12 @@ interact = Interact(load_config())
 app = FastAPI()
 
 @app.get("/", status_code=302)
-async def root():
+def root():
     ''' Hi there! '''
     return RedirectResponse("/docs")
 
 @app.post("/reply/")
-async def handle_reply(
+def handle_reply(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=5000),
@@ -56,7 +56,7 @@ async def handle_reply(
     }
 
 @app.post("/summary/")
-async def handle_summary(
+def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     save: Optional[bool] = Query(True),
@@ -70,7 +70,7 @@ async def handle_summary(
     }
 
 @app.post("/status/")
-async def handle_status(
+def handle_status(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):
@@ -80,7 +80,7 @@ async def handle_status(
     }
 
 @app.post("/amnesia/")
-async def handle_amnesia(
+def handle_amnesia(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):
@@ -90,7 +90,7 @@ async def handle_amnesia(
     }
 
 @app.post("/nouns/")
-async def handle_nouns(
+def handle_nouns(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
     ''' Return the reply '''
@@ -99,7 +99,7 @@ async def handle_nouns(
     }
 
 @app.post("/entities/")
-async def handle_entities(
+def handle_entities(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
     ''' Return the reply '''
@@ -108,7 +108,7 @@ async def handle_entities(
     }
 
 @app.post("/daydream/")
-async def handle_daydream(
+def handle_daydream(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):
@@ -118,7 +118,7 @@ async def handle_daydream(
     }
 
 @app.post("/inject/")
-async def handle_inject(
+def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     idea: str = Query(..., min_length=1, max_length=16384),
@@ -132,7 +132,7 @@ async def handle_inject(
     }
 
 @app.post("/opinion/")
-async def handle_opinion(
+def handle_opinion(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     topic: str = Query(..., min_length=1, max_length=16384),
@@ -165,7 +165,7 @@ async def handle_opinion(
     }
 
 @app.post("/add_goal/")
-async def add_goal(
+def add_goal(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
@@ -177,7 +177,7 @@ async def add_goal(
     }
 
 @app.post("/get_goals/")
-async def get_goals(
+def get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):

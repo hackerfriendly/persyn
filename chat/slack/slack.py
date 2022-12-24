@@ -133,7 +133,6 @@ def help_me(say, context): # pylint: disable=unused-argument
   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
   :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
   :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
-  :selfie: Take a selfie with StyleGAN 2
 """)
 
 @app.message(re.compile(r"^goals$"))
@@ -147,27 +146,6 @@ def goals(say, context): # pylint: disable=unused-argument
             say(f":goal_net: {goal}")
     else:
         say(":shrug:")
-
-@app.message(re.compile(r"^:selfie:$"))
-def selfie(say, context): # pylint: disable=unused-argument
-    ''' Take a picture, it'll last longer '''
-    them = get_display_name(context['user_id'])
-    channel = context['channel_id']
-
-    say(f"OK, {them}.\n_{persyn_config.id.name} takes out a camera and smiles awkwardly_.")
-    say_something_later(
-        say,
-        channel,
-        context,
-        when=8,
-        what=":cheese_wedge: *CHEESE!* :cheese_wedge:"
-    )
-    chat.take_a_photo(
-        channel,
-        context['matches'][0].strip(),
-        engine="stylegan2",
-        model=random.choice(["ffhq", "waifu"])
-    )
 
 @app.message(re.compile(r"^:art:$"))
 def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument

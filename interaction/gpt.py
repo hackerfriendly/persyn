@@ -53,16 +53,21 @@ class GPT():
         if goals is None:
             goals = []
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt[:self.max_prompt_length],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            n=8,
-            frequency_penalty=1.2,
-            presence_penalty=0.8,
-            stop=stop
-        )
+        try:
+            response = openai.Completion.create(
+                engine=self.model_name,
+                prompt=prompt[:self.max_prompt_length],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                n=8,
+                frequency_penalty=1.2,
+                presence_penalty=0.8,
+                stop=stop
+            )
+        except openai.error.APIConnectionError as err:
+            log.critical("OpenAI APIConnectionError:", err)
+            return None
+
         log.info(f"🧠 Prompt: {prompt}")
         # log.warning(response)
 
@@ -89,17 +94,22 @@ class GPT():
         if len(prompt) > self.max_prompt_length:
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            n=1,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=stop
-        )
+        try:
+            response = openai.Completion.create(
+                engine=self.model_name,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                n=1,
+                top_p=1,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=stop
+            )
+        except openai.error.APIConnectionError as err:
+            log.critical("OpenAI APIConnectionError:", err)
+            return ""
+
         reply = response.choices[0]['text'].strip()
         log.warning(f"☝️  opinion of {entity}: {reply}")
 
@@ -117,17 +127,22 @@ class GPT():
         if len(prompt) > self.max_prompt_length:
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            n=1,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=stop
-        )
+        try:
+            response = openai.Completion.create(
+                engine=self.model_name,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                n=1,
+                top_p=1,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=stop
+            )
+        except openai.error.APIConnectionError as err:
+            log.critical("OpenAI APIConnectionError:", err)
+            return ""
+
         reply = response.choices[0]['text'].strip()
         log.warning(f"☺️  sentiment of conversation: {reply}")
 
@@ -232,9 +247,9 @@ class GPT():
             if not text:
                 continue
 
-            if text in choices:
-                self.stats.update(['pure repetition'])
-                continue
+            # if text in choices:
+            #     self.stats.update(['pure repetition'])
+            #     continue
 
             log.debug(f"text: {text}")
             log.debug(f"convo: {convo}")
@@ -312,14 +327,19 @@ class GPT():
             textlen = self.max_prompt_length - len(summarizer) - 3
             prompt = f"{text[:textlen]}\n\n{summarizer}\n"
 
-        response = openai.Completion.create(
-            engine=self.model_name,
-            prompt=prompt,
-            max_tokens=max_tokens,
-            top_p=0.1,
-            frequency_penalty=0.8,
-            presence_penalty=0.0
-        )
+        try:
+            response = openai.Completion.create(
+                engine=self.model_name,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                top_p=0.1,
+                frequency_penalty=0.8,
+                presence_penalty=0.0
+            )
+        except openai.error.APIConnectionError as err:
+            log.critical("OpenAI APIConnectionError:", err)
+            return ""
+
         reply = response.choices[0]['text'].strip().split('\n')[0]
 
         # To the right of the : (if any)

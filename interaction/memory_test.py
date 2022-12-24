@@ -1,7 +1,7 @@
 '''
 memory (elasticsearch) tests
 '''
-# pylint: disable=import-error, wrong-import-position
+# pylint: disable=import-error, wrong-import-position, invalid-name
 import datetime as dt
 import sys
 import uuid
@@ -152,22 +152,21 @@ def test_save_convo():
     ''' Make some test data '''
 
     # New convo
-    cid1, ts1 = ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id")
-    assert cid1
-    assert ts1
+    doc1 = ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id")
+    assert 'convo_id' in doc1
+    assert '@timestamp' in doc1
     # Continued convo
-    cid2, ts2 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id=cid1)
-    assert cid1 == cid2
-    assert ts2
+    doc2 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id=doc1['convo_id'])
+    assert doc1['convo_id'] == doc2['convo_id']
+    assert doc1['@timestamp'] != doc2['@timestamp']
     # New convo
-    cid3, ts3 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id="foo")
-    assert cid3 == "foo"
-    assert ts3
+    doc3 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id="foo")
+    assert doc3['convo_id'] == "foo"
 
     # All new convos, speaker name / id are optional
 
     for i in range(2):
-        cid0, ts0 = ltm.save_convo(
+        doc4 = ltm.save_convo(
             "my_service",
             f"channel_loop_{i}",
             "message_loop_a",
@@ -175,39 +174,39 @@ def test_save_convo():
             "speaker_id",
             convo_id=None
         )
-        assert ts0
+        assert doc4
 
         for j in range(3):
-            cid1, ts1 = ltm.save_convo(
+            doc5 = ltm.save_convo(
                 "my_service",
                 f"channel_loop_{i}",
                 f"message_loop_b{j}",
                 speaker_id="speaker_id",
-                convo_id=cid0)
-            assert cid1 == cid0
+                convo_id=doc4['convo_id'])
+            assert doc4['convo_id'] == doc5['convo_id']
 
-            cid2, ts2 = ltm.save_convo(
+            doc6 = ltm.save_convo(
                 "my_service",
                 f"channel_loop_{i}",
                 f"message_loop_c{j}",
                 speaker_name="speaker_name",
-                convo_id=cid0)
-            assert cid1 == cid2
-            assert elapsed(ts1, ts2) < 1.0
+                convo_id=doc4['convo_id'])
+            assert doc5['convo_id'] == doc6['convo_id']
+            assert elapsed(doc5['@timestamp'], doc6['@timestamp']) < 1.0
 
             sleep(0.1)
 
             # Assert refresh on the last msg so we can fetch later
-            cid3, ts3 = ltm.save_convo(
+            doc7 = ltm.save_convo(
                 "my_service",
                 f"channel_loop_{i}",
                 f"message_loop_d{j}",
-                convo_id=cid1,
+                convo_id=doc4['convo_id'],
                 refresh=True
             )
-            assert cid1 == cid3
-            assert elapsed(ts1, ts3) > 0.1
-            assert elapsed(ts1, ts3) < 1.0
+            assert doc4['convo_id'] == doc7['convo_id']
+            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) > 0.1
+            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 3.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
@@ -266,24 +265,22 @@ def test_recall():
     assert (s, c) == (["my_nice_summary"], [])
 
     # new convo
-    assert recall.save(service, channel, "message_another", "speaker_name_2", "speaker_id")
+    assert recall.save(service, channel, "message_another", "speaker_name_1", "speaker_id")
 
     # contains the summary + new convo
     s, c, _ = recall.load(service, channel)
-    assert (s, c) == (
-        ["my_nice_summary"],
-        ["speaker_name_2: message_another"]
-    )
+    assert s == ["my_nice_summary"]
+    assert c[0]['speaker'] == "speaker_name_1"
+    assert c[0]['msg'] == "message_another"
 
     # same convo
-    assert recall.save(service, channel, "message_yet_another", "speaker_name_1", "speaker_id")
+    assert recall.save(service, channel, "message_yet_another", "speaker_name_2", "speaker_id")
 
     # contains the summary + new convo
     s, c, _ = recall.load(service, channel)
-    assert (s, c) == (
-        ["my_nice_summary"],
-        ["speaker_name_2: message_another", "speaker_name_1: message_yet_another"]
-    )
+    assert s == ["my_nice_summary"]
+    assert (c[0]['speaker'], c[0]['msg']) == ("speaker_name_1", "message_another")
+    assert (c[1]['speaker'], c[1]['msg']) == ("speaker_name_2", "message_yet_another")
 
     # summarize
     assert recall.summary(service, channel, "this_is_another_summary")
