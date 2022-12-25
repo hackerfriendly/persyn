@@ -228,14 +228,15 @@ def get_relationships(doc, depth=0):
 def to_archetype(doc):
     '''
     Convert a string or doc to a string with all proper nouns replaced by an archetype.
+
+    If there are more proper nouns than archetypes, stop substituting at the last archetype.
     '''
     if not isinstance(doc, spacy.tokens.doc.Doc):
         doc = nlp(doc)
 
     ret = []
 
-    subs = dict(zip(list(dict.fromkeys([str(e) for e in doc.ents])), archetypes))
-    subs = dict(zip(list(dict.fromkeys([str(e) for e in doc if e.pos_ == 'PROPN' ])), archetypes))
+    subs = dict(zip(list(dict.fromkeys([str(e) for e in doc if e.pos_ == 'PROPN'][:len(archetypes)])), archetypes))
 
     if not subs:
         return str(doc)
@@ -244,6 +245,7 @@ def to_archetype(doc):
         if tok.text in subs:
             ret.append(subs[tok.text])
         else:
+            # Avoid , problems with spacing .
             if tok.dep_ == 'punct':
                 ret[-1] = ret[-1] + tok.text
             else:
