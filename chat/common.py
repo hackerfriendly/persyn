@@ -34,6 +34,9 @@ class Chat():
                 'imagine', 'idea', 'memory', 'remember'
             ]
 
+    def can_dream(self):
+        return self.config.get("dreams")
+
     def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
         ''' Ask interact for a channel summary. '''
         req = {
@@ -132,6 +135,9 @@ class Chat():
 
     def take_a_photo(self, channel, prompt, engine=None, model=None, style=None, seed=None, steps=None, width=None, height=None, guidance=None):
         ''' Pick an image engine and generate a photo '''
+        if not self.can_dream():
+            return
+
         if not engine:
             engine = random.choice(self.config.dreams.all_engines)
 
@@ -276,6 +282,8 @@ class Chat():
 
     def prompt_parrot(self, prompt):
         ''' Fetch a prompt from the parrot '''
+        if not self.can_dream():
+            return
         try:
             req = { "prompt": prompt }
             response = requests.post(f"{self.config.dreams.parrot.url}/generate/", params=req, timeout=10)
@@ -299,6 +307,9 @@ class Chat():
     def get_caption(self, image_data):
         ''' Fetch the image caption using CLIP Interrogator '''
         log.warning("🖼  needs a caption")
+
+        if not self.can_dream():
+            return
 
         if image_data[:4] == "http":
             resp = requests.post(
