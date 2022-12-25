@@ -1,7 +1,11 @@
 #!/bin/bash
 set -e
 
-virtualenv --python=python3.8 env --prompt='(interact-env) '
+if [ $(uname -s) = "Darwin" ]; then
+  brew install cmake
+fi
+
+python3 -m venv --prompt='interact-env' env
 . env/bin/activate
 
 pip install -r requirements.txt
