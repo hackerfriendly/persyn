@@ -12,12 +12,12 @@ from time import sleep
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
-# Bot config
-from utils.config import load_config
-
 from chrono import elapsed
 
 from memory import LongTermMemory, ShortTermMemory, Recall
+
+# Bot config
+from utils.config import load_config
 
 
 persyn_config = load_config()
@@ -156,7 +156,10 @@ def test_save_convo():
     assert 'convo_id' in doc1
     assert '@timestamp' in doc1
     # Continued convo
-    doc2 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id=doc1['convo_id'])
+    doc2 = ltm.save_convo(
+        "my_service", "channel_a", "message_b",
+        "speaker_name", "speaker_id", convo_id=doc1['convo_id']
+    )
     assert doc1['convo_id'] == doc2['convo_id']
     assert doc1['@timestamp'] != doc2['@timestamp']
     # New convo
@@ -206,7 +209,7 @@ def test_save_convo():
             )
             assert doc4['convo_id'] == doc7['convo_id']
             assert elapsed(doc4['@timestamp'], doc7['@timestamp']) > 0.1
-            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 3.0
+            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 5.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
