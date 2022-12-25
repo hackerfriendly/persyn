@@ -3,7 +3,11 @@ relationship tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, line-too-long
 
-from relationships import get_relationships, to_archetype, nlp, nlp_merged
+import random
+
+import networkx as nx
+
+from relationships import get_relationships, to_archetype, jaccard_similarity, relations_to_graph, nlp, nlp_merged, archetypes
 
 test_cases_simple = {
     "A tripedal woman is quite unique, even in the art world.":
@@ -30,8 +34,6 @@ test_cases_simple = {
         [{'left': ['he'], 'rel': 'take apart', 'right': ['it']}, {'left': ['he'], 'rel': 'manage', 'right': ['fix']}],
     "It looks like she has a lot of character.":
         [{'left': ['she'], 'rel': 'have', 'right': ['a lot of character']}],
-    "It takes incredible strength and balance, but she can hold it for minutes at a time!":
-        [{'left': ['it'], 'rel': 'take', 'right': ['incredible strength']}, {'left': ['she'], 'rel': 'hold', 'right': ['it']}],
     "It's fascinating to think about the possibilities!":
         [{'left': ['it'], 'rel': 'be', 'right': ['fascinating']}],
     "Rob was a programmer trying to solve an issue with his computer, but he wasn't sure how.":
@@ -46,6 +48,10 @@ test_cases_simple = {
         [{'left': ['alice', 'bob'], 'rel': 'discuss', 'right': ['the concept of emotional intelligence']}, {'left': ['alice'], 'rel': 'propose then', 'right': ['exploring']}],
     to_archetype("Rob was a programmer trying to solve an issue with his computer, but he wasn't sure how."):
         [{'left': ['alice'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
+
+    # This one can be parsed "she | hold | it" or "it | hold | she", so skip for now.
+    # "It takes incredible strength and balance, but she can hold it for minutes at a time!":
+    #     [{'left': ['it'], 'rel': 'take', 'right': ['incredible strength']}, {'left': ['she'], 'rel': 'hold', 'right': ['it']}],
 }
 
 test_cases_propn = {
@@ -53,6 +59,25 @@ test_cases_propn = {
     "Hackerfriendly was thinking about Bill, the tennis guy.": [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['the tennis guy']}],
     "Alice was thinking about Bill the tennis guy, and his buddy Charlie.": [{'left': ['alice'], 'rel': 'think', 'right': ['charlie', 'the tennis guy']}],
 }
+
+def test_archetypes():
+    ''' Archetype name substitution '''
+    names = [
+        "Emma", "Thomas", "David", "Lucas",
+        "Jacob", "Alex", "Avery", "Aaron", "John",
+        "Joshua", "Noah", "Eva", "Michael", "Isabella",
+        "Lily", "Ryan", "Brian", "Bella", "Abigail",
+        "Hannah", "Adam", "Olivia", "Julia", "Grace",
+        "Claire", "Rob"
+    ]
+
+    assert len(names) == len(archetypes)
+
+    random.shuffle(names)
+    assert to_archetype(' '.join(names)) == ' '.join(archetypes)
+
+    sent = "%s and %s went to the park with %s and %s."
+    assert to_archetype(sent % tuple(names[:4])) == "Alice and Bob went to the park with Carol and Dave."
 
 def test_sentences_simple():
     ''' Check relationships for known sentences '''
@@ -65,7 +90,6 @@ def test_sentences_propn():
     Check relationships for known sentences with ambiguous proper names.
     This requires custom ruler patterns to work.
     '''
-
     patterns = [[{"LOWER": "hackerfriendly"}]]
     attrs = {"TAG": "NNP", "POS": "PROPN", "DEP": "nsubj"}
 
@@ -78,3 +102,29 @@ def test_sentences_propn():
     for sent, result in test_cases_propn.items():
         print(sent)
         assert get_relationships(sent) == result
+
+def test_graph():
+    '''
+    Construct a relationship graph.
+    Sentence parsing may be probabilistic, so choose your sentences carefully.
+    '''
+    for sent, relationships in list(test_cases_simple.items()):
+        graph = relations_to_graph([
+            get_relationships(sent)
+        ])
+
+        nodes = set()
+        edges = []
+        for rel in relationships:
+            left = ' '.join(rel['left'])
+            right = ' '.join(rel['right'])
+
+            nodes.add(left)
+            nodes.add(right)
+            edges.append({"edge": rel['rel'], "source": left, "target": right})
+
+        nld = nx.node_link_data(graph)
+        graph_nodes = [n['id'] for n in nld['nodes']]
+
+        assert sorted(graph_nodes) == sorted(list(nodes))
+        assert nld['links'] == edges
