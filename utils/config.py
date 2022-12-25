@@ -25,19 +25,20 @@ def load_config():
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
 
-    if 'dreams' in config and 'engines' in config['dreams']:
-        config['dreams']['all_engines'] = list(config['dreams']['engines'].keys())
+    if 'dreams' in config:
+        if 'engines' in config['dreams']:
+            config['dreams']['all_engines'] = list(config['dreams']['engines'].keys())
 
-    for engine in config['dreams']['all_engines']:
-        if not config['dreams']['engines'][engine]:
-            config['dreams']['engines'][engine] = {}
-            config['dreams']['engines'][engine]['models'] = ["default"]
+            for engine in config['dreams']['all_engines']:
+                if not config['dreams']['engines'][engine]:
+                    config['dreams']['engines'][engine] = {}
+                    config['dreams']['engines'][engine]['models'] = ["default"]
 
-    if 'gpus' in config['dreams']:
-        gpus = config['dreams']['gpus']
-        config['dreams']['gpus'] = {}
-        for gpu in gpus:
-            config['dreams']['gpus'][str(gpu)] = gpus[gpu]
+        if 'gpus' in config['dreams']:
+            gpus = config['dreams']['gpus']
+            config['dreams']['gpus'] = {}
+            for gpu in gpus:
+                config['dreams']['gpus'][str(gpu)] = gpus[gpu]
 
     if 'discord' in config['chat']:
         config['chat']['discord']['webhook_id'] = None
