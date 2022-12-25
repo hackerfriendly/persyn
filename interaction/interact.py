@@ -55,6 +55,8 @@ class Interact():
         self.completion = LanguageModel(config=persyn_config)
 
         # Elasticsearch memory
+        verify_certs_setting = persyn_config.memory.elastic.get("verify_certs", "true")
+        verify_certs = json.loads(str(verify_certs_setting).lower()) # convert "false" -> False, "0" -> False
         self.recall = Recall(
             bot_name=persyn_config.id.name,
             bot_id=persyn_config.id.guid,
@@ -63,7 +65,7 @@ class Interact():
             auth_key=persyn_config.memory.elastic.key,
             index_prefix=persyn_config.memory.elastic.index_prefix,
             conversation_interval=600, # ten minutes
-            verify_certs=True
+            verify_certs=verify_certs
         )
 
     def dialog(self, convo):
