@@ -259,8 +259,25 @@ def jaccard_similarity(g, h):
     https://en.wikipedia.org/wiki/Jaccard_index
     '''
     i = set(g).intersection(h)
-    return round(len(i) / (len(g) + len(h) - len(i)),3)
+    try:
+        return len(i) / float(len(g) + len(h) - len(i))
+    # Only possible if g and h are empty, and therefore identical
+    except ZeroDivisionError:
+        return 1.0
 
+def graph_similarity(g1, g2, edge_bias=2.0):
+    '''
+    Compute the similarity of two graphs as a single normalized metric.
+    Applies edge_bias to edge comparisons.
+    '''
+    g1edges = [str(e) for e in g1.edges(data=True)]
+    g2edges = [str(e) for e in g2.edges(data=True)]
+    return (
+        (
+            jaccard_similarity(g1.nodes(), g2.nodes()) +
+            edge_bias * jaccard_similarity(g1edges, g2edges)
+        ) / (edge_bias + 1.0)
+    )
 
 def relations_to_graph(relations):
     ''' Construct a directed graph from a list of relationships '''

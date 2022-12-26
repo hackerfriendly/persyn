@@ -7,7 +7,16 @@ import random
 
 import networkx as nx
 
-from relationships import get_relationships, to_archetype, jaccard_similarity, relations_to_graph, nlp, nlp_merged, archetypes
+from relationships import (
+    get_relationships,
+    to_archetype,
+    jaccard_similarity,
+    graph_similarity,
+    relations_to_graph,
+    nlp,
+    nlp_merged,
+    archetypes
+)
 
 test_cases_simple = {
     "A tripedal woman is quite unique, even in the art world.":
@@ -135,20 +144,57 @@ def test_graph():
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''
 
-    for sent, relationships in list(test_cases_simple.items()):
-        g1 = relations_to_graph([
-            get_relationships(sent)
-        ])
-        g2 = relations_to_graph([relationships])
+    # no ZeroDivisionError
+    assert jaccard_similarity([], []) == 1.0
 
-        # identity
-        assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
-        assert jaccard_similarity(g1.edges(), g2.edges()) == 1.0
+    try:
+        for sent, relationships in list(test_cases_simple.items()):
+            g1 = relations_to_graph([
+                get_relationships(sent)
+            ])
+            g2 = relations_to_graph([relationships])
 
-        # remove a node
-        g2.remove_node(list(g1.nodes())[0])
-        assert jaccard_similarity(g1.nodes(), g2.nodes()) < 1.0
+            # identity
+            assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
+            assert jaccard_similarity(g1.edges(), g2.edges()) == 1.0
 
-        # add an edge
-        g2.add_edge('bill ted', 'something else', edge='agree')
-        assert jaccard_similarity(g1.edges(), g2.edges()) < 1.0
+            # node + edge similarity
+            assert graph_similarity(g1, g1) == 1.0
+            assert graph_similarity(g2, g2) == 1.0
+            assert graph_similarity(g1, g2) == 1.0
+
+            # removing a node also impacts edges
+            g1.remove_node(list(g1.nodes())[0])
+            assert jaccard_similarity(g1.nodes(), g2.nodes()) < 1.0
+            assert jaccard_similarity(g1.edges(), g2.edges()) < 1.0
+            assert graph_similarity(g1, g2) < 1.0
+
+            g2.remove_node(list(g2.nodes())[0])
+
+            # adding an edge also impacts nodes, so reuse an existing node
+            g1.add_edge(list(g1.nodes())[0], list(g1.nodes())[0], edge='agree')
+
+            # nodes are now identical
+            assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
+
+            # graphs are not
+            assert graph_similarity(g1, g2) < 1.0
+
+            # don't count the edges
+            assert graph_similarity(g1, g2, edge_bias=0) == 1.0
+
+            # higher edge bias gives more weight to edge matches
+            g3 = relations_to_graph([relationships])
+            g4 = relations_to_graph([relationships])
+            assert graph_similarity(g3, g4) == 1.0
+
+            g4.add_node('alien')
+            almost = graph_similarity(g3, g4)
+            assert almost < 1.0
+            assert graph_similarity(g3, g4, edge_bias=3) > almost
+            assert graph_similarity(g3, g4, edge_bias=5) > graph_similarity(g3, g4, edge_bias=3)
+
+    except AssertionError as err:
+        print("Nodes:", g1.nodes(), g2.nodes())
+        print("Edges:", g1.edges(data=True), g2.edges(data=True))
+        raise err
