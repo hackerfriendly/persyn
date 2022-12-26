@@ -76,6 +76,9 @@ def test_archetypes():
     random.shuffle(names)
     assert to_archetype(' '.join(names)) == ' '.join(archetypes)
 
+    # When we run out of archetypes, stop substituting
+    assert to_archetype(' '.join(names + ["Scrooge"])) == ' '.join(archetypes + ["Scrooge"])
+
     sent = "%s and %s went to the park with %s and %s."
     assert to_archetype(sent % tuple(names[:4])) == "Alice and Bob went to the park with Carol and Dave."
 
@@ -128,3 +131,24 @@ def test_graph():
 
         assert sorted(graph_nodes) == sorted(list(nodes))
         assert nld['links'] == edges
+
+def test_graph_similarity():
+    ''' Use jaccard_similarity() to test the similarity of two graphs '''
+
+    for sent, relationships in list(test_cases_simple.items()):
+        g1 = relations_to_graph([
+            get_relationships(sent)
+        ])
+        g2 = relations_to_graph([relationships])
+
+        # identity
+        assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
+        assert jaccard_similarity(g1.edges(), g2.edges()) == 1.0
+
+        # remove a node
+        g2.remove_node(list(g1.nodes())[0])
+        assert jaccard_similarity(g1.nodes(), g2.nodes()) < 1.0
+
+        # add an edge
+        g2.add_edge('bill ted', 'something else', edge='agree')
+        assert jaccard_similarity(g1.edges(), g2.edges()) < 1.0
