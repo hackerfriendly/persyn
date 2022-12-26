@@ -70,7 +70,7 @@ class Interact():
         '''
         Return only the words actually spoken in a convo
         '''
-        log.critical(convo)
+        log.debug(convo)
         ret = []
         for c in convo:
             if c['speaker'].endswith(" remembers") or c['speaker'].endswith(" recalls") or c['speaker'].endswith(" thinks") or c['speaker'].endswith(" posted"):
