@@ -54,3 +54,5 @@ ices/logs/ices.log
 interaction/hf-transformers.py
 voice/tortoise-tts/
 .vscode/
+config/anna-toor.yaml
+config/spock.yaml
