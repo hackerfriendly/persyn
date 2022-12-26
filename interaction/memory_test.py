@@ -8,6 +8,7 @@ import uuid
 
 from pathlib import Path
 from time import sleep
+from copy import copy
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
@@ -300,6 +301,51 @@ def test_recall():
         ["my_nice_summary", "this_is_another_summary"],
         []
     )
+
+def test_relationships():
+    ''' Store and retrieve relationships '''
+
+    opts = {
+        "service": "my_service",
+        "channel": "my_channel",
+        "speaker_id": "a_speaker_id",
+        "source_id": "some_random_source",
+        "rel": "testing",
+        "target_id": "another_target_id",
+        "convo_id": "boring_conversation",
+        "graph": {"nodes": [1, 2, 3], "edges": [{"source": 1, "target": 2, "edge": "connected"}]}
+    }
+
+    assert ltm.save_relationship(**opts)['result'] == 'created'
+
+    q = copy(opts)
+    del q['graph']
+
+    # exact match
+    ret = ltm.lookup_relationship(**q)[0]['_source']
+    del ret['@timestamp']
+    assert ret == opts
+
+    # negative match
+    assert ltm.lookup_relationship(
+        service=opts['service'],
+        channel=opts['channel'],
+        foo='bar'
+    ) == []
+
+    # test partial matches
+    for k in ['source_id', 'rel', 'target_id']:
+        del q[k]
+
+    ret = ltm.lookup_relationship(**q)[0]['_source']
+    del ret['@timestamp']
+    assert ret == opts
+
+    del q['convo_id']
+
+    ret = ltm.lookup_relationship(**q)[0]['_source']
+    del ret['@timestamp']
+    assert ret == opts
 
 def test_cleanup():
     ''' Delete indices '''

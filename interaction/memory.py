@@ -264,7 +264,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "convo": f"{self.index_prefix}-conversations-{self.version}",
             "summary": f"{self.index_prefix}-summaries-{self.version}",
             "entity": f"{self.index_prefix}-entities-{self.version}",
-            "relation": f"{self.index_prefix}-relationships-{self.version}",
+            "relationship": f"{self.index_prefix}-relationships-{self.version}",
             "opinion": f"{self.index_prefix}-opinions-{self.version}",
             "belief": f"{self.index_prefix}-beliefs-{self.version}"
         }
@@ -283,7 +283,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                         speaker_id=self.bot_id,
                         entity_id=self.bot_entity_id
                     )
-                # if item[0] == "relation":
+                # if item[0] == "relationhip":
                 #     self.save_relationship(self.uuid_to_entity(bot_id), "has_name", self.bot_name)
 
     def load_convo(self, service, channel, lines=16, summaries=3):
@@ -619,4 +619,61 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         )['hits']['hits']:
             ret.append(opinion["_source"]["opinion"])
 
+        return ret
+
+    def save_relationship(self, service, channel, refresh=True, **kwargs):
+        '''
+        Save a relationship to Elasticearch.
+        '''
+        if 'source_id' in kwargs and not all(['rel' in kwargs, 'target_id' in kwargs]):
+            log.critical('👩‍👧‍👦 source_id requires rel and target_id')
+            return None
+
+        if 'convo_id' in kwargs and 'graph' not in kwargs:
+            log.critical('👩‍👧‍👦 convo_id requires graph')
+            return None
+
+        cur_ts = get_cur_ts()
+        doc = {
+            "@timestamp": cur_ts,
+            "service": service,
+            "channel": channel
+        }
+
+        for term, val in kwargs.items():
+            doc[term] = val
+
+        ret = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['relationship'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )
+        return ret
+
+    def lookup_relationship(self, service, channel, size=10, **kwargs):
+        ''' Look up a relationship in Elasticsearch. '''
+        ret = []
+
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}}
+                ]
+            }
+        }
+
+        for term, val in kwargs.items():
+            query['bool']['must'].append({"match": {f'{term}.keyword': val}})
+
+        log.debug(f"👨‍👩‍👧 query: {query}")
+
+        ret = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['relationship'],
+            query=query,
+            sort=[{"@timestamp":{"order":"desc"}}],
+            size=size
+        )['hits']['hits']
+
+        log.debug(f"👨‍👩‍👧 return: {ret}")
         return ret
