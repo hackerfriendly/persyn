@@ -130,7 +130,7 @@ def get_relationships(doc, depth=0):
     Returns a list of { left: [], rel: "", right: [] } dicts
     '''
     if depth > 1:
-        print("Maximum recursion depth reached.")
+        log.warning("💏 Maximum recursion depth reached.")
         return []
 
     clauses = []
@@ -154,7 +154,7 @@ def get_relationships(doc, depth=0):
                 continue
 
             if tok.pos_ not in ['VERB', 'AUX']:
-                print("Root is not a verb, can't continue:", tok, doc)
+                log.debug("💏 Root is not a verb, can't continue:", f"{tok} : {doc}")
                 return []
 
             ret['rel'] = tok.lemma_.lower()
@@ -247,7 +247,7 @@ def to_archetype(doc):
             ret.append(subs[tok.text])
         else:
             # Avoid , problems with spacing .
-            if tok.dep_ == 'punct':
+            if tok.dep_ == 'punct' and ret:
                 ret[-1] = ret[-1] + tok.text
             else:
                 ret.append(tok.text)
