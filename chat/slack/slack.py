@@ -310,6 +310,7 @@ def catch_all(say, context):
 
     # Interrupt any rejoinder in progress
     reminders.cancel(channel)
+    reminders.cancel(channel, name='summarizer')
 
     speaker_id = context['user_id']
     speaker_name = get_display_name(speaker_id)
@@ -469,7 +470,7 @@ def handle_message_events(body, say):
             chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}", verb="notices")
 
             if not msg.strip():
-                msg = f"..."
+                msg = "..."
 
             reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
