@@ -146,82 +146,83 @@ def get_relationships(doc, depth=0):
     # Resolve coreferences
     doc = referee(doc)
 
-    # if doc[-1].dep_ == 'punct':
-    #     ret['punct'] = doc[-1].text
+    for sent in doc.sents:
+        for tok in sent:
 
-    for tok in doc:
+            # Find the ROOT
+            if tok.dep_ != 'ROOT':
+                continue
 
-        # Find the ROOT
-        if tok.dep_ != 'ROOT':
-            continue
+            if tok.pos_ not in ['VERB', 'AUX']:
+                print("Root is not a verb, can't continue:", tok, doc)
+                return []
 
-        if tok.pos_ not in ['VERB', 'AUX']:
-            print("Root is not a verb, can't continue:", tok, doc)
-            return []
+            ret['rel'] = tok.lemma_.lower()
 
-        ret['rel'] = tok.lemma_.lower()
+            if not tok.children:
+                if all(ret.values()):
+                    return [ret]
+                return []
 
-        if not tok.children:
-            if all(ret.values()):
-                return [ret]
-            return []
-
-        for child in tok.children:
-            # Include modifiers (if any)
-            if child.dep_ == 'neg':
-                ret['rel'] = f"not {ret['rel']}"
-            if child.dep_ == 'advmod':
-                ret['rel'] = f"{ret['rel']} {child.lemma_.lower()}"
-
-        for child in tok.children:
-            if child.dep_ == 'nsubj':
-                subj = [child.text] + find_all_conj(child)
-                ret['left'] = sorted(list(set(subj)))
-
-            elif child.dep_ == 'dobj':
-                ret['right'] = [' '.join([child.text] + find_all_singletons(child) + find_all_modifiers(child))]
-
-        # no dobj available, try something else
-        if not ret['right']:
             for child in tok.children:
-                # Try others
-                if child.dep_ == 'acomp':
+                # Include modifiers (if any)
+                if child.dep_ == 'neg':
+                    ret['rel'] = f"not {ret['rel']}"
+                if child.dep_ == 'advmod':
+                    ret['rel'] = f"{ret['rel']} {child.lemma_.lower()}"
+
+            for child in tok.children:
+                if child.dep_ == 'nsubj':
+                    subj = [child.text] + find_all_conj(child)
+                    ret['left'] = sorted(list(set(subj)))
+
+                elif child.dep_ == 'dobj':
                     ret['right'] = [' '.join([child.text] + find_all_singletons(child) + find_all_modifiers(child))]
 
-        # Try a prepositional phrase
-        if not ret['right']:
+            # no dobj available, try something else
+            if not ret['right']:
+                for child in tok.children:
+                    # Try others
+                    if child.dep_ == 'acomp':
+                        ret['right'] = [' '.join([child.text] + find_all_singletons(child) + find_all_modifiers(child))]
+
+            # Try a prepositional phrase
+            if not ret['right']:
+                for child in tok.children:
+                    if child.dep_ == 'prep':
+                        ret['right'] = sorted(list(set(find_all_pobj(child))))
+
+            if not ret['right']:
+                for child in tok.children:
+                    if child.dep_ in ['attr', 'xcomp', 'ccomp']:
+                        ret['right'] = [' '.join([child.text] + find_all_singletons(child) + find_all_modifiers(child))]
+
+            # lower everything
+            for k in ['left', 'right']:
+                ret[k] = [w.lower() for w in ret[k]]
+
+            # conjunctions and adverbial clause modifiers
             for child in tok.children:
-                if child.dep_ == 'prep':
-                    ret['right'] = sorted(list(set(find_all_pobj(child))))
+                if child.dep_ in ['conj', 'advcl']:
+                    lefts = list(child.lefts)
+                    found = ' '.join(ret['left'])
+                    if lefts:
+                        conj = doc[lefts[0].i:]
+                    else:
+                        conj = doc[child.i:]
 
-        if not ret['right']:
-            for child in tok.children:
-                if child.dep_ in ['attr', 'xcomp', 'ccomp']:
-                    ret['right'] = [' '.join([child.text] + find_all_singletons(child) + find_all_modifiers(child))]
+                    if not any(pos in [t.pos_ for t in conj] for pos in ['AUX', 'VERB']):
+                        found = found + f" {ret['rel']}"
 
-        # lower everything
-        for k in ['left', 'right']:
-            ret[k] = [w.lower() for w in ret[k]]
+                    conj_phrase = nlp(f'{found} ' + ' '.join([t.text for t in conj]))
+                    clauses += get_relationships(conj_phrase, depth=depth + 1)
 
-        # conjunctions and adverbial clause modifiers
-        for child in tok.children:
-            if child.dep_ in ['conj', 'advcl']:
-                lefts = list(child.lefts)
-                found = ' '.join(ret['left'])
-                if lefts:
-                    conj = doc[lefts[0].i:]
-                else:
-                    conj = doc[child.i:]
-
-                if not any(pos in [t.pos_ for t in conj] for pos in ['AUX', 'VERB']):
-                    found = found + f" {ret['rel']}"
-
-                conj_phrase = nlp(f'{found} ' + ' '.join([t.text for t in conj]))
-                clauses += get_relationships(conj_phrase, depth=depth + 1)
-
-        # Only include a clause if it has a left, rel, and right.
-        if all(ret.values()) and ret not in clauses:
-            clauses.insert(0, ret)
+            # Only include a clause if it has a left, rel, and right.
+            if all(ret.values()) and ret not in clauses:
+                clauses.insert(0, ret)
+                # Add a link to terminating punctuation, if any.
+                if sent[-1].dep_ == 'punct':
+                    clauses.append({'left': ret['right'], 'rel': 'punct', 'right': [sent[-1].text]})
 
     return clauses
 

@@ -20,43 +20,43 @@ from relationships import (
 
 test_cases_simple = {
     "A tripedal woman is quite unique, even in the art world.":
-        [{'left': ['a tripedal woman'], 'rel': 'be', 'right': ['unique quite']}],
+        [{'left': ['a tripedal woman'], 'rel': 'be', 'right': ['unique quite']}, {'left': ['unique quite'], 'rel': 'punct', 'right': ['.']}],
     "Anna agree with you that it doesn't sound particularly fun.":
-        [{'left': ['anna'], 'rel': 'agree', 'right': ['you']}],
+        [{'left': ['anna'], 'rel': 'agree', 'right': ['you']}, {'left': ['you'], 'rel': 'punct', 'right': ['.']}],
     "Anna and Ricky and their friend Jim's cousin's butler, Phil, discussed the work of Erving Goffman and the commonalities between various activities.":
-        [{'left': ['anna', 'phil', 'ricky'], 'rel': 'discuss', 'right': ['the work']}],
+        [{'left': ['anna', 'phil', 'ricky'], 'rel': 'discuss', 'right': ['the work']}, {'left': ['the work'], 'rel': 'punct', 'right': ['.']}],
     "Anna and Ricky and their friend's cousin's dog Phil discussed the work of Erving Goffman and the commonalities between various activities.":
-        [{'left': ['anna', 'phil', 'ricky'], 'rel': 'discuss', 'right': ['the work']}],
+        [{'left': ['anna', 'phil', 'ricky'], 'rel': 'discuss', 'right': ['the work']}, {'left': ['the work'], 'rel': 'punct', 'right': ['.']}],
     "Anna recalls was thinking about Bill, the tennis guy.":
-        [{'left': ['anna'], 'rel': 'recall', 'right': ['thinking']}],
+        [{'left': ['anna'], 'rel': 'recall', 'right': ['thinking']}, {'left': ['thinking'], 'rel': 'punct', 'right': ['.']}],
     "Even when other kids his age had left to play professional football or basketball, Bill stayed dedicated to his passion for tennis and continued to practice hard every day.":
-        [{'left': ['bill'], 'rel': 'stay', 'right': ['dedicated']}, {'left': ['bill'], 'rel': 'continue', 'right': ['practice']}],
+        [{'left': ['bill'], 'rel': 'stay', 'right': ['dedicated']}, {'left': ['dedicated'], 'rel': 'punct', 'right': ['.']}, {'left': ['bill'], 'rel': 'continue', 'right': ['practice']}, {'left': ['practice'], 'rel': 'punct', 'right': ['.']}],
     "He didn't start playing at the age of 8 but quickly became known as one of the best players in town.":
-        [{'left': ['he'], 'rel': 'not start', 'right': ['playing']}],
+        [{'left': ['he'], 'rel': 'not start', 'right': ['playing']}, {'left': ['playing'], 'rel': 'punct', 'right': ['.']}],
     "He started playing at the age of 8.":
-        [{'left': ['he'], 'rel': 'start', 'right': ['playing at the age of 8']}],
+        [{'left': ['he'], 'rel': 'start', 'right': ['playing at the age of 8']}, {'left': ['playing at the age of 8'], 'rel': 'punct', 'right': ['.']}],
     "He was a programmer trying to solve an issue with his computer, but he wasn't sure how.":
-        [{'left': ['he'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
+        [{'left': ['he'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}, {'left': ['sure'], 'rel': 'punct', 'right': ['.']}, {'left': ['trying'], 'rel': 'punct', 'right': ['.']}],
     "Hi Anna, did you notice that one of your women in the picture is tripedal?":
-        [{'left': ['you'], 'rel': 'notice', 'right': ['is tripedal']}],
+        [{'left': ['you'], 'rel': 'notice', 'right': ['is tripedal']}, {'left': ['is tripedal'], 'rel': 'punct', 'right': ['?']}],
     "In desperation, he took it apart and managed to fix it himself.":
-        [{'left': ['he'], 'rel': 'take apart', 'right': ['it']}, {'left': ['he'], 'rel': 'manage', 'right': ['fix']}],
-    "It looks like she has a lot of character.":
-        [{'left': ['she'], 'rel': 'have', 'right': ['a lot of character']}],
+        [{'left': ['he'], 'rel': 'take apart', 'right': ['it']}, {'left': ['he'], 'rel': 'manage', 'right': ['fix']}, {'left': ['fix'], 'rel': 'punct', 'right': ['.']}, {'left': ['it'], 'rel': 'punct', 'right': ['.']}],
+    "It looks like she has a lot of character!":
+        [{'left': ['she'], 'rel': 'have', 'right': ['a lot of character']}, {'left': ['a lot of character'], 'rel': 'punct', 'right': ['!']}],
     "It's fascinating to think about the possibilities!":
-        [{'left': ['it'], 'rel': 'be', 'right': ['fascinating']}],
+        [{'left': ['it'], 'rel': 'be', 'right': ['fascinating']}, {'left': ['fascinating'], 'rel': 'punct', 'right': ['!']}],
     "Rob was a programmer trying to solve an issue with his computer, but he wasn't sure how.":
-        [{'left': ['rob'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
+        [{'left': ['rob'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}, {'left': ['sure'], 'rel': 'punct', 'right': ['.']}, {'left': ['trying'], 'rel': 'punct', 'right': ['.']}],
     "She looks confident and composed, but also a bit mischievous.":
-        [{'left': ['she'], 'rel': 'look', 'right': ['confident']}, {'left': ['she'], 'rel': 'look', 'right': ['mischievous bit']}],
+        [{'left': ['she'], 'rel': 'look', 'right': ['confident']}, {'left': ['she'], 'rel': 'look', 'right': ['mischievous bit']}, {'left': ['mischievous bit'], 'rel': 'punct', 'right': ['.']}, {'left': ['confident'], 'rel': 'punct', 'right': ['.']}],
     "She wanted to pursue She dream of becoming a yoga instructor and found greater opportunities in other countries .":
-        [{'left': ['she'], 'rel': 'want', 'right': ['pursue']}, {'left': ['she'], 'rel': 'find', 'right': ['greater opportunities in other countries']}],
+        [{'left': ['she'], 'rel': 'want', 'right': ['pursue']}, {'left': ['she'], 'rel': 'find', 'right': ['greater opportunities in other countries']}, {'left': ['greater opportunities in other countries'], 'rel': 'punct', 'right': ['.']}, {'left': ['pursue'], 'rel': 'punct', 'right': ['.']}],
     "That doesn't actually sound like fun, for the person stuck in VR with you.":
-        [{'left': ['that'], 'rel': 'not sound actually', 'right': ['fun']}, {'left': ['the person'], 'rel': 'stick', 'right': ['you']}],
+        [{'left': ['that'], 'rel': 'not sound actually', 'right': ['fun']}, {'left': ['the person'], 'rel': 'stick', 'right': ['you']}, {'left': ['you'], 'rel': 'punct', 'right': ['.']}, {'left': ['fun'], 'rel': 'punct', 'right': ['.']}],
     to_archetype("Anna and Hackerfriendly discussed the concept of emotional intelligence and then Anna proposed exploring Erving Goffman's work and its potential implications."):
-        [{'left': ['alice', 'bob'], 'rel': 'discuss', 'right': ['the concept of emotional intelligence']}, {'left': ['alice'], 'rel': 'propose then', 'right': ['exploring']}],
+        [{'left': ['alice', 'bob'], 'rel': 'discuss', 'right': ['the concept of emotional intelligence']}, {'left': ['alice'], 'rel': 'propose then', 'right': ['exploring']}, {'left': ['exploring'], 'rel': 'punct', 'right': ['.']}, {'left': ['the concept of emotional intelligence'], 'rel': 'punct', 'right': ['.']}],
     to_archetype("Rob was a programmer trying to solve an issue with his computer, but he wasn't sure how."):
-        [{'left': ['alice'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
+        [{'left': ['alice'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}, {'left': ['sure'], 'rel': 'punct', 'right': ['.']}, {'left': ['trying'], 'rel': 'punct', 'right': ['.']}],
 
     # This one can be parsed "she | hold | it" or "it | hold | she", so skip for now.
     # "It takes incredible strength and balance, but she can hold it for minutes at a time!":
@@ -64,9 +64,12 @@ test_cases_simple = {
 }
 
 test_cases_propn = {
-    "hackerfriendly was thinking about Bill, the tennis guy, and his buddy Charlie.": [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['bill', 'charlie', 'the tennis guy']}],
-    "Hackerfriendly was thinking about Bill, the tennis guy.": [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['the tennis guy']}],
-    "Alice was thinking about Bill the tennis guy, and his buddy Charlie.": [{'left': ['alice'], 'rel': 'think', 'right': ['charlie', 'the tennis guy']}],
+    "hackerfriendly was thinking about Bill, the tennis guy, and his buddy Charlie.":
+        [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['bill', 'charlie', 'the tennis guy']}, {'left': ['bill', 'charlie', 'the tennis guy'], 'rel': 'punct', 'right': ['.']}],
+    "Hackerfriendly was thinking about Bill, the tennis guy.":
+        [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['the tennis guy']}, {'left': ['the tennis guy'], 'rel': 'punct', 'right': ['.']}],
+    "Alice was thinking about Bill the tennis guy, and his buddy Charlie.":
+        [{'left': ['alice'], 'rel': 'think', 'right': ['charlie', 'the tennis guy']}, {'left': ['charlie', 'the tennis guy'], 'rel': 'punct', 'right': ['.']}],
 }
 
 def test_archetypes():
@@ -121,25 +124,12 @@ def test_graph():
     Sentence parsing may be probabilistic, so choose your sentences carefully.
     '''
     for sent, relationships in list(test_cases_simple.items()):
-        graph = relations_to_graph([
+        g1 = relations_to_graph([
             get_relationships(sent)
         ])
+        g2 = relations_to_graph([relationships])
 
-        nodes = set()
-        edges = []
-        for rel in relationships:
-            left = ' '.join(rel['left'])
-            right = ' '.join(rel['right'])
-
-            nodes.add(left)
-            nodes.add(right)
-            edges.append({"edge": rel['rel'], "source": left, "target": right})
-
-        nld = nx.node_link_data(graph)
-        graph_nodes = [n['id'] for n in nld['nodes']]
-
-        assert sorted(graph_nodes) == sorted(list(nodes))
-        assert nld['links'] == edges
+        assert graph_similarity(g1, g2) == 1.0
 
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''
