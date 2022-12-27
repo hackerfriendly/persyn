@@ -519,7 +519,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ''' One distinct short UUID per bot_id + service + channel + name '''
         return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
 
-    def save_entity(self, service, channel, speaker_name, speaker_id=None, entity_id=None):
+    def save_entity(self, service, channel, speaker_name, speaker_id=None, entity_id=None, refresh=True):
         '''
         If an entity is new, save it to Elasticscarch.
         Returns the entity_id and the elapsed time since the entity was first stored.
@@ -544,7 +544,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
         self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
             index=self.index['entity'],
-            document=doc
+            document=doc,
+            refresh='true' if refresh else 'false'
         )
         return entity_id, 0
 
