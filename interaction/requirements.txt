@@ -1,4 +1,5 @@
-alt-profanity-check
+alt-profanity-check==1.1.3
+scikit-learn==1.1.3
 certifi
 click
 dotwiz
