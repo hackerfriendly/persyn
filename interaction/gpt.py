@@ -8,7 +8,7 @@ import spacy
 
 from ftfy import fix_text
 
-from feels import get_flair_score, get_profanity_score, closest_emoji
+from feels import Sentiment, closest_emoji
 
 # Color logging
 from color_logging import ColorLog
@@ -25,7 +25,8 @@ class GPT():
         api_base,
         model_name,
         forbidden=None,
-        nlp=None
+        nlp=None,
+        sentiment=None
         ):
         self.bot_name = bot_name
         self.min_score = min_score
@@ -33,6 +34,7 @@ class GPT():
         self.forbidden = forbidden or []
         self.stats = Counter()
         self.nlp = nlp or spacy.load("en_core_web_lg")
+        self.sentiment = sentiment or Sentiment()
 
         if model_name.startswith('text-davinci-'):
             self.max_prompt_length = 4000 # tokens
@@ -284,8 +286,8 @@ class GPT():
                 goal_bonus = 0.0
 
             all_scores = {
-                "flair": get_flair_score(raw),
-                "profanity": get_profanity_score(raw),
+                "flair": self.sentiment.get_sentiment_score(raw),
+                "profanity": self.sentiment.get_profanity_score(raw),
                 "topic_bonus": topic_bonus,
                 "goal_bonus": goal_bonus
             }

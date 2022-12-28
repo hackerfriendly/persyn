@@ -6,6 +6,8 @@ import spacy
 import gpt
 import nlp_cloud
 
+from feels import Sentiment
+
 class LanguageModel():
     ''' Container for language model completion requests '''
     def __init__(
@@ -17,7 +19,9 @@ class LanguageModel():
         self.engine = config.completion.engine
         self.bot_name = config.id.name
         self.stats = Counter()
-        self.nlp = spacy.load("en_core_web_lg")
+        self.nlp = spacy.load(getattr(config.completion, "spacy_model", "en_core_web_lg"))
+        self.sentiment = Sentiment(getattr(config.sentiment, "engine", "flair"),
+                                   getattr(config.sentiment, "model", None))
         # Absolutely forbidden words
         self.forbidden = forbidden or []
         # Minimum completion reply quality. Lower numbers get more dark + sleazy.
