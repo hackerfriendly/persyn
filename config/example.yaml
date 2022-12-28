@@ -25,7 +25,7 @@ sentiment:
   engine: "flair"
   model: "en-sentiment"
   # engine: "spacy"
-  # engine: "en_core_web_lg"
+  # model: "en_core_web_lg"
 
 # Chat modules. Enable one or more of these.
 chat:
