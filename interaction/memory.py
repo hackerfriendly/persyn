@@ -1,6 +1,5 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 import uuid
-import logging
 
 import elasticsearch
 import shortuuid as su
@@ -12,8 +11,6 @@ from chrono import elapsed, get_cur_ts
 from color_logging import ColorLog
 
 log = ColorLog()
-
-logging.getLogger('elasticsearch').setLevel(logging.CRITICAL)
 
 class Recall(): # pylint: disable=too-many-arguments
     ''' Total Recall: stm + ltm. '''
