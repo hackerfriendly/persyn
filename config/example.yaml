@@ -18,6 +18,14 @@ completion:
   model: text-davinci-003
   minimum_quality_score: -2.0
   temperature: 0.99
+  # spacy_model: "en_core_web_lg"
+
+# Sentiment analysis engine
+sentiment:
+  engine: "flair"
+  model: "en-sentiment"
+  # engine: "spacy"
+  # engine: "en_core_web_lg"
 
 # Chat modules. Enable one or more of these.
 chat:
@@ -52,13 +60,12 @@ memory:
 interact:
   url: http://localhost:8003
 
-# Optional: Dream image generation server (dreams.py)
-# dreams:
-#   url: http://localhost:8001
-
-#   gpus:
-#     # CUDA number and a name for each local GPU to use for image generation
-#     1: Nvidia 2080
+  # Optional: Dream image generation server (dreams.py)
+  # dreams:
+  #   url: http://localhost:8001
+  #   gpus:
+  #     # CUDA number and a name for each local GPU to use for image generation
+  #     1: Nvidia 2080
 
   # Image upload SCP destination and URL. Only required if generating images.
   # upload:

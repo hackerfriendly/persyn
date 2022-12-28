@@ -48,4 +48,6 @@ def load_config():
             except (AttributeError, TypeError, ValueError):
                 raise RuntimeError("chat.discord.webhook is not valid. Check your yaml config.")
 
+    config.setdefault('sentiment', {})
+
     return DotWiz(config)
