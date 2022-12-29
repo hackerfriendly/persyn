@@ -35,7 +35,7 @@ class LanguageModel():
         if self.engine in ['openai', 'gooseai']:
             if self.engine == 'openai':
                 api_base = 'https://api.openai.com/v1'
-                model_name = getattr(config.completion, 'model', 'text-davinci-002')
+                model_name = getattr(config.completion, 'model', 'text-davinci-003')
             else:
                 api_base = 'https://api.goose.ai/v1'
                 model_name = getattr(config.completion, 'model', 'gpt-neo-20b')
