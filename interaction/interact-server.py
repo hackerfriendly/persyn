@@ -214,7 +214,6 @@ if __name__ == '__main__':
         workers=persyn_config.interact.workers,
         reload=False,
     )
-    pass
 
 else:
     persyn_config = load_config()
