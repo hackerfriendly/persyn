@@ -36,14 +36,15 @@ from utils.config import load_config
 
 persyn_config = load_config()
 
-sqs = boto3.resource('sqs', region_name=persyn_config.id.aws_region)
+
+sqs = boto3.resource('sqs', region_name=persyn_config.cns.aws_region)
 
 try:
-    queue = sqs.get_queue_by_name(QueueName=persyn_config.id.sqs_queue)
-except ClientError as sqserr:
+    queue = sqs.get_queue_by_name(QueueName=persyn_config.cns.sqs_queue)
+except ClientError:
     try:
         queue = sqs.create_queue(
-            QueueName=persyn_config.id.sqs_queue,
+            QueueName=persyn_config.cns.sqs_queue,
             Attributes={
                 'DelaySeconds': '0',
                 'MessageRetentionPeriod': '345600'
@@ -92,6 +93,9 @@ services = {
 }
 
 if __name__ == '__main__':
+    if not hasattr(persyn_config, 'cns'):
+        raise SystemExit('cns not defined in config, exiting.')
+
     log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
     while True:
         for sqsm in queue.receive_messages(WaitTimeSeconds=20):
