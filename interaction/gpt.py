@@ -70,6 +70,9 @@ class GPT():
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
             return None
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return None
 
         log.info(f"🧠 Prompt: {prompt}")
         # log.warning(response)
@@ -112,6 +115,9 @@ class GPT():
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
             return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return ""
 
         reply = response.choices[0]['text'].strip()
         log.warning(f"☝️  opinion of {entity}: {reply}")
@@ -144,6 +150,9 @@ class GPT():
             )
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
+            return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
             return ""
 
         reply = response.choices[0]['text'].strip()
@@ -341,6 +350,9 @@ class GPT():
             )
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
+            return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
             return ""
 
         reply = response.choices[0]['text'].strip().split('\n')[0]
