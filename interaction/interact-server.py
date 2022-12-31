@@ -202,10 +202,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.config_file:
-        os.environ['PERSYN_CONFIG'] = args.config_file
-
-    persyn_config = load_config()
+    persyn_config = load_config(args.config_file)
 
     uvicorn.run(
         'interact-server:app',

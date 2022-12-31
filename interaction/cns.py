@@ -7,6 +7,8 @@ The central nervous system. Listen for events and inject them into interact.
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import json
 import sys
+import os
+import argparse
 # import uuid
 
 from pathlib import Path
@@ -23,10 +25,7 @@ from chat.common import Chat
 from chat.simple import slack_msg, discord_msg
 
 # Mastodon support for image posting
-from chat.mastodon.login import mastodon
-
-if mastodon:
-    from chat.mastodon.donbot import fetch_and_post_image
+from chat.mastodon.donbot import Mastodon
 
 # Color logging
 from utils.color_logging import log
@@ -34,43 +33,22 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
-persyn_config = load_config()
-
-
-sqs = boto3.resource('sqs', region_name=persyn_config.cns.aws_region)
-
-try:
-    queue = sqs.get_queue_by_name(QueueName=persyn_config.cns.sqs_queue)
-except ClientError:
-    try:
-        queue = sqs.create_queue(
-            QueueName=persyn_config.cns.sqs_queue,
-            Attributes={
-                'DelaySeconds': '0',
-                'MessageRetentionPeriod': '345600'
-            }
-        )
-    except ClientError as sqserr:
-        raise RuntimeError from sqserr
-
-def mastodon_msg(chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
+def mastodon_msg(_, chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
-    if not mastodon:
-        log.error("🚫 Mastodon not configured, cannot post image.")
-        return
-
     for image in images:
-        fetch_and_post_image(f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn")
+        mastodon.fetch_and_post_image(
+            f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn"
+        )
 
 def image_ready(event, service):
     ''' An image has been generated '''
     chat = Chat(persyn_config, service=event['service'])
-    services[service](chat, event['channel'], event['bot_name'], event['caption'], event['images'])
+    services[service](persyn_config, chat, event['channel'], event['bot_name'], event['caption'], event['images'])
 
 def say_something(event, service):
     ''' Send a message to a service + channel '''
     chat = Chat(persyn_config, service=event['service'])
-    services[service](chat, event['channel'], event['bot_name'], event['message'])
+    services[service](persyn_config, chat, event['channel'], event['bot_name'], event['message'])
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
@@ -93,8 +71,43 @@ services = {
 }
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        description='''Persyn central nervous system. Run one server for each bot.'''
+    )
+    parser.add_argument(
+        'config_file',
+        type=str,
+        nargs='?',
+        help='Path to bot config (default: use $PERSYN_CONFIG)',
+        default=os.environ.get('PERSYN_CONFIG', None)
+    )
+    # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
+
+    args = parser.parse_args()
+    persyn_config = load_config(args.config_file)
+
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')
+
+    mastodon = Mastodon(args.config_file)
+    mastodon.login()
+
+    sqs = boto3.resource('sqs', region_name=persyn_config.cns.aws_region)
+
+    try:
+        queue = sqs.get_queue_by_name(QueueName=persyn_config.cns.sqs_queue)
+    except ClientError:
+        try:
+            queue = sqs.create_queue(
+                QueueName=persyn_config.cns.sqs_queue,
+                Attributes={
+                    'DelaySeconds': '0',
+                    'MessageRetentionPeriod': '345600'
+                }
+            )
+        except ClientError as sqserr:
+            raise RuntimeError from sqserr
 
     log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
     while True:

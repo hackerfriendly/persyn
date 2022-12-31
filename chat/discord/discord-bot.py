@@ -31,7 +31,7 @@ from utils.config import load_config
 from interaction.reminders import AsyncReminders
 
 # Mastodon support for image posting
-from chat.mastodon.login import mastodon
+from chat.mastodon.donbot import mastodon
 
 # Common chat library
 from chat.common import Chat

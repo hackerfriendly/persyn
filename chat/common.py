@@ -145,7 +145,7 @@ class Chat():
             "engine": engine,
             "channel": channel,
             "service": self.service,
-            "queue": getattr(self.config.id, "sqs_queue", None),
+            "queue": getattr(self.config.cns, "sqs_queue", None),
             "prompt": prompt,
             "model": model,
             "bot_name": self.config.id.name,

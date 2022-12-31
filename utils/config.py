@@ -16,12 +16,14 @@ def load_config(cfg=None):
     ''' Load the config and set some sensible default values. '''
 
     if cfg is None and 'PERSYN_CONFIG' not in os.environ:
-        raise SystemExit("Please set PERSYN_CONFIG to point to your yaml config.")
+        raise RuntimeError("Please set PERSYN_CONFIG to point to your yaml config.")
 
     config_file = cfg or os.environ['PERSYN_CONFIG']
 
-    if not Path(config_file).is_file():
+    if not config_file or not Path(config_file).is_file():
         raise SystemExit(f"Can't find config file '{config_file}'")
+
+    os.environ['PERSYN_CONFIG'] = config_file
 
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
@@ -58,15 +60,20 @@ def load_config(cfg=None):
             for gpu in gpus:
                 config['dreams']['gpus'][str(gpu)] = gpus[gpu]
 
-    if 'discord' in config['chat']:
-        config['chat']['discord']['webhook_id'] = None
-        if 'webhook' in config['chat']['discord']:
-            try:
-                config['chat']['discord']['webhook_id'] = int(
-                    urlparse(config['chat']['discord']['webhook']).path.split('/')[3]
-                )
-            except (AttributeError, TypeError, ValueError):
-                raise RuntimeError("chat.discord.webhook is not valid. Check your yaml config.")
+    if 'chat' in config:
+        if 'discord' in config['chat']:
+            config['chat']['discord']['webhook_id'] = None
+            if 'webhook' in config['chat']['discord']:
+                try:
+                    config['chat']['discord']['webhook_id'] = int(
+                        urlparse(config['chat']['discord']['webhook']).path.split('/')[3]
+                    )
+                except (AttributeError, TypeError, ValueError):
+                    raise RuntimeError("chat.discord.webhook is not valid. Check your yaml config.")
+
+        if 'mastodon' in config['chat']:
+            if 'toot_length' not in config['chat']['mastodon']:
+                config['chat']['mastodon']['toot_length'] = 500
 
     config.setdefault('sentiment', {})
 
