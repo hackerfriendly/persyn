@@ -107,7 +107,7 @@ def say_something_later(say, channel, context, when, what=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='''Mastodon chat module for Persyn'''
+        description='''Slack chat module for Persyn'''
     )
     parser.add_argument(
         'config_file',
@@ -132,8 +132,8 @@ if __name__ == "__main__":
 
     log.info(f"👖 Logged into chat.service: {chat.service}")
 
-    ###
-    # Slack events
+    # Ugh, you can't instantiate App until you have the token, which requires
+    # the config to be loaded. So Slack events follow. -_-
     ###
     @app.message(re.compile(r"^help$", re.I))
     def help_me(say, context): # pylint: disable=unused-argument
@@ -515,17 +515,5 @@ if __name__ == "__main__":
                     ])
                 )
 
-
-
-
-
-
-
-
     handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)
-    try:
-        handler.start()
-    # Exit gracefully on ^C (so the wrapper script while loop continues)
-    except KeyboardInterrupt as kbderr:
-        print()
-        raise SystemExit(0) from kbderr
+    handler.start()
