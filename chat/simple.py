@@ -25,9 +25,7 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
-persyn_config = load_config()
-
-def slack_msg(chat, channel, bot_name, msg, images=None):
+def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     ''' Post a message to Slack with optional images '''
 
     blocks = []
@@ -67,7 +65,7 @@ def slack_msg(chat, channel, bot_name, msg, images=None):
 
     chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
 
-def discord_msg(chat, channel, bot_name, msg, images=None):
+def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     ''' Post an image to Discord '''
     req = {
         "username": persyn_config.id.name,
