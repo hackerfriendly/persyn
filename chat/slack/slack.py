@@ -105,6 +105,10 @@ def say_something_later(say, channel, context, when, what=None):
         }
         reminders.add(channel, when, catch_all, args=[say, yadda])
 
+
+###
+# main
+###
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='''Slack chat module for Persyn'''
@@ -126,6 +130,7 @@ if __name__ == "__main__":
 
     # Mastodon support
     mastodon = Mastodon(args.config_file)
+    mastodon.login()
 
     # Chat library
     chat = Chat(persyn_config, service=app.client.auth_test().data['url'])
