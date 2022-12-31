@@ -110,32 +110,38 @@ if __name__ == '__main__':
             raise RuntimeError from sqserr
 
     log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
-    while True:
-        for sqsm in queue.receive_messages(WaitTimeSeconds=20):
-            log.info(f"⚡️ {sqsm.body}")
 
-            try:
-                msg = json.loads(sqsm.body)
+    try:
+        while True:
+            for sqsm in queue.receive_messages(WaitTimeSeconds=20):
+                log.info(f"⚡️ {sqsm.body}")
 
-                if 'slack.com' in msg['service']:
-                    chat_service = 'slack'
-                elif msg['service'] == 'discord':
-                    chat_service = 'discord'
-                elif msg['service'] == 'mastodon':
-                    chat_service = 'mastodon'
-                else:
-                    log.critical(f"Unknown service {msg['service']}, skipping message: {sqsm.body}")
+                try:
+                    msg = json.loads(sqsm.body)
+
+                    if 'slack.com' in msg['service']:
+                        chat_service = 'slack'
+                    elif msg['service'] == 'discord':
+                        chat_service = 'discord'
+                    elif msg['service'] == 'mastodon':
+                        chat_service = 'mastodon'
+                    else:
+                        log.critical(f"Unknown service {msg['service']}, skipping message: {sqsm.body}")
+                        continue
+
+                except json.JSONDecodeError as e:
+                    log.critical(f"Bad json, skipping message: {sqsm.body}")
                     continue
 
-            except json.JSONDecodeError as e:
-                log.critical(f"Bad json, skipping message: {sqsm.body}")
-                continue
+                finally:
+                    sqsm.delete()
 
-            finally:
-                sqsm.delete()
+                try:
+                    events[msg['event_type']](msg, chat_service)
 
-            try:
-                events[msg['event_type']](msg, chat_service)
-
-            except AttributeError:
-                log.critical(f"⚡️ Unknown event type: {msg['event_type']}")
+                except AttributeError:
+                    log.critical(f"⚡️ Unknown event type: {msg['event_type']}")
+    # Exit gracefully on ^C (so the wrapper script while loop continues)
+    except KeyboardInterrupt as kbderr:
+        print()
+        raise SystemExit(0) from kbderr

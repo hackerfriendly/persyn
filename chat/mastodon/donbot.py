@@ -395,8 +395,13 @@ if __name__ == "__main__":
 
     listener = TheListener(mastodon)
 
-    while True:
-        try:
-            mastodon.client.stream_user(listener)
-        except MastodonMalformedEventError as mastoerr:
-            log.critical(f"MastodonMalformedEventError, continuing.\n{mastoerr}")
+    try:
+        while True:
+            try:
+                mastodon.client.stream_user(listener)
+            except MastodonMalformedEventError as mastoerr:
+                log.critical(f"MastodonMalformedEventError, continuing.\n{mastoerr}")
+            # Exit gracefully on ^C (so the wrapper script while loop continues)
+    except KeyboardInterrupt as kbderr:
+        print()
+        raise SystemExit(0) from kbderr

@@ -521,4 +521,9 @@ if __name__ == "__main__":
                 )
 
     handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)
-    handler.start()
+    try:
+        handler.start()
+    # Exit gracefully on ^C (so the wrapper script while loop continues)
+    except KeyboardInterrupt as kbderr:
+        print()
+        raise SystemExit(0) from kbderr
