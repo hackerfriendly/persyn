@@ -496,58 +496,34 @@ if __name__ == "__main__":
         for file in body['event']['files']:
             caption = get_caption(file['url_private_download'])
 
-        for msg in result.get('messages', []):
-            # only post on the first reaction
-            if 'reactions' in msg and len(msg['reactions']) == 1:
-                if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign', 'hand']:
-                    if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
-                        log.warning("🎺 Not posting:", {msg['reactions'][0]['name']})
-                        return
-                    log.warning("🤯 All is forgotten.")
-                    chat.forget_it(channel)
-                    return
-                try:
-                    req = { "service": chat.service, "channel": channel }
-                    response = requests.post(f"{persyn_config.interact.url}/amnesia/", params=req, timeout=10)
-                    response.raise_for_status()
-                except requests.exceptions.RequestException as err:
-                    log.critical(f"🤖 Could not post /amnesia/ to interact: {err}")
-                    return
+            if caption:
+                prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
+                say(f"{prefix} {caption}")
 
-                if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
-                    blk = msg['blocks'][0]
-                    try:
-                        if len(blk['alt_text']) > 497:
-                            toot = blk['alt_text'][:497] + '...'
-                        else:
-                            toot = blk['alt_text']
-                        with tempfile.TemporaryDirectory() as tmpdir:
-                            media_ids = []
-                            for blk in msg['blocks']:
-                                response = requests.get(blk['image_url'], timeout=30)
-                                response.raise_for_status()
-                                fname = f"{tmpdir}/{uuid.uuid4()}.{blk['image_url'][-3:]}"
-                                with open(fname, "wb") as f:
-                                    for chunk in response.iter_content():
-                                        f.write(chunk)
-                                caption = get_caption(blk['image_url'])
-                                media_ids.append(mastodon.media_post(fname, description=caption).id)
+                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}", verb="notices")
 
-                            resp = mastodon.status_post(
-                                toot,
-                                media_ids=media_ids,
-                                idempotency_key=sha256(blk['image_url'].encode()).hexdigest()
-                            )
-                            if not resp or 'url' not in resp:
-                                raise RuntimeError(resp)
-                            log.info(f"🎺 Posted {blk['image_url']}: {resp['url']}")
+                if not msg.strip():
+                    msg = "..."
 
-                    except SlackApiError as err:
-                        log.error(f"Slack error: {err}")
-                    except RuntimeError as err:
-                        log.error(f"🎺 Could not post {blk['image_url']}: {err}")
-                else:
-                    log.error(f"🎺 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
+                reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
+
+                say(reply)
+
+                for goal in goals_achieved:
+                    say(f"🏆 _achievement unlocked: {goal}_")
+            else:
+                say(
+                    random.choice([
+                        "I'm not sure.",
+                        ":face_with_monocle:",
+                        ":face_with_spiral_eyes:",
+                        "What the...?",
+                        "Um.",
+                        "No idea.",
+                        "Beats me."
+                    ])
+                )
+
 
     handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)
     try:
