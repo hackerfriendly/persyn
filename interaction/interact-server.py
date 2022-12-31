@@ -22,6 +22,9 @@ sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
 
 from interact import Interact
 
+# Color logging
+from utils.color_logging import log
+
 # Bot config
 from utils.config import load_config
 
@@ -203,6 +206,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     persyn_config = load_config(args.config_file)
+
+    log.info(f"💃 {persyn_config.id.name}'s interact server starting up")
 
     uvicorn.run(
         'interact-server:app',
