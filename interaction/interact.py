@@ -7,6 +7,7 @@ The limbic system library.
 import json
 import random
 import sys
+import re # used by custom filters
 
 from pathlib import Path
 
@@ -53,6 +54,15 @@ class Interact():
 
         # Pick a language model for completion
         self.completion = LanguageModel(config=persyn_config)
+
+        # Identify a custom reply filter, if any. Should be a Python expression
+        # that receives the reply as the variable 'reply'. (Also has access to
+        # 'self' technically and anything else loaded at module scope, so be
+        # careful.)
+        self.custom_filter = None
+        if hasattr(self.config.interact, "filter"):
+            assert re # prevent "unused import" type linting
+            self.custom_filter = eval(f"lambda reply: {self.config.interact.filter}")
 
         # Elasticsearch memory:
         # First, check if we don't want to verify TLS certs (because self-hosted Elasticsearch)
@@ -366,6 +376,11 @@ class Interact():
             prompt = self.generate_prompt(summaries, convo[-3:], lts)
 
         reply = self.choose_reply(prompt, convo, self.feels['goals'])
+        if self.custom_filter:
+            try:
+                reply = self.custom_filter(reply)
+            except Exception as e:
+                log.warning(f"🤮 Custom filter failed: {e}")
 
         self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid)
 
