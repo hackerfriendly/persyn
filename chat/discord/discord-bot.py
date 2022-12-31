@@ -256,6 +256,7 @@ if __name__ == '__main__':
 
     # Mastodon support
     mastodon = Mastodon(args.config_file)
+    mastodon.login()
 
     intents = discord.Intents.default()
     intents.message_content = True # pylint: disable=assigning-non-slot
