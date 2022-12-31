@@ -50,8 +50,9 @@ class Mastodon():
         self.reminders = Reminders()
 
         # Spacy for basic parsing
-        self.nlp = spacy.load("en_core_web_sm")
-        self.nlp.add_pipe('sentencizer')
+        if self.valid_config():
+            self.nlp = spacy.load("en_core_web_sm")
+            self.nlp.add_pipe('sentencizer')
 
     def valid_config(self):
         ''' Returns True if a masto config is present '''
