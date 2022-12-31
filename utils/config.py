@@ -12,18 +12,38 @@ from urllib.parse import urlparse
 import yaml
 from dotwiz import DotWiz
 
-if 'PERSYN_CONFIG' not in os.environ:
-    raise SystemExit(f"Please set PERSYN_CONFIG to point to your yaml config.")
+def load_config(cfg=None):
+    ''' Load the config and set some sensible default values. '''
 
-# TODO: semantic sanity checking
-def load_config():
-    config_file = os.environ['PERSYN_CONFIG']
+    if cfg is None and 'PERSYN_CONFIG' not in os.environ:
+        raise SystemExit("Please set PERSYN_CONFIG to point to your yaml config.")
 
-    if not Path(config_file).is_file():
+    config_file = cfg or os.environ['PERSYN_CONFIG']
+
+    if not config_file or not Path(config_file).is_file():
         raise SystemExit(f"Can't find config file '{config_file}'")
+
+    os.environ['PERSYN_CONFIG'] = config_file
 
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
+
+    # Break out hostname and port for any service with a url
+    for service in config:
+        if 'url' in config[service]:
+            srv = urlparse(config[service]['url'])
+            config[service]['hostname'] = srv.hostname
+            config[service]['port'] = srv.port
+            if srv.hostname == 'localhost' and 'workers' not in config[service]:
+                config[service]['workers'] = 1
+
+        for subservice in config[service]:
+            if isinstance(config[service][subservice], dict) and 'url' in config[service][subservice]:
+                srv = urlparse(config[service][subservice]['url'])
+                config[service][subservice]['hostname'] = srv.hostname
+                config[service][subservice]['port'] = srv.port
+                if srv.hostname == 'localhost' and 'workers' not in config[service][subservice]:
+                    config[service][subservice]['workers'] = 1
 
     if 'dreams' in config:
         if 'engines' in config['dreams']:
@@ -40,13 +60,20 @@ def load_config():
             for gpu in gpus:
                 config['dreams']['gpus'][str(gpu)] = gpus[gpu]
 
-    if 'discord' in config['chat']:
-        config['chat']['discord']['webhook_id'] = None
-        if 'webhook' in config['chat']['discord']:
-            try:
-                config['chat']['discord']['webhook_id'] = int(urlparse(config['chat']['discord']['webhook']).path.split('/')[3])
-            except (AttributeError, TypeError, ValueError):
-                raise RuntimeError("chat.discord.webhook is not valid. Check your yaml config.")
+    if 'chat' in config:
+        if 'discord' in config['chat']:
+            config['chat']['discord']['webhook_id'] = None
+            if 'webhook' in config['chat']['discord']:
+                try:
+                    config['chat']['discord']['webhook_id'] = int(
+                        urlparse(config['chat']['discord']['webhook']).path.split('/')[3]
+                    )
+                except (AttributeError, TypeError, ValueError):
+                    raise RuntimeError("chat.discord.webhook is not valid. Check your yaml config.")
+
+        if 'mastodon' in config['chat']:
+            if 'toot_length' not in config['chat']['mastodon']:
+                config['chat']['mastodon']['toot_length'] = 500
 
     config.setdefault('sentiment', {})
 
