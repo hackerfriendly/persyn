@@ -384,7 +384,8 @@ class Interact():
         else:
             goals = ""
 
-        return f"""It is {natural_time()} on {today()}. {self.config.id.name} is feeling {self.feels['current']}.{goals}"""
+        character = self.config.interact.character + "\n" if getattr(self.config.interact, "character", None) else ""
+        return f"""{character}It is {natural_time()} on {today()}. {self.config.id.name} is feeling {self.feels['current']}.{goals}"""
 
     def generate_prompt(self, summaries, convo, lts=None):
         ''' Generate the model prompt '''
