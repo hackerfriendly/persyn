@@ -8,7 +8,7 @@ import sys
 import argparse
 
 from pathlib import Path
-from subprocess import run, CalledProcessError
+from subprocess import run
 
 # Add persyn root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve()))
@@ -19,25 +19,23 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
-def run_cmd(cmd):
+def tmux_is_running(session):
+    ''' True if tmux session exists '''
     return run(
-        cmd,
+        [args.tmux, 'has-session', '-t', session],
         shell=False,
-        check=True,
-        env=os.environ.copy()
-    )
+        check=False,
+        capture_output=True
+    ).returncode == 0
 
-def tmux_is_running(session_name):
-    return run([args.tmux, 'has-session', '-t', session_name], shell=False, check=False, capture_output=True).returncode == 0
-
-def run_tmux_cmd(session_name, cmd):
-
-    running = tmux_is_running(session_name)
+def run_tmux_cmd(session, cmd):
+    ''' Start a new tmux session if needed, then add panes for each cmd '''
+    running = tmux_is_running(session)
     tmux = ' '.join([
             args.tmux,
             'split-pane' if running else 'new-session',
             '-t' if running else '-s',
-            session_name,
+            session,
             '-d'
          ]
     )
@@ -45,7 +43,8 @@ def run_tmux_cmd(session_name, cmd):
     return run(f"""{tmux} 'while :; do {' '.join(cmd)} ; sleep 1; done'""",
         shell=True,
         check=True,
-        capture_output=True
+        capture_output=True,
+        env=os.environ.copy()
     )
 
 if __name__ == '__main__':
@@ -61,7 +60,11 @@ if __name__ == '__main__':
         default=os.environ.get('PERSYN_CONFIG', None)
     )
     parser.add_argument('--tmux', type=str, help="Path to tmux", default='/usr/bin/tmux')
-    parser.add_argument('--session', type=str, help="Name of the tmux session (use the bot's name if None)", default=None)
+    parser.add_argument('--session',
+        type=str,
+        help="Name of the tmux session (use the bot's name if None)",
+        default=None
+    )
     # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
 
     args = parser.parse_args()
@@ -69,8 +72,12 @@ if __name__ == '__main__':
 
     session_name = args.session or cfg.id.name.lower().replace(' ', '')
 
+    # iTerm's fantastic tmux integration.
+    # https://iterm2.com/documentation-tmux-integration.html
+    cc = ' -CC' if os.environ.get('LC_TERMINAL', '') == 'iTerm2' else ''
+
     if tmux_is_running(session_name):
-        raise SystemExit(f'Session {session_name} already exists. Attach with: tmux attach -t {session_name}')
+        raise SystemExit(f'Session {session_name} already exists. Attach with 👉 tmux{cc} attach -t {session_name}')
 
     log.info(f"🤖 Starting services for {cfg.id.name}")
     if hasattr(cfg, 'interact') and hasattr(cfg.interact, 'workers'):
@@ -94,6 +101,6 @@ if __name__ == '__main__':
             log.info("🎺 Starting mastodon")
             run_tmux_cmd(session_name, ['chat/mastodon/donbot.py', args.config_file])
 
-    # TODO: dreams, etc.
+    # TODO: dreams, captions, sdd, parrot, voice
 
-    log.info(f"\n{cfg.id.name} is running. Attach with: tmux attach -t {session_name}")
+    log.info(f"\n{cfg.id.name} is running. Attach with 👉 tmux{cc} attach -t {session_name}")
