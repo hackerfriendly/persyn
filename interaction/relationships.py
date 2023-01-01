@@ -53,19 +53,19 @@ def referee(doc):
     if not isinstance(doc, spacy.tokens.doc.Doc):
         doc = nlp(doc)
 
-    sent = []
+    resolved = []
     for tok in doc:
         if doc._.coref_chains is None:
-            sent.append(tok.text)
+            resolved.append(tok.text)
             continue
         ccr = doc._.coref_chains.resolve(tok)
         if ccr is None:
-            sent.append(tok.text)
+            resolved.append(tok.text)
         else:
             for word in ccr:
-                sent.append(word.text)
+                resolved.append(word.text)
 
-    return nlp(Doc(vocab=doc.vocab, words=sent))
+    return nlp(Doc(vocab=doc.vocab, words=resolved))
 
 def find_all_modifiers(tok):
     '''
@@ -106,7 +106,6 @@ def find_all_singletons(tok):
 
     if not all_singletons(tok):
         return []
-
 
     ret = []
     for child in tok.children:
@@ -210,8 +209,8 @@ def get_relationships(doc, depth=0):
             # Only include a clause if it has a left, rel, and right.
             if all(ret.values()) and ret not in clauses:
                 clauses.insert(0, ret)
-                # Add a link to terminating punctuation, if any.
-                if sent[-1].dep_ == 'punct':
+                # Add a link to terminating punctuation, if any, skipping '.'.
+                if sent[-1].dep_ == 'punct' and sent[-1].text != '.':
                     clauses.append({'left': ret['right'], 'rel': 'punct', 'right': [sent[-1].text]})
 
     return clauses
@@ -293,3 +292,25 @@ def relations_to_graph(relations):
             for relation in relations for rel in relation
         ]
     )
+
+def get_relationship_graph(text):
+    '''
+    Build a relationship graph from text:
+      * Archetype substitution is performed on the entire text
+      * Coreference resolution is run on that
+      * Relationships are extracted from each sentence
+    '''
+    relations = []
+    for sent in nlp(referee(to_archetype(text))).sents:
+        for rel in get_relationships(sent):
+            for left in rel['left']:
+                for right in rel['right']:
+                    relations.append((left, right, {'edge': rel['rel']}))
+
+    G = nx.from_edgelist(relations, create_using=nx.DiGraph)
+
+    # Also add every token from the original text as disconnected nodes.
+    # This gives a minor boost for graph matching on nodes.
+    for tok in nlp(text):
+        G.add_node(tok.text)
+    return G
