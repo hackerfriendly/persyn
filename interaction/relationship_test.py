@@ -153,12 +153,13 @@ def test_get_relationship_graph():
 
         # additional nodes
         Grgn = get_relationship_graph(text, original_tokens=True)
-        assert graph_similarity(G, Grgn) < 1.0
+        assert len(G.nodes()) < len(Grgn.nodes())
         assert node_similarity(G, Grgn) < 1.0
+        assert graph_similarity(G, Grgn) < 1.0
 
         # edges should be identical
-        assert graph_similarity(G, Grgn, edge_bias=1) == 1.0
         assert edge_similarity(G, Grgn) == 1.0
+        assert graph_similarity(G, Grgn, edge_bias=1) == 1.0
 
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''
