@@ -299,6 +299,7 @@ def get_relationship_graph(text, original_tokens=False):
       * Archetype substitution is performed on the entire text
       * Coreference resolution is run on that
       * Relationships are extracted from each sentence
+      * A directed graph is made of those relationships
 
     If original_tokens is True, also add every token from the original
     unmodified text.

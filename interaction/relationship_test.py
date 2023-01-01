@@ -130,6 +130,14 @@ def test_graph():
 
         assert graph_similarity(g1, g2) == 1.0
 
+def test_edgelist():
+    '''
+    Edgelist construction should match known goods.
+    Sentence parsing may be probabilistic, so choose your sentences carefully.
+    '''
+    for sent, relationships in list(test_cases_simple.items()):
+        assert relations_to_edgelist(get_relationships(sent)) == relations_to_edgelist(relationships)
+
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''
 
