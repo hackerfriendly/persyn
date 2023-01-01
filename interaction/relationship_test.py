@@ -6,10 +6,12 @@ relationship tests
 import random
 
 from relationships import (
+    edge_similarity,
     get_relationship_graph,
     get_relationships,
     graph_similarity,
     jaccard_similarity,
+    node_similarity,
     referee,
     relations_to_edgelist,
     relations_to_graph,
@@ -136,16 +138,27 @@ def test_graph():
 
         assert graph_similarity(g1, g2) == 1.0
 
-def test_grg():
+def test_get_relationship_graph():
     '''
     Verify get_relationship_graph()
     '''
     for text in list(test_cases_simple):
         # get_relationship_graph() resolves coreferences and does archetype substitution
         G = relations_to_graph(get_relationships(referee(to_archetype(text))))
-        Grg = get_relationship_graph(text, False)
+        Grg = get_relationship_graph(text)
 
+        assert edge_similarity(G, Grg) == 1.0
+        assert node_similarity(G, Grg) == 1.0
         assert graph_similarity(G, Grg) == 1.0
+
+        # additional nodes
+        Grgn = get_relationship_graph(text, original_tokens=True)
+        assert graph_similarity(G, Grgn) < 1.0
+        assert node_similarity(G, Grgn) < 1.0
+
+        # edges should be identical
+        assert graph_similarity(G, Grgn, edge_bias=1) == 1.0
+        assert edge_similarity(G, Grgn) == 1.0
 
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''
