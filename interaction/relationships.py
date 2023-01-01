@@ -280,9 +280,9 @@ def graph_similarity(g1, g2, edge_bias=0.5):
             (1 - edge_bias) * node_similarity(g1, g2)
     )
 
-def relations_to_graph(relations):
+def relations_to_graph(relations, graph_type=nx.DiGraph):
     ''' Construct a graph from a list of relations '''
-    return nx.from_edgelist(relations_to_edgelist(relations))
+    return nx.from_edgelist(relations_to_edgelist(relations), create_using=graph_type)
 
 def relations_to_edgelist(relations):
     ''' Construct an edgelist from a list of relations '''
@@ -293,7 +293,7 @@ def relations_to_edgelist(relations):
                 ret.append((left, right, {'edge': rel['rel']}))
     return ret
 
-def get_relationship_graph(text, original_tokens=False):
+def get_relationship_graph(text, original_tokens=False, graph_type=nx.DiGraph):
     '''
     Build a relationship graph from text:
       * Archetype substitution is performed on the entire text
@@ -304,13 +304,12 @@ def get_relationship_graph(text, original_tokens=False):
     If original_tokens is True, also add every token from the original
     unmodified text.
     '''
-    relations = []
+    edgelist = []
     for sent in nlp(referee(to_archetype(text))).sents:
-        for relation in get_relationships(sent):
-            for edgelist in relations_to_edgelist(relation):
-                relations.append(edgelist)
+        for rel in relations_to_edgelist(get_relationships(sent)):
+            edgelist.append(rel)
 
-    G = nx.from_edgelist(relations, create_using=nx.DiGraph)
+    G = nx.from_edgelist(edgelist, create_using=graph_type)
 
     if original_tokens:
         for tok in nlp(text):

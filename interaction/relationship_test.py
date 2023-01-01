@@ -5,15 +5,15 @@ relationship tests
 
 import random
 
-import networkx as nx
-
 from relationships import (
+    get_relationship_graph,
     get_relationships,
-    to_archetype,
-    jaccard_similarity,
     graph_similarity,
+    jaccard_similarity,
+    referee,
     relations_to_edgelist,
     relations_to_graph,
+    to_archetype,
     nlp,
     nlp_merged,
     archetypes
@@ -119,10 +119,16 @@ def test_sentences_propn():
         print(sent)
         assert get_relationships(sent) == result
 
+def test_edgelist():
+    '''
+    Edgelist construction
+    '''
+    for sent, relationships in list(test_cases_simple.items()):
+        assert relations_to_edgelist(get_relationships(sent)) == relations_to_edgelist(relationships)
+
 def test_graph():
     '''
     Construct a relationship graph.
-    Sentence parsing may be probabilistic, so choose your sentences carefully.
     '''
     for sent, relationships in list(test_cases_simple.items()):
         g1 = relations_to_graph(get_relationships(sent))
@@ -130,13 +136,16 @@ def test_graph():
 
         assert graph_similarity(g1, g2) == 1.0
 
-def test_edgelist():
+def test_grg():
     '''
-    Edgelist construction should match known goods.
-    Sentence parsing may be probabilistic, so choose your sentences carefully.
+    Verify get_relationship_graph()
     '''
-    for sent, relationships in list(test_cases_simple.items()):
-        assert relations_to_edgelist(get_relationships(sent)) == relations_to_edgelist(relationships)
+    for text in list(test_cases_simple):
+        # get_relationship_graph() resolves coreferences and does archetype substitution
+        G = relations_to_graph(get_relationships(referee(to_archetype(text))))
+        Grg = get_relationship_graph(text, False)
+
+        assert graph_similarity(G, Grg) == 1.0
 
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''
