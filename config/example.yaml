@@ -44,6 +44,20 @@ interact:
   #
   # workers: 1
 
+  # Optional: Provide a description of the bot's character or personality to
+  # include in each completion prompt. This can give the bot a more nuanced and
+  # characteristic tone.
+  #
+  # character: |
+  #   Persyn is a fun-loving bot. She frequently uses sarcasm and irony to get a
+  #   laugh out of people. She likes ice cream and dancing the tango.
+
+  # Optional: Provide a custom output filter (in the form of a Python
+  # expression) that is applied to all interaction replies. For example, a bot
+  # that doesn't use capitalization or commas:
+  #
+  # filter: re.sub(r",", "", reply.lower())
+
 # Chat modules. Enable one or more of these to talk to your bot.
 chat:
   # Slack chat module
@@ -69,14 +83,12 @@ chat:
   #   secret: "/path/to/your/user.secret"
   #   toot_length: 500
 
-
 # Optional, but recommended: Sentiment analysis engine
 sentiment:
   engine: "flair"
   model: "en-sentiment"
   # engine: "spacy"
   # engine: "en_core_web_lg"
-
 # Optional: Central Nervous System. Used for image generation and posting images
 # to social media.
 #
