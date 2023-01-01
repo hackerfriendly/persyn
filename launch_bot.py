@@ -22,7 +22,7 @@ from utils.config import load_config
 def tmux_is_running(session):
     ''' True if tmux session exists '''
     return run(
-        [args.tmux, 'has-session', '-t', session],
+        [args.tmux, 'has-session', '-t', f'={session}'],
         shell=False,
         check=False,
         capture_output=True
