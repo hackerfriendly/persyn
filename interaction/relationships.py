@@ -274,10 +274,8 @@ def graph_similarity(g1, g2, edge_bias=0.5):
     g1edges = [str(e) for e in g1.edges(data=True)]
     g2edges = [str(e) for e in g2.edges(data=True)]
     return (
-        (
             (1 - edge_bias) * jaccard_similarity(g1.nodes(), g2.nodes()) +
             edge_bias * jaccard_similarity(g1edges, g2edges)
-        ) / 2.0
     )
 
 def relations_to_graph(relations):
