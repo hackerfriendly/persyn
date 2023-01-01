@@ -12,6 +12,7 @@ from relationships import (
     to_archetype,
     jaccard_similarity,
     graph_similarity,
+    relations_to_edgelist,
     relations_to_graph,
     nlp,
     nlp_merged,
@@ -124,10 +125,8 @@ def test_graph():
     Sentence parsing may be probabilistic, so choose your sentences carefully.
     '''
     for sent, relationships in list(test_cases_simple.items()):
-        g1 = relations_to_graph([
-            get_relationships(sent)
-        ])
-        g2 = relations_to_graph([relationships])
+        g1 = relations_to_graph(get_relationships(sent))
+        g2 = relations_to_graph(relationships)
 
         assert graph_similarity(g1, g2) == 1.0
 
@@ -139,10 +138,8 @@ def test_graph_similarity():
 
     try:
         for sent, relationships in list(test_cases_simple.items()):
-            g1 = relations_to_graph([
-                get_relationships(sent)
-            ])
-            g2 = relations_to_graph([relationships])
+            g1 = relations_to_graph(get_relationships(sent))
+            g2 = relations_to_graph(relationships)
 
             # identity
             assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
@@ -174,8 +171,8 @@ def test_graph_similarity():
             assert graph_similarity(g1, g2, edge_bias=0) == 1.0
 
             # higher edge bias gives more weight to edge matches
-            g3 = relations_to_graph([relationships])
-            g4 = relations_to_graph([relationships])
+            g3 = relations_to_graph(relationships)
+            g4 = relations_to_graph(relationships)
             assert graph_similarity(g3, g4) == 1.0
 
             g4.add_node('alien')

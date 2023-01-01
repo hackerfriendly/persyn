@@ -281,36 +281,38 @@ def graph_similarity(g1, g2, edge_bias=0.5):
     )
 
 def relations_to_graph(relations):
-    ''' Construct a directed graph from a list of relationships '''
-    return nx.from_edgelist(
-        [
-            (
-                ' '.join(rel['left']).strip(),
-                ' '.join(rel['right']).strip(),
-                {'edge': rel['rel']}
-            )
-            for relation in relations for rel in relation
-        ]
-    )
+    ''' Construct a graph from a list of relations '''
+    return nx.from_edgelist(relations_to_edgelist(relations))
 
-def get_relationship_graph(text):
+def relations_to_edgelist(relations):
+    ''' Construct an edgelist from a list of relations '''
+    ret = []
+    for rel in relations:
+        for left in rel['left']:
+            for right in rel['right']:
+                ret.append((left, right, {'edge': rel['rel']}))
+    return ret
+
+def get_relationship_graph(text, original_tokens=False):
     '''
     Build a relationship graph from text:
       * Archetype substitution is performed on the entire text
       * Coreference resolution is run on that
       * Relationships are extracted from each sentence
+
+    If original_tokens is True, also add every token from the original
+    unmodified text.
     '''
     relations = []
     for sent in nlp(referee(to_archetype(text))).sents:
-        for rel in get_relationships(sent):
-            for left in rel['left']:
-                for right in rel['right']:
-                    relations.append((left, right, {'edge': rel['rel']}))
+        for relation in get_relationships(sent):
+            for edgelist in relations_to_edgelist(relation):
+                relations.append(edgelist)
 
     G = nx.from_edgelist(relations, create_using=nx.DiGraph)
 
-    # Also add every token from the original text as disconnected nodes.
-    # This gives a minor boost for graph matching on nodes.
-    for tok in nlp(text):
-        G.add_node(tok.text)
+    if original_tokens:
+        for tok in nlp(text):
+            G.add_node(tok.text)
+
     return G
