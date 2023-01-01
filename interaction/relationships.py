@@ -266,16 +266,29 @@ def jaccard_similarity(g, h):
     except ZeroDivisionError:
         return 1.0
 
+def edge_similarity(g1, g2):
+    '''
+    Compute the Jaccard similarity of the edges of two graphs
+    '''
+    return jaccard_similarity(
+        [str(e) for e in g1.edges(data=True)],
+        [str(e) for e in g2.edges(data=True)]
+    )
+
+def node_similarity(g1, g2):
+    '''
+    Compute the Jaccard similarity of the nodes of two graphs
+    '''
+    return jaccard_similarity(g1.nodes(), g2.nodes())
+
 def graph_similarity(g1, g2, edge_bias=0.5):
     '''
-    Compute the similarity of two graphs as a single normalized metric.
+    Compute the total similarity of two graphs as a single normalized metric.
     Applies edge_bias to edge comparisons. 1.0 ignores nodes, 0.0 ignores edges.
     '''
-    g1edges = [str(e) for e in g1.edges(data=True)]
-    g2edges = [str(e) for e in g2.edges(data=True)]
     return (
-            (1 - edge_bias) * jaccard_similarity(g1.nodes(), g2.nodes()) +
-            edge_bias * jaccard_similarity(g1edges, g2edges)
+            edge_bias * edge_similarity(g1, g2) +
+            (1 - edge_bias) * node_similarity(g1, g2)
     )
 
 def relations_to_graph(relations):
