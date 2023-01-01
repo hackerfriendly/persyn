@@ -79,24 +79,14 @@ def find_all_modifiers(tok):
 
     return ret
 
-def find_all_conj(tok):
-    ''' If tok is a conjunct, return all children that are appositional modifiers '''
+def find_all_appos(tok, dep='conj'):
+    ''' If tok.dep_ matches dep, return all children that are appositional modifiers '''
     ret = []
     for child in tok.children:
-        if child.dep_ == 'conj':
+        if child.dep_ == dep:
             ret = [c.text for c in child.children if c.dep_ == 'appos']
             if not ret:
-                ret = [child.text] + find_all_conj(child)
-    return ret
-
-def find_all_pobj(tok):
-    ''' If tok is an object of a preposition, return all children that are appositional modifiers '''
-    ret = []
-    for child in tok.children:
-        if child.dep_ == 'pobj':
-            ret = [c.text for c in child.children if c.dep_ == 'appos']
-            if not ret:
-                ret = [child.text] + find_all_conj(child)
+                ret = [child.text] + find_all_appos(child)
     return ret
 
 def find_all_singletons(tok):
@@ -130,7 +120,7 @@ def get_relationships(doc, depth=0):
     Returns a list of { left: [], rel: "", right: [] } dicts
     '''
     if depth > 1:
-        log.warning("💏 Maximum recursion depth reached.")
+        log.debug("💏 Maximum recursion depth reached.")
         return []
 
     clauses = []
@@ -173,7 +163,7 @@ def get_relationships(doc, depth=0):
 
             for child in tok.children:
                 if child.dep_ == 'nsubj':
-                    subj = [child.text] + find_all_conj(child)
+                    subj = [child.text] + find_all_appos(child)
                     ret['left'] = sorted(list(set(subj)))
 
                 elif child.dep_ == 'dobj':
@@ -190,7 +180,7 @@ def get_relationships(doc, depth=0):
             if not ret['right']:
                 for child in tok.children:
                     if child.dep_ == 'prep':
-                        ret['right'] = sorted(list(set(find_all_pobj(child))))
+                        ret['right'] = sorted(list(set(find_all_appos(child, dep='pobj'))))
 
             if not ret['right']:
                 for child in tok.children:
