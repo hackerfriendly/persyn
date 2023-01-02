@@ -5,6 +5,7 @@ relationships.py: extract a relationship graph from text
 
 import sys
 
+from operator import itemgetter
 from pathlib import Path
 
 # Add persyn root to sys.path
@@ -303,6 +304,8 @@ def get_relationship_graph(text, original_tokens=False, graph_type=nx.DiGraph):
 
     If original_tokens is True, also add every token from the original
     unmodified text.
+
+    Returns an nx graph.
     '''
     edgelist = []
     for sent in nlp(referee(to_archetype(text))).sents:
@@ -316,3 +319,52 @@ def get_relationship_graph(text, original_tokens=False, graph_type=nx.DiGraph):
             G.add_node(tok.text)
 
     return G
+
+def load_graph(hit):
+    ''' Load an nx graph from an ES hit '''
+    return nx.node_link_graph(hit['_source']['graph'])
+
+def best_match(G, hits, edge_bias=0.5):
+    '''
+    Return the best match to G from a list of potential matches,
+    or None if there are no matches.
+    '''
+    ranked = ranked_matches(G, hits, edge_bias)
+    if ranked:
+        return ranked[0]
+    return None
+
+def ranked_matches(G, hits, edge_bias=0.5):
+    '''
+    Rank all possible matches to G from a list of potential ES matches.
+
+    Returns a list of matches and their scores, or [] if there are no matches
+    '''
+    scores = {}
+    matches = {}
+    for hit in hits:
+        gh = load_graph(hit)
+
+        # Skip graphs with zero matching edges
+        if edge_bias and not edge_similarity(G, gh):
+            continue
+
+        score = round(graph_similarity(G, gh, edge_bias), 3)
+        scores[hit['_id']] = score
+        matches[hit['_id']] = hit
+
+    if not scores:
+        return []
+
+    # Floats make terrible keys.
+    sorted_scores = sorted(scores.items(), key=itemgetter(1), reverse=True)
+
+    ranked = []
+    for score in sorted_scores:
+        ranked.append({"hit": matches[score[0]], "score": score[1]})
+
+    log.warning("📈 Graph match scores:")
+    for hit in ranked:
+        log.warning(f"  {hit['score']}", hit['hit']['_source']['convo'][:100])
+
+    return ranked

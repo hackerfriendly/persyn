@@ -165,20 +165,36 @@ class Interact():
 
         return reply
 
-    def gather_memories(self, service, channel, entities):
+    def gather_memories(self, service, channel, entities, visited=None):
         '''
-        Look for relevant memories using elasticsearch, relationship graphs, and entity matching.
+        Look for relevant convos and summaries using elasticsearch, relationship graphs, and entity matching.
         '''
-        visited = []
+        if visited is None:
+            visited = []
 
+        # Use the entire existing convo first
+        ranked = self.recall.find_related_convos(service, channel, size=3)
+        for hit in ranked:
+            hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
+            if hit_id not in visited:
+                self.inject_idea(
+                    service, channel,
+                    hit['hit']['_source']['convo'],
+                    verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
+                )
+                visited.append(hit_id)
+                log.info(
+                    f"🧵 Related relationship {hit_id} ({hit['score']}):",
+                    f"{hit['hit']['_source']['convo'][:100]}..."
+                )
+
+        # Look for other summaries that match detected entities
         if entities:
-            visited = visited + self.gather_summaries(service, channel, entities, size=2)
-
-        # TODO: Search convo and graphs HERE.
+            visited = self.gather_summaries(service, channel, entities, size=2, visited=visited)
 
         return visited
 
-    def gather_summaries(self, service, channel, entities, size):
+    def gather_summaries(self, service, channel, entities, size, visited=None):
         '''
         If a previous convo summary matches entities and seems relevant, inject its memory.
 
@@ -187,15 +203,15 @@ class Interact():
         if not entities:
             return []
 
-        visited = []
+        if visited is None:
+            visited = []
+
         search_term = ' '.join(entities)
         log.warning(f"ℹ️  look up '{search_term}' in memories")
 
         for summary in self.recall.lookup_summaries(service, channel, search_term, size=10):
-            log.warning(summary)
             if summary['_id'] in visited:
                 continue
-
             visited.append(summary['_id'])
 
             # Stay on topic

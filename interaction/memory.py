@@ -1,4 +1,6 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
+# pylint: disable=invalid-name
+
 import uuid
 
 import elasticsearch
@@ -6,6 +8,9 @@ import shortuuid as su
 
 # Time
 from chrono import elapsed, get_cur_ts
+
+# Relationship graphs
+from relationships import get_relationship_graph, load_graph, ranked_matches
 
 # Color logging
 from color_logging import ColorLog
@@ -117,7 +122,11 @@ class Recall(): # pylint: disable=too-many-arguments
         return []
 
     def convo(self, service, channel):
-        ''' Return the entire convo from stm (if any) '''
+        '''
+        Return the entire convo from stm (if any).
+
+        Result is a list of "speaker (verb): msg" strings.
+        '''
         convo = self.stm.fetch(service, channel)
         if not convo:
             return []
@@ -138,6 +147,31 @@ class Recall(): # pylint: disable=too-many-arguments
     def lts(self, service, channel):
         ''' Return the timestamp of the last message from this channel (if any) '''
         return self.ltm.get_last_timestamp(service, channel)
+
+    def find_related_convos(self, service, channel, size=1, edge_bias=0.5):
+        '''
+        Find conversations related to the current convo using ES score and graph analysis.
+
+        Returns a ranked list of graph hits.
+        '''
+        # No convo? Nothing to match.
+        convo = self.convo(service, channel)
+        if not convo:
+            return []
+
+        convo_text = ' '.join(convo)
+
+        # No relationships? Nothing to match.
+        hits = self.ltm.lookup_relationships(service, channel, convo_text, size)
+        if not hits:
+            log.info("👨‍👩‍👧‍👦 find_related_convos():", "No hits, nothing to match.")
+            return []
+
+        G = get_relationship_graph(convo_text)
+
+        ranked = ranked_matches(G, hits, edge_bias=edge_bias)
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
+        return ranked
 
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
@@ -462,6 +496,36 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             ret.append(hit)
 
         log.debug(f"lookup_summaries(): {ret}")
+        return ret
+
+    def lookup_relationships(self, service, channel, search=None, size=3):
+        '''
+        Return a list of convo graphs matching the search term for this channel.
+        '''
+        # TODO: match speaker id HERE when cross-channel entity merging is working
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                ]
+            }
+        }
+
+        if search:
+            query['bool']['must'].append({"match": {"convo": {"query": search}}})
+
+        history = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['relationship'],
+            query=query,
+            size=size
+        )['hits']['hits']
+
+        ret = []
+        for hit in history[::-1]:
+            ret.append(hit)
+
+        log.debug(f"lookup_relationships(): {ret}")
         return ret
 
     @staticmethod
