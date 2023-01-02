@@ -91,13 +91,9 @@ class Interact():
         Returns the text summary.
         '''
 
-        dialog = self.recall.dialog(service, channel)
+        dialog = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
         if not dialog:
-            ret = self.recall.ltm.lookup_summaries(service, channel, size=3)
-            if ret:
-                dialog = [s['summary'] for s in ret]
-            else:
-                dialog = [f"{self.config.id.name} isn't sure what is happening."]
+            dialog = [f"{self.config.id.name} isn't sure what is happening."]
 
         log.warning(f"∑ summarizing convo: {json.dumps(dialog)}")
 
