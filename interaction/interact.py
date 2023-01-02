@@ -179,7 +179,7 @@ class Interact():
             if hit_id not in visited:
                 self.inject_idea(
                     service, channel,
-                    hit['hit']['_source']['convo'],
+                    self.completion.get_summary(hit['hit']['_source']['convo']),
                     verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
                 )
                 visited.append(hit_id)
