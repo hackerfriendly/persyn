@@ -500,7 +500,7 @@ if __name__ == "__main__":
                 prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
                 say(f"{prefix} {caption}")
 
-                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}", verb="notices")
+                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
 
                 if not msg.strip():
                     msg = "..."
