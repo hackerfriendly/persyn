@@ -368,3 +368,7 @@ def ranked_matches(G, hits, edge_bias=0.5):
         log.warning(f"  {hit['score']}", hit['hit']['_source']['convo'][:100])
 
     return ranked
+
+def graph_to_json(G):
+    ''' Convert an nx graph to node link data JSON '''
+    return nx.node_link_data(G)

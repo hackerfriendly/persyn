@@ -10,7 +10,7 @@ import shortuuid as su
 from chrono import elapsed, get_cur_ts
 
 # Relationship graphs
-from relationships import get_relationship_graph, load_graph, ranked_matches
+from relationships import get_relationship_graph, ranked_matches, graph_to_json
 
 # Color logging
 from color_logging import ColorLog
@@ -527,6 +527,25 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         log.debug(f"lookup_relationships(): {ret}")
         return ret
+
+    def save_relationship_graph(self, service, channel, convo_id, text, original_tokens=True):
+        ''' Save a relationship graph '''
+        doc = {
+            '@timestamp': get_cur_ts(),
+            'service': service,
+            'channel': channel,
+            'convo_id': convo_id,
+            'graph': graph_to_json(
+                get_relationship_graph(text, original_tokens=original_tokens)
+            ),
+            'convo': text,
+            'refresh': False
+        }
+        rep = self.save_relationship(**doc)
+        if rep['result'] != 'created':
+            log.critical("∑ Could not save relationship:", rep)
+        else:
+            log.info("∑ relationship saved.")
 
     @staticmethod
     def entity_key(service, channel, name):

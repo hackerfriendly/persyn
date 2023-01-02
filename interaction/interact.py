@@ -91,11 +91,22 @@ class Interact():
         Returns the text summary.
         '''
 
+        convo_id = self.recall.stm.convo_id(service, channel)
+        if not convo_id:
+            return ""
+
+        log.warning("∑ saving relationships")
+        self.recall.ltm.save_relationship_graph(
+            service, channel,
+            convo_id,
+            ' '.join(self.recall.convo(service, channel))
+        )
+
         dialog = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
         if not dialog:
             dialog = [f"{self.config.id.name} isn't sure what is happening."]
 
-        log.warning(f"∑ summarizing convo: {json.dumps(dialog)}")
+        log.warning("∑ summarizing convo")
 
         summary = self.completion.get_summary(
             text='\n'.join(dialog),
