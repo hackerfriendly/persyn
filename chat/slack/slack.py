@@ -355,6 +355,10 @@ if __name__ == "__main__":
 
         say(the_reply)
 
+        # Interrupt any rejoinder in progress
+        reminders.cancel(channel)
+        reminders.cancel(channel, name='summarizer')
+
         for goal in goals_achieved:
             say(f"🏆 _achievement unlocked: {goal}_")
 
@@ -496,7 +500,7 @@ if __name__ == "__main__":
                 prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
                 say(f"{prefix} {caption}")
 
-                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}", verb="notices")
+                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
 
                 if not msg.strip():
                     msg = "..."
@@ -519,6 +523,7 @@ if __name__ == "__main__":
                         "Beats me."
                     ])
                 )
+
 
     handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)
     try:

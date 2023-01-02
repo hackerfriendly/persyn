@@ -50,7 +50,8 @@ class Reminders():
             self.new_channel(channel)
             return
 
-        self.reminders[channel][name].cancel()
+        if name in self.reminders[channel]:
+            self.reminders[channel][name].cancel()
 
 async def wait_for_it(when, func, args):
     ''' Wait then execute '''
@@ -92,4 +93,5 @@ class AsyncReminders():
             self.new_channel(channel)
             return
 
-        self.reminders[channel][name].cancel()
+        if name in self.reminders[channel]:
+            self.reminders[channel][name].cancel()

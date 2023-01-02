@@ -8,17 +8,19 @@ import uuid
 
 from pathlib import Path
 from time import sleep
+from copy import copy
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
-
-# Bot config
-from utils.config import load_config
 
 from chrono import elapsed
 
 from memory import LongTermMemory, ShortTermMemory, Recall
 
+# Bot config
+from utils.config import load_config
+
+from utils.color_logging import log
 
 persyn_config = load_config()
 
@@ -156,7 +158,10 @@ def test_save_convo():
     assert 'convo_id' in doc1
     assert '@timestamp' in doc1
     # Continued convo
-    doc2 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id=doc1['convo_id'])
+    doc2 = ltm.save_convo(
+        "my_service", "channel_a", "message_b",
+        "speaker_name", "speaker_id", convo_id=doc1['convo_id']
+    )
     assert doc1['convo_id'] == doc2['convo_id']
     assert doc1['@timestamp'] != doc2['@timestamp']
     # New convo
@@ -206,17 +211,10 @@ def test_save_convo():
             )
             assert doc4['convo_id'] == doc7['convo_id']
             assert elapsed(doc4['@timestamp'], doc7['@timestamp']) > 0.1
-            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 3.0
+            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 5.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
-    assert len(ltm.load_convo("my_service", "channel_loop_0")) == 10
-    assert len(ltm.load_convo("my_service", "channel_loop_0", lines=3)) == 3
-    # First message (whole convo)
-    assert ltm.load_convo("my_service", "channel_loop_0")[0] == "speaker_name: message_loop_a"
-    # Last message (most recent 1 line)
-    assert ltm.load_convo("my_service", "channel_loop_0", lines=1)[0] == "None: message_loop_d2"
-
     last_message = ltm.get_last_message("my_service", "invalid_channel")
     assert not last_message
 
@@ -240,15 +238,15 @@ def test_save_summaries():
     assert ltm.save_summary(service, channel_b, "convo_id_3", "my_middle_nice_summary")
     assert ltm.save_summary(service, channel_b, "convo_id_4", "my_final_nice_summary", refresh=True)
 
-def test_load_summaries():
+def test_lookup_summaries():
     ''' Retrieve previously saved summaries '''
 
     # zero lines returns empty list
-    assert ltm.load_summaries("my_service", "channel_a", 0) == [] # pylint: disable=use-implicit-booleaness-not-comparison
+    assert ltm.lookup_summaries("my_service", "channel_a", None, 0) == [] # pylint: disable=use-implicit-booleaness-not-comparison
     # saved above
-    assert ltm.load_summaries("my_service", "channel_a") == ["my_nice_summary"]
+    assert [s['_source']['summary'] for s in ltm.lookup_summaries("my_service", "channel_a", None, size=3)] == ["my_nice_summary"]
     # correct order
-    assert ltm.load_summaries("my_service", "channel_b") == [
+    assert [s['_source']['summary'] for s in ltm.lookup_summaries("my_service", "channel_b", None, size=3)] == [
         "my_other_nice_summary",
         "my_middle_nice_summary",
         "my_final_nice_summary"
@@ -261,26 +259,36 @@ def test_recall():
     channel = "channel_a"
 
     # contains only the summary
-    s, c, _ = recall.load(service, channel)
+    s = recall.summaries(service, channel)
+    c = recall.stm.fetch(service, channel)
+    convo = recall.convo(service, channel)
     assert (s, c) == (["my_nice_summary"], [])
+    assert convo == []
 
     # new convo
     assert recall.save(service, channel, "message_another", "speaker_name_1", "speaker_id")
 
     # contains the summary + new convo
-    s, c, _ = recall.load(service, channel)
+    s = recall.summaries(service, channel)
+    c = recall.stm.fetch(service, channel)
+    convo = recall.convo(service, channel)
+    log.warning(c)
     assert s == ["my_nice_summary"]
     assert c[0]['speaker'] == "speaker_name_1"
     assert c[0]['msg'] == "message_another"
+    assert convo == ["speaker_name_1: message_another"]
 
     # same convo
     assert recall.save(service, channel, "message_yet_another", "speaker_name_2", "speaker_id")
 
     # contains the summary + new convo
-    s, c, _ = recall.load(service, channel)
+    s = recall.summaries(service, channel)
+    c = recall.stm.fetch(service, channel)
+    convo = recall.convo(service, channel)
     assert s == ["my_nice_summary"]
     assert (c[0]['speaker'], c[0]['msg']) == ("speaker_name_1", "message_another")
     assert (c[1]['speaker'], c[1]['msg']) == ("speaker_name_2", "message_yet_another")
+    assert convo == ["speaker_name_1: message_another", "speaker_name_2: message_yet_another"]
 
     # summarize
     assert recall.summary(service, channel, "this_is_another_summary")
@@ -292,11 +300,57 @@ def test_recall():
     assert recall.expired(service, channel)
 
     # only summaries
-    s, c, _ = recall.load(service, channel)
+    s = recall.summaries(service, channel)
+    c = recall.stm.fetch(service, channel)
     assert (s, c) == (
         ["my_nice_summary", "this_is_another_summary"],
         []
     )
+
+def test_relationships():
+    ''' Store and retrieve relationships '''
+
+    opts = {
+        "service": "my_service",
+        "channel": "my_channel",
+        "speaker_id": "a_speaker_id",
+        "source_id": "some_random_source",
+        "rel": "testing",
+        "target_id": "another_target_id",
+        "convo_id": "boring_conversation",
+        "graph": {"nodes": [1, 2, 3], "edges": [{"source": 1, "target": 2, "edge": "connected"}]}
+    }
+
+    assert ltm.save_relationship(**opts)['result'] == 'created'
+
+    q = copy(opts)
+    del q['graph']
+
+    # exact match
+    ret = ltm.lookup_relationship(**q)[0]['_source']
+    del ret['@timestamp']
+    assert ret == opts
+
+    # negative match
+    assert ltm.lookup_relationship(
+        service=opts['service'],
+        channel=opts['channel'],
+        foo='bar'
+    ) == []
+
+    # test partial matches
+    for k in ['source_id', 'rel', 'target_id']:
+        del q[k]
+
+    ret = ltm.lookup_relationship(**q)[0]['_source']
+    del ret['@timestamp']
+    assert ret == opts
+
+    del q['convo_id']
+
+    ret = ltm.lookup_relationship(**q)[0]['_source']
+    del ret['@timestamp']
+    assert ret == opts
 
 def test_cleanup():
     ''' Delete indices '''

@@ -8,6 +8,7 @@ import json
 import random
 import sys
 import re # used by custom filters
+import urllib3
 
 from pathlib import Path
 
@@ -21,9 +22,6 @@ from Levenshtein import ratio
 
 # Add persyn root to sys.path
 sys.path.insert(0, str((Path(__file__) / '../../').resolve()))
-
-# text-to-speech
-# from voice import tts
 
 # Long and short term memory
 from memory import Recall
@@ -62,7 +60,7 @@ class Interact():
         self.custom_filter = None
         if hasattr(self.config.interact, "filter"):
             assert re # prevent "unused import" type linting
-            self.custom_filter = eval(f"lambda reply: {self.config.interact.filter}")
+            self.custom_filter = eval(f"lambda reply: {self.config.interact.filter}") # pylint: disable=eval-used
 
         # Elasticsearch memory:
         # First, check if we don't want to verify TLS certs (because self-hosted Elasticsearch)
@@ -71,7 +69,6 @@ class Interact():
 
         # If not, disable the pesky urllib3 insecure request warning.
         if not verify_certs:
-            import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         # Then create the Recall object using the Elasticsearch credentials.
@@ -86,19 +83,6 @@ class Interact():
             verify_certs=verify_certs
         )
 
-    def dialog(self, convo):
-        '''
-        Return only the words actually spoken in a convo
-        '''
-        log.critical(convo)
-        ret = []
-        for c in convo:
-            if c['speaker'].endswith(" remembers") or c['speaker'].endswith(" recalls") or c['speaker'].endswith(" thinks") or c['speaker'].endswith(" posted"):
-                continue
-            ret.append(f"{c['speaker']}: {c['msg']}")
-
-        return ret
-
     def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
         '''
         Generate a summary of the current conversation for this channel.
@@ -106,22 +90,26 @@ class Interact():
         If save == True, save it to long term memory.
         Returns the text summary.
         '''
-        summaries, convo_, _ = self.recall.load(service, channel, summaries=0)
-        if convo_:
-            convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
-        else:
-            summaries, convo, _ = self.recall.load(service, channel, summaries=3)
-            if not summaries:
-                summaries = [ f"{self.config.id.name} isn't sure what is happening." ]
 
-            # No convo? summarize the summaries
-            convo = summaries
+        convo_id = self.recall.stm.convo_id(service, channel)
+        if not convo_id:
+            return ""
 
-        spoken = self.dialog(convo_)
-        log.warning(f"∑ summarizing convo: {json.dumps(spoken)}")
+        log.warning("∑ saving relationships")
+        self.recall.ltm.save_relationship_graph(
+            service, channel,
+            convo_id,
+            ' '.join(self.recall.convo(service, channel))
+        )
+
+        dialog = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
+        if not dialog:
+            dialog = [f"{self.config.id.name} isn't sure what is happening."]
+
+        log.warning("∑ summarizing convo")
 
         summary = self.completion.get_summary(
-            text='\n'.join(convo),
+            text='\n'.join(dialog),
             summarizer="To briefly summarize this conversation,",
             max_tokens=max_tokens
         )
@@ -142,14 +130,13 @@ class Interact():
             return summary + f"\nKeywords: {keywords}"
 
         if context_lines:
-            return "\n".join(convo[-context_lines:] + [summary])
+            return "\n".join(dialog[-context_lines:] + [summary])
 
         return summary
 
-    def choose_reply(self, prompt, convo, goals):
-        ''' Choose the best reply from a list of possibilities '''
+    def choose_response(self, prompt, convo, goals):
+        ''' Choose the best completion response from a list of possibilities '''
         if not convo:
-            # convo = [f'{self.config.id.name} changes the subject.']
             convo = []
 
         scored = self.completion.get_replies(
@@ -189,21 +176,62 @@ class Interact():
 
         return reply
 
-    def gather_memories(self, service, channel, entities, summaries, convo):
-        ''' Take a trip down memory lane '''
+    def gather_memories(self, service, channel, entities, visited=None):
+        '''
+        Look for relevant convos and summaries using elasticsearch, relationship graphs, and entity matching.
+        '''
+        if visited is None:
+            visited = []
+
+        # Use the entire existing convo first
+        ranked = self.recall.find_related_convos(service, channel, size=3)
+        for hit in ranked:
+            hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
+            if hit_id not in visited:
+                self.inject_idea(
+                    service, channel,
+                    self.completion.get_summary(hit['hit']['_source']['convo']),
+                    verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
+                )
+                visited.append(hit_id)
+                log.info(
+                    f"🧵 Related relationship {hit_id} ({hit['score']}):",
+                    f"{hit['hit']['_source']['convo'][:100]}..."
+                )
+
+        # Look for other summaries that match detected entities
+        if entities:
+            visited = self.gather_summaries(service, channel, entities, size=2, visited=visited)
+
+        return visited
+
+    def gather_summaries(self, service, channel, entities, size, visited=None):
+        '''
+        If a previous convo summary matches entities and seems relevant, inject its memory.
+
+        Returns a list of ids of summaries injected.
+        '''
+        if not entities:
+            return []
+
+        if visited is None:
+            visited = []
+
         search_term = ' '.join(entities)
         log.warning(f"ℹ️  look up '{search_term}' in memories")
 
-        for memory in self.recall.remember(service, channel, search_term, summaries=5):
-            # Don't repeat yourself, loopy-lou.
-            if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
+        for summary in self.recall.lookup_summaries(service, channel, search_term, size=10):
+            if summary['_id'] in visited:
                 continue
+            visited.append(summary['_id'])
 
             # Stay on topic
             prompt = '\n'.join(
-                convo[:-1]
-                + [f"{self.config.id.name} remembers that {ago(memory['timestamp'])} ago: "
-                + memory['text']]
+                self.recall.convo(service, channel)
+                + [
+                    f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
+                    + summary['_source']['summary']
+                ]
             )
             on_topic = self.completion.get_summary(
                 prompt,
@@ -212,12 +240,16 @@ class Interact():
 
             log.warning(f"🧐 Are we on topic? {on_topic}")
             if 'true' not in on_topic.lower():
-                log.warning(f"🚫 Irrelevant memory discarded: {memory}")
+                log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
                 continue
 
-            log.warning(f"🐘 Memory found: {memory}")
-            self.inject_idea(service, channel, memory['text'], f"remembers that {ago(memory['timestamp'])} ago")
-            break
+            log.warning(f"🐘 Memory found: {summary['_source']['summary']}")
+            self.inject_idea(service, channel, summary['_source']['summary'], "remembers")
+
+            if len(visited) >= size:
+                break
+
+        return visited
 
     def gather_facts(self, service, channel, entities):
         ''' Gather facts (from Wikipedia) and opinions (from memory) '''
@@ -331,17 +363,13 @@ class Interact():
             self.summarize_convo(service, channel, save=True, context_lines=2)
 
         if msg != '...':
-            self.recall.save(service, channel, msg, speaker_name, speaker_id)
-            # tts(msg)
+            self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
 
-        # Load summaries and conversation
-        summaries, convo_, lts = self.recall.load(service, channel, summaries=2)
-        convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
-        convo_length = len(convo)
+        convo = self.recall.convo(service, channel)
         last_sentence = None
 
         if convo:
-            last_sentence = convo[-1]
+            last_sentence = convo.pop()
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -352,39 +380,43 @@ class Interact():
             entities = self.completion.get_keywords(convo)
             log.warning(f"🆔 extracted keywords: {entities}")
 
-        if entities:
-            # Memories
-            self.gather_memories(service, channel, entities, summaries, convo)
+        # Reflect on this conversation
+        visited = self.gather_memories(service, channel, entities)
 
-            # Facts and opinions (interleaved)
-            self.gather_facts(service, channel, entities)
+        # Facts and opinions (interleaved)
+        self.gather_facts(service, channel, entities)
 
         # Goals
         achieved = self.check_goals(service, channel, convo)
 
-        # If our mind was wandering, remember the last thing that was said.
-        if convo_length != len(self.recall.load(service, channel, summaries=0)[1]):
-            self.inject_idea(service, channel, last_sentence)
+        # Our mind might have been wandering, so remember the last thing that was said.
+        if last_sentence:
+            convo.append(last_sentence)
 
+        summaries = []
+        for summary in self.recall.lookup_summaries(service, channel, None, size=5):
+            if summary['_id'] not in visited and summary['_source']['summary'] not in summaries:
+                summaries.append(summary['_source']['summary'])
+                visited.append(summary['_id'])
+
+        lts = self.recall.lts(service, channel)
         prompt = self.generate_prompt(summaries, convo, lts)
 
         # Is this just too much to think about?
         if len(prompt) > self.completion.max_prompt_length:
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             self.summarize_convo(service, channel, save=True, max_tokens=100)
-            summaries, _, _ = self.recall.load(service, channel, summaries=3)
+            summaries = self.recall.summaries(service, channel, size=3)
             prompt = self.generate_prompt(summaries, convo[-3:], lts)
 
-        reply = self.choose_reply(prompt, convo, self.feels['goals'])
+        reply = self.choose_response(prompt, convo, self.feels['goals'])
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
-            except Exception as e:
-                log.warning(f"🤮 Custom filter failed: {e}")
+            except Exception as err: # pylint: disable=broad-except
+                log.warning(f"🤮 Custom filter failed: {err}")
 
-        self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid)
-
-        # tts(reply, voice=self.config.voice.personality)
+        self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
 
         self.feels['current'] = self.completion.get_feels(f'{prompt} {reply}')
 
@@ -394,13 +426,12 @@ class Interact():
 
     def default_prompt_prefix(self):
         ''' The default prompt prefix '''
-        if self.feels['goals']:
-            goals = f"""\n{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}."""
-        else:
-            goals = ""
-
-        character = self.config.interact.character + "\n" if getattr(self.config.interact, "character", None) else ""
-        return f"""{character}It is {natural_time()} on {today()}. {self.config.id.name} is feeling {self.feels['current']}.{goals}"""
+        return '\n'.join([
+            getattr(self.config.interact, "character", ""),
+            f"It is {natural_time()} on {today()}.",
+            f"{self.config.id.name} is feeling {self.feels['current']}.",
+            f"{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}" if self.feels['goals'] else ''
+        ])
 
     def generate_prompt(self, summaries, convo, lts=None):
         ''' Generate the model prompt '''
@@ -419,9 +450,9 @@ class Interact():
         ''' status report '''
         paragraph = '\n\n'
         newline = '\n'
-        summaries, convo_, lts = self.recall.load(service, channel, summaries=2)
-        convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
-        timediff = f"It has been {ago(lts)} since they last spoke."
+        summaries = self.recall.summaries(service, channel, size=2)
+        convo = self.recall.convo(service, channel)
+        timediff = f"It has been {ago(self.recall.lts(service, channel))} since they last spoke."
         return f"""{self.default_prompt_prefix()}
 {paragraph.join(summaries)}
 
@@ -454,8 +485,8 @@ class Interact():
         ''' Chew on recent conversation '''
         paragraph = '\n\n'
         newline = '\n'
-        summaries, convo_, _ = self.recall.load(service, channel, summaries=5)
-        convo = [f"{c['speaker']}: {c['msg']}" for c in convo_]
+        summaries = self.recall.summaries(service, channel, size=5)
+        convo = self.recall.convo(service, channel)
 
         reply = {}
         entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))
@@ -492,11 +523,13 @@ class Interact():
         return reply
 
     def inject_idea(self, service, channel, idea, verb="recalls"):
-        ''' Directly inject an idea into recall memory. '''
+        '''
+        Directly inject an idea into recall memory.
+        '''
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
 
-        self.recall.save(service, channel, idea, f"{self.config.id.name} {verb}", self.config.id.guid)
+        self.recall.save(service, channel, idea, self.config.id.name, self.config.id.guid, verb)
 
         log.warning(f"🤔 {verb}:", idea)
         return "🤔"

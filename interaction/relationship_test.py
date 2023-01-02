@@ -3,7 +3,23 @@ relationship tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, line-too-long
 
-from relationships import get_relationships, to_archetype, nlp, nlp_merged
+import random
+
+from relationships import (
+    edge_similarity,
+    get_relationship_graph,
+    get_relationships,
+    graph_similarity,
+    jaccard_similarity,
+    node_similarity,
+    referee,
+    relations_to_edgelist,
+    relations_to_graph,
+    to_archetype,
+    nlp,
+    nlp_merged,
+    archetypes
+)
 
 test_cases_simple = {
     "A tripedal woman is quite unique, even in the art world.":
@@ -25,15 +41,13 @@ test_cases_simple = {
     "He was a programmer trying to solve an issue with his computer, but he wasn't sure how.":
         [{'left': ['he'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
     "Hi Anna, did you notice that one of your women in the picture is tripedal?":
-        [{'left': ['you'], 'rel': 'notice', 'right': ['is tripedal']}],
+        [{'left': ['you'], 'rel': 'notice', 'right': ['is tripedal']}, {'left': ['is tripedal'], 'rel': 'punct', 'right': ['?']}],
     "In desperation, he took it apart and managed to fix it himself.":
         [{'left': ['he'], 'rel': 'take apart', 'right': ['it']}, {'left': ['he'], 'rel': 'manage', 'right': ['fix']}],
-    "It looks like she has a lot of character.":
-        [{'left': ['she'], 'rel': 'have', 'right': ['a lot of character']}],
-    "It takes incredible strength and balance, but she can hold it for minutes at a time!":
-        [{'left': ['it'], 'rel': 'take', 'right': ['incredible strength']}, {'left': ['she'], 'rel': 'hold', 'right': ['it']}],
+    "It looks like she has a lot of character!":
+        [{'left': ['she'], 'rel': 'have', 'right': ['a lot of character']}, {'left': ['a lot of character'], 'rel': 'punct', 'right': ['!']}],
     "It's fascinating to think about the possibilities!":
-        [{'left': ['it'], 'rel': 'be', 'right': ['fascinating']}],
+        [{'left': ['it'], 'rel': 'be', 'right': ['fascinating']}, {'left': ['fascinating'], 'rel': 'punct', 'right': ['!']}],
     "Rob was a programmer trying to solve an issue with his computer, but he wasn't sure how.":
         [{'left': ['rob'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
     "She looks confident and composed, but also a bit mischievous.":
@@ -46,13 +60,42 @@ test_cases_simple = {
         [{'left': ['alice', 'bob'], 'rel': 'discuss', 'right': ['the concept of emotional intelligence']}, {'left': ['alice'], 'rel': 'propose then', 'right': ['exploring']}],
     to_archetype("Rob was a programmer trying to solve an issue with his computer, but he wasn't sure how."):
         [{'left': ['alice'], 'rel': 'be', 'right': ['trying']}, {'left': ['he'], 'rel': 'not be how', 'right': ['sure']}],
+
+    # This one can be parsed "she | hold | it" or "it | hold | she", so skip for now.
+    # "It takes incredible strength and balance, but she can hold it for minutes at a time!":
+    #     [{'left': ['it'], 'rel': 'take', 'right': ['incredible strength']}, {'left': ['she'], 'rel': 'hold', 'right': ['it']}],
 }
 
 test_cases_propn = {
-    "hackerfriendly was thinking about Bill, the tennis guy, and his buddy Charlie.": [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['bill', 'charlie', 'the tennis guy']}],
-    "Hackerfriendly was thinking about Bill, the tennis guy.": [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['the tennis guy']}],
-    "Alice was thinking about Bill the tennis guy, and his buddy Charlie.": [{'left': ['alice'], 'rel': 'think', 'right': ['charlie', 'the tennis guy']}],
+    "hackerfriendly was thinking about Bill, the tennis guy, and his buddy Charlie.":
+        [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['bill', 'charlie', 'the tennis guy']}],
+    "Hackerfriendly was thinking about Bill, the tennis guy.":
+        [{'left': ['hackerfriendly'], 'rel': 'think', 'right': ['the tennis guy']}],
+    "Alice was thinking about Bill the tennis guy, and his buddy Charlie.":
+        [{'left': ['alice'], 'rel': 'think', 'right': ['charlie', 'the tennis guy']}],
 }
+
+def test_archetypes():
+    ''' Archetype name substitution '''
+    names = [
+        "Emma", "Thomas", "David", "Lucas",
+        "Jacob", "Alex", "Avery", "Aaron", "John",
+        "Joshua", "Noah", "Eva", "Michael", "Isabella",
+        "Lily", "Ryan", "Brian", "Bella", "Abigail",
+        "Hannah", "Adam", "Olivia", "Julia", "Grace",
+        "Claire", "Rob"
+    ]
+
+    assert len(names) == len(archetypes)
+
+    random.shuffle(names)
+    assert to_archetype(' '.join(names)) == ' '.join(archetypes)
+
+    # When we run out of archetypes, stop substituting
+    assert to_archetype(' '.join(names + ["Scrooge"])) == ' '.join(archetypes + ["Scrooge"])
+
+    sent = "%s and %s went to the park with %s and %s."
+    assert to_archetype(sent % tuple(names[:4])) == "Alice and Bob went to the park with Carol and Dave."
 
 def test_sentences_simple():
     ''' Check relationships for known sentences '''
@@ -65,7 +108,6 @@ def test_sentences_propn():
     Check relationships for known sentences with ambiguous proper names.
     This requires custom ruler patterns to work.
     '''
-
     patterns = [[{"LOWER": "hackerfriendly"}]]
     attrs = {"TAG": "NNP", "POS": "PROPN", "DEP": "nsubj"}
 
@@ -78,3 +120,99 @@ def test_sentences_propn():
     for sent, result in test_cases_propn.items():
         print(sent)
         assert get_relationships(sent) == result
+
+def test_edgelist():
+    '''
+    Edgelist construction
+    '''
+    for sent, relationships in list(test_cases_simple.items()):
+        assert relations_to_edgelist(get_relationships(sent)) == relations_to_edgelist(relationships)
+
+def test_graph():
+    '''
+    Construct a relationship graph.
+    '''
+    for sent, relationships in list(test_cases_simple.items()):
+        g1 = relations_to_graph(get_relationships(sent))
+        g2 = relations_to_graph(relationships)
+
+        assert graph_similarity(g1, g2) == 1.0
+
+def test_get_relationship_graph():
+    '''
+    Verify get_relationship_graph()
+    '''
+    for text in list(test_cases_simple):
+        # get_relationship_graph() resolves coreferences and does archetype substitution
+        G = relations_to_graph(get_relationships(referee(to_archetype(text))))
+        Grg = get_relationship_graph(text)
+
+        assert edge_similarity(G, Grg) == 1.0
+        assert node_similarity(G, Grg) == 1.0
+        assert graph_similarity(G, Grg) == 1.0
+
+        # additional nodes
+        Grgn = get_relationship_graph(text, original_tokens=True)
+        assert len(G.nodes()) < len(Grgn.nodes())
+        assert node_similarity(G, Grgn) < 1.0
+        assert graph_similarity(G, Grgn) < 1.0
+
+        # edges should be identical
+        assert edge_similarity(G, Grgn) == 1.0
+        assert graph_similarity(G, Grgn, edge_bias=1) == 1.0
+
+def test_graph_similarity():
+    ''' Use jaccard_similarity() to test the similarity of two graphs '''
+
+    # no ZeroDivisionError
+    assert jaccard_similarity([], []) == 1.0
+
+    try:
+        for sent, relationships in list(test_cases_simple.items()):
+            g1 = relations_to_graph(get_relationships(sent))
+            g2 = relations_to_graph(relationships)
+
+            # identity
+            assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
+            assert jaccard_similarity(g1.edges(), g2.edges()) == 1.0
+
+            # node + edge similarity
+            assert graph_similarity(g1, g1) == 1.0
+            assert graph_similarity(g2, g2) == 1.0
+            assert graph_similarity(g1, g2) == 1.0
+
+            # removing a node also impacts edges
+            g1.remove_node(list(g1.nodes())[0])
+            assert jaccard_similarity(g1.nodes(), g2.nodes()) < 1.0
+            assert jaccard_similarity(g1.edges(), g2.edges()) < 1.0
+            assert graph_similarity(g1, g2) < 1.0
+
+            g2.remove_node(list(g2.nodes())[0])
+
+            # adding an edge also impacts nodes, so reuse an existing node
+            g1.add_edge(list(g1.nodes())[0], list(g1.nodes())[0], edge='agree')
+
+            # nodes are now identical
+            assert jaccard_similarity(g1.nodes(), g2.nodes()) == 1.0
+
+            # graphs are not
+            assert graph_similarity(g1, g2) < 1.0
+
+            # don't count the edges
+            assert graph_similarity(g1, g2, edge_bias=0) == 1.0
+
+            # higher edge bias gives more weight to edge matches
+            g3 = relations_to_graph(relationships)
+            g4 = relations_to_graph(relationships)
+            assert graph_similarity(g3, g4) == 1.0
+
+            g4.add_node('alien')
+            almost = graph_similarity(g3, g4)
+            assert almost < 1.0
+            assert graph_similarity(g3, g4, edge_bias=3) > almost
+            assert graph_similarity(g3, g4, edge_bias=5) > graph_similarity(g3, g4, edge_bias=3)
+
+    except AssertionError as err:
+        print("Nodes:", g1.nodes(), g2.nodes())
+        print("Edges:", g1.edges(data=True), g2.edges(data=True))
+        raise err

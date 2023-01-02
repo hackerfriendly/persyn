@@ -1,5 +1,6 @@
 ''' OpenAI completion engine '''
 import re
+import string
 
 from collections import Counter
 
@@ -69,6 +70,9 @@ class GPT():
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
             return None
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return None
 
         log.info(f"🧠 Prompt: {prompt}")
         # log.warning(response)
@@ -111,6 +115,9 @@ class GPT():
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
             return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return ""
 
         reply = response.choices[0]['text'].strip()
         log.warning(f"☝️  opinion of {entity}: {reply}")
@@ -143,6 +150,9 @@ class GPT():
             )
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
+            return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
             return ""
 
         reply = response.choices[0]['text'].strip()
@@ -341,6 +351,9 @@ class GPT():
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
             return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return ""
 
         reply = response.choices[0]['text'].strip().split('\n')[0]
 
@@ -358,6 +371,19 @@ class GPT():
         log.warning("gpt get_summary():", reply)
         return reply
 
+    def cleanup_keywords(self, text):
+        ''' Tidy up raw completion keywords into a simple list '''
+        keywords = []
+        bot_name = self.bot_name.lower()
+
+        doc = self.nlp(text)
+        for tok in doc:
+            keyword = tok.text.strip('#').lstrip('-').strip().lower()
+            if keyword != bot_name and keyword not in string.punctuation:
+                keywords.append(keyword)
+
+        return sorted(list(set(keywords)))
+
     def get_keywords(
         self,
         text,
@@ -365,14 +391,10 @@ class GPT():
         max_tokens=50
         ):
         ''' Ask GPT for keywords'''
-        keywords = self.get_summary(text, summarizer, max_tokens).replace('#', '').replace('[', '').replace(']', '')
+        keywords = self.get_summary(text, summarizer, max_tokens)
         log.warning(f"gpt get_keywords() raw: {keywords}")
 
-        raw = list(
-            {n.text.lower() for n in self.nlp(keywords).noun_chunks if n.text.strip() != self.bot_name for t in n if t.pos_ != 'PRON'}
-        )
-        reply = [ n.strip('-').strip() for n in raw ]
-
+        reply = self.cleanup_keywords(keywords)
         log.warning(f"gpt get_keywords(): {reply}")
         return reply
 

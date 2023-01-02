@@ -1,4 +1,6 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
+# pylint: disable=invalid-name
+
 import uuid
 
 import elasticsearch
@@ -6,6 +8,9 @@ import shortuuid as su
 
 # Time
 from chrono import elapsed, get_cur_ts
+
+# Relationship graphs
+from relationships import get_relationship_graph, ranked_matches, graph_to_json
 
 # Color logging
 from color_logging import ColorLog
@@ -43,15 +48,7 @@ class Recall(): # pylint: disable=too-many-arguments
             timeout=timeout
         )
 
-    def load(self, service, channel, summaries=3):
-        ''' Return summaries, the contents of the stm, and the last timestamp '''
-        return (
-            self.ltm.load_summaries(service, channel, summaries),
-            self.stm.fetch(service, channel),
-            self.ltm.get_last_timestamp(service, channel)
-        )
-
-    def save(self, service, channel, msg, speaker_name, speaker_id):
+    def save(self, service, channel, msg, speaker_name, speaker_id, verb=None):
         ''' Save to stm and ltm. Clears stm if it expired. Returns the current convo_id. '''
         if self.stm.expired(service, channel):
             self.stm.clear(service, channel)
@@ -65,7 +62,8 @@ class Recall(): # pylint: disable=too-many-arguments
                 msg,
                 speaker_name,
                 speaker_id,
-                self.stm.convo_id(service, channel)
+                self.stm.convo_id(service, channel),
+                verb
             )
         )
 
@@ -99,9 +97,9 @@ class Recall(): # pylint: disable=too-many-arguments
         ''' Return the temparary goals for this channel, if any. '''
         return self.stm.get_goals(service, channel)
 
-    def remember(self, service, channel, search, summaries):
+    def lookup_summaries(self, service, channel, search, size=1):
         ''' Oh right. '''
-        return self.ltm.remember(service, channel, search, summaries)
+        return self.ltm.lookup_summaries(service, channel, search, size)
 
     def judge(self, service, channel, topic, opinion, speaker_id=None):
         ''' Judge not, lest ye be judged '''
@@ -112,6 +110,68 @@ class Recall(): # pylint: disable=too-many-arguments
         ''' Everyone's got an opinion '''
         log.warning(f"🧷 opinion on {topic}")
         return self.ltm.lookup_opinion(topic, service, channel, speaker_id, size)
+
+    def dialog(self, service, channel):
+        ''' Return the dialog from stm (if any) '''
+        convo = self.stm.fetch(service, channel)
+        if convo:
+            return [
+                f"{line['speaker']}: {line['msg']}" for line in convo
+                if 'verb' not in line or line['verb'] == 'dialog'
+            ]
+        return []
+
+    def convo(self, service, channel):
+        '''
+        Return the entire convo from stm (if any).
+
+        Result is a list of "speaker (verb): msg" strings.
+        '''
+        convo = self.stm.fetch(service, channel)
+        if not convo:
+            return []
+
+        ret = []
+        for line in convo:
+            if 'verb' not in line or line['verb'] in ['dialog', None]:
+                ret.append(f"{line['speaker']}: {line['msg']}")
+            else:
+                ret.append(f"{line['speaker']} {line['verb']}: {line['msg']}")
+
+        return ret
+
+    def summaries(self, service, channel, size=3):
+        ''' Return the summary text from ltm (if any) '''
+        return [s['_source']['summary'] for s in self.ltm.lookup_summaries(service, channel, None, size=size)]
+
+    def lts(self, service, channel):
+        ''' Return the timestamp of the last message from this channel (if any) '''
+        return self.ltm.get_last_timestamp(service, channel)
+
+    def find_related_convos(self, service, channel, size=1, edge_bias=0.5):
+        '''
+        Find conversations related to the current convo using ES score and graph analysis.
+
+        Returns a ranked list of graph hits.
+        '''
+        # No convo? Nothing to match.
+        convo = self.convo(service, channel)
+        if not convo:
+            return []
+
+        convo_text = ' '.join(convo)
+
+        # No relationships? Nothing to match.
+        hits = self.ltm.lookup_relationships(service, channel, convo_text, size)
+        if not hits:
+            log.info("👨‍👩‍👧‍👦 find_related_convos():", "No hits, nothing to match.")
+            return []
+
+        G = get_relationship_graph(convo_text)
+
+        ranked = ranked_matches(G, hits, edge_bias=edge_bias)
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
+        return ranked
 
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
@@ -264,7 +324,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "convo": f"{self.index_prefix}-conversations-{self.version}",
             "summary": f"{self.index_prefix}-summaries-{self.version}",
             "entity": f"{self.index_prefix}-entities-{self.version}",
-            "relation": f"{self.index_prefix}-relationships-{self.version}",
+            "relationship": f"{self.index_prefix}-relationships-{self.version}",
             "opinion": f"{self.index_prefix}-opinions-{self.version}",
             "belief": f"{self.index_prefix}-beliefs-{self.version}"
         }
@@ -283,74 +343,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                         speaker_id=self.bot_id,
                         entity_id=self.bot_entity_id
                     )
-                # if item[0] == "relation":
+                # if item[0] == "relationhip":
                 #     self.save_relationship(self.uuid_to_entity(bot_id), "has_name", self.bot_name)
-
-    def load_convo(self, service, channel, lines=16, summaries=3):
-        '''
-        Return a list of lines from the conversation index for this channel.
-        '''
-        convo_history = self.es.search( # pylint: disable=unexpected-keyword-arg
-            index=self.index['convo'],
-            query={
-                "bool": {
-                    "must": [
-                        {"match": {"service.keyword": service}},
-                        {"match": {"channel.keyword": channel}}
-                    ]
-                }
-            },
-            sort=[{"@timestamp":{"order":"desc"}}],
-            size=lines
-        )['hits']['hits']
-
-        # Nothing in the channel
-        if not convo_history:
-            return []
-
-        # Skip summaries if we hit max lines
-        if len(convo_history) == lines:
-            summaries = 0
-
-        convo_id = convo_history[0]['_source']['convo_id']
-        ret = self.load_summaries(service, channel, summaries)
-
-        for line in convo_history[::-1]:
-            src = line['_source']
-            if src['convo_id'] != convo_id:
-                continue
-
-            ret.append(f"{src['speaker']}: {src['msg']}")
-
-        log.debug(f"load_convo(): {ret}")
-        return ret
-
-    def load_summaries(self, service, channel, summaries=3):
-        '''
-        Return a list of the most recent summaries for this channel.
-        '''
-        ret = []
-
-        history = self.es.search( # pylint: disable=unexpected-keyword-arg
-            index=self.index['summary'],
-            query={
-                "bool": {
-                    "must": [
-                        {"match": {"service.keyword": service}},
-                        {"match": {"channel.keyword": channel}}
-                    ]
-                }
-            },
-            sort=[{"@timestamp":{"order":"desc"}}],
-            size=summaries
-        )['hits']['hits']
-
-        for line in history[::-1]:
-            src = line['_source']
-            ret.append(src['summary'])
-
-        log.debug(f"load_summaries(): {ret}")
-        return ret
 
     def get_last_timestamp(self, service, channel):
         '''
@@ -369,6 +363,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         speaker_name=None,
         speaker_id=None,
         convo_id=None,
+        verb=None,
         refresh=False
     ):
         '''
@@ -394,6 +389,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "speaker_id": speaker_id,
             "entity_id": entity_id,
             "msg": msg,
+            "verb": verb,
             "convo_id": convo_id,
             "elapsed": elapsed(prev_ts, cur_ts)
         }
@@ -471,34 +467,85 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
 
-    def remember(self, service, channel, search, summaries=1):
+    def lookup_summaries(self, service, channel, search=None, size=3):
         '''
         Return a list of summaries matching the search term for this channel.
         '''
-        ret = []
+        # TODO: match speaker id HERE when cross-channel entity merging is working
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                ]
+            }
+        }
+
+        if search:
+            query['bool']['must'].append({"match": {"summary": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['summary'],
-            query={
-                "bool": {
-                    "must": [
-# rjf match speaker id HERE
-                        {"match": {"service.keyword": service}},
-                        {"match": {"channel.keyword": channel}},
-                        {"match": {"summary": {"query": search}}}
-                    ]
-                }
-            },
+            query=query,
             sort=[{"@timestamp":{"order":"desc"}}],
-            size=summaries
+            size=size
         )['hits']['hits']
 
-        for line in history[::-1]:
-            src = line['_source']
-            ret.append({'text': src['summary'], 'timestamp': src['@timestamp']})
+        ret = []
+        for hit in history[::-1]:
+            ret.append(hit)
 
-        log.debug(f"recall(): {ret}")
+        log.debug(f"lookup_summaries(): {ret}")
         return ret
+
+    def lookup_relationships(self, service, channel, search=None, size=3):
+        '''
+        Return a list of convo graphs matching the search term for this channel.
+        '''
+        # TODO: match speaker id HERE when cross-channel entity merging is working
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                ]
+            }
+        }
+
+        if search:
+            query['bool']['must'].append({"match": {"convo": {"query": search}}})
+
+        history = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['relationship'],
+            query=query,
+            size=size
+        )['hits']['hits']
+
+        ret = []
+        for hit in history[::-1]:
+            ret.append(hit)
+
+        log.debug(f"lookup_relationships(): {ret}")
+        return ret
+
+    def save_relationship_graph(self, service, channel, convo_id, text, original_tokens=True):
+        ''' Save a relationship graph '''
+        doc = {
+            '@timestamp': get_cur_ts(),
+            'service': service,
+            'channel': channel,
+            'convo_id': convo_id,
+            'graph': graph_to_json(
+                get_relationship_graph(text, original_tokens=original_tokens)
+            ),
+            'convo': text,
+            'refresh': False
+        }
+        rep = self.save_relationship(**doc)
+        if rep['result'] != 'created':
+            log.critical("∑ Could not save relationship:", rep)
+        else:
+            log.info("∑ relationship saved.")
 
     @staticmethod
     def entity_key(service, channel, name):
@@ -507,25 +554,25 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     @staticmethod
     def uuid_to_entity(the_uuid):
-        ''' Return the equivalent short ID (str) for a uuid '''
+        ''' Return the equivalent short ID (str) for a uuid (str) '''
         return str(su.encode(uuid.UUID(str(the_uuid))))
 
     @staticmethod
     def entity_to_uuid(entity_id):
-        ''' Return the equivalent UUID (str) for a uuid '''
+        ''' Return the equivalent UUID (str) for a short ID (str) '''
         return str(su.decode(entity_id))
 
     def name_to_entity(self, service, channel, name):
         ''' One distinct short UUID per bot_id + service + channel + name '''
         return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
 
-    def save_entity(self, service, channel, speaker_name, speaker_id=None, entity_id=None):
+    def save_entity(self, service, channel, speaker_name, speaker_id=None, entity_id=None, refresh=True):
         '''
         If an entity is new, save it to Elasticscarch.
         Returns the entity_id and the elapsed time since the entity was first stored.
         '''
         if not speaker_id:
-            speaker_name = speaker_id
+            speaker_id = speaker_name
 
         if not entity_id:
             entity_id = self.name_to_entity(service, channel, speaker_id)
@@ -544,7 +591,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
         self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
             index=self.index['entity'],
-            document=doc
+            document=doc,
+            refresh='true' if refresh else 'false'
         )
         return entity_id, 0
 
@@ -580,7 +628,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         doc = {
             "service": service,
             "channel": channel,
-            "topic": topic,
+            "topic": topic.lower(),
             "opinion": opinion,
             "speaker_id": speaker_id,
             "@timestamp": get_cur_ts()
@@ -597,7 +645,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         query = {
             "bool": {
                 "must": [
-                    {"match": {"topic.keyword": topic}}
+                    {"match": {"topic.keyword": topic.lower()}}
                 ]
             }
         }
@@ -619,4 +667,61 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         )['hits']['hits']:
             ret.append(opinion["_source"]["opinion"])
 
+        return ret
+
+    def save_relationship(self, service, channel, refresh=True, **kwargs):
+        '''
+        Save a relationship to Elasticearch.
+        '''
+        if 'source_id' in kwargs and not all(['rel' in kwargs, 'target_id' in kwargs]):
+            log.critical('👩‍👧‍👦 source_id requires rel and target_id')
+            return None
+
+        if 'convo_id' in kwargs and 'graph' not in kwargs:
+            log.critical('👩‍👧‍👦 convo_id requires graph')
+            return None
+
+        cur_ts = get_cur_ts()
+        doc = {
+            "@timestamp": cur_ts,
+            "service": service,
+            "channel": channel
+        }
+
+        for term, val in kwargs.items():
+            doc[term] = val
+
+        ret = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['relationship'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )
+        return ret
+
+    def lookup_relationship(self, service, channel, size=10, **kwargs):
+        ''' Look up a relationship in Elasticsearch. '''
+        ret = []
+
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}}
+                ]
+            }
+        }
+
+        for term, val in kwargs.items():
+            query['bool']['must'].append({"match": {f'{term}.keyword': val}})
+
+        log.debug(f"👨‍👩‍👧 query: {query}")
+
+        ret = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['relationship'],
+            query=query,
+            sort=[{"@timestamp":{"order":"desc"}}],
+            size=size
+        )['hits']['hits']
+
+        log.debug(f"👨‍👩‍👧 return: {ret}")
         return ret
