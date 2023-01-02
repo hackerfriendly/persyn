@@ -123,10 +123,9 @@ class Interact():
 
         return summary
 
-    def choose_reply(self, prompt, convo, goals):
-        ''' Choose the best reply from a list of possibilities '''
+    def choose_response(self, prompt, convo, goals):
+        ''' Choose the best completion response from a list of possibilities '''
         if not convo:
-            # convo = [f'{self.config.id.name} changes the subject.']
             convo = []
 
         scored = self.completion.get_replies(
@@ -166,38 +165,46 @@ class Interact():
 
         return reply
 
-    def gather_memories(self, service, channel, entities, convo):
+    def gather_memories(self, service, channel, entities):
         '''
         Look for relevant memories using elasticsearch, relationship graphs, and entity matching.
         '''
+        visited = []
+
         if entities:
-            self.gather_summaries(service, channel, entities, convo, size=3)
+            visited = visited + self.gather_summaries(service, channel, entities, size=2)
 
+        # TODO: Search convo and graphs HERE.
 
+        return visited
 
-    def gather_summaries(self, service, channel, entities, convo, size):
+    def gather_summaries(self, service, channel, entities, size):
         '''
-        Through a scanner, darkly.
+        If a previous convo summary matches entities and seems relevant, inject its memory.
 
-        If a previous convo summary matches entities, inject its memory.
+        Returns a list of ids of summaries injected.
         '''
         if not entities:
-            return
+            return []
 
+        visited = []
         search_term = ' '.join(entities)
         log.warning(f"ℹ️  look up '{search_term}' in memories")
 
-        for memory in self.recall.lookup_summaries(service, channel, search_term, size=size):
-            # TODO: track convo_ids for summaries already in convo, and exclude them here.
-            # Don't repeat yourself, loopy-lou.
-            # if memory['text'] in summaries or memory['text'] in '\n'.join(convo):
-            #     continue
+        for summary in self.recall.lookup_summaries(service, channel, search_term, size=10):
+            log.warning(summary)
+            if summary['_id'] in visited:
+                continue
+
+            visited.append(summary['_id'])
 
             # Stay on topic
             prompt = '\n'.join(
-                convo[:-1]
-                + [f"{self.config.id.name} remembers that {ago(memory['timestamp'])} ago: "
-                + memory['text']]
+                self.recall.convo(service, channel)
+                + [
+                    f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
+                    + summary['_source']['summary']
+                ]
             )
             on_topic = self.completion.get_summary(
                 prompt,
@@ -206,12 +213,16 @@ class Interact():
 
             log.warning(f"🧐 Are we on topic? {on_topic}")
             if 'true' not in on_topic.lower():
-                log.warning(f"🚫 Irrelevant memory discarded: {memory}")
+                log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
                 continue
 
-            log.warning(f"🐘 Memory found: {memory}")
-            self.inject_idea(service, channel, memory['text'], "remembers")
-            break
+            log.warning(f"🐘 Memory found: {summary['_source']['summary']}")
+            self.inject_idea(service, channel, summary['_source']['summary'], "remembers")
+
+            if len(visited) >= size:
+                break
+
+        return visited
 
     def gather_facts(self, service, channel, entities):
         ''' Gather facts (from Wikipedia) and opinions (from memory) '''
@@ -327,16 +338,11 @@ class Interact():
         if msg != '...':
             self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
 
-        # Load summaries and conversation
-        summaries = self.recall.summaries(service, channel, size=2)
         convo = self.recall.convo(service, channel)
-        lts = self.recall.lts(service, channel)
-
-        convo_length = len(convo)
         last_sentence = None
 
         if convo:
-            last_sentence = convo[-1]
+            last_sentence = convo.pop()
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -347,8 +353,8 @@ class Interact():
             entities = self.completion.get_keywords(convo)
             log.warning(f"🆔 extracted keywords: {entities}")
 
-        # Memories
-        self.gather_memories(service, channel, entities, convo)
+        # Reflect on this conversation
+        visited = self.gather_memories(service, channel, entities)
 
         # Facts and opinions (interleaved)
         self.gather_facts(service, channel, entities)
@@ -356,10 +362,17 @@ class Interact():
         # Goals
         achieved = self.check_goals(service, channel, convo)
 
-        # If our mind was wandering, remember the last thing that was said.
-        if last_sentence and convo_length != len(self.recall.convo(service, channel)):
-            self.inject_idea(service, channel, last_sentence)
+        # Our mind might have been wandering, so remember the last thing that was said.
+        if last_sentence:
+            convo.append(last_sentence)
 
+        summaries = []
+        for summary in self.recall.lookup_summaries(service, channel, None, size=5):
+            if summary['_id'] not in visited and summary['_source']['summary'] not in summaries:
+                summaries.append(summary['_source']['summary'])
+                visited.append(summary['_id'])
+
+        lts = self.recall.lts(service, channel)
         prompt = self.generate_prompt(summaries, convo, lts)
 
         # Is this just too much to think about?
@@ -369,7 +382,7 @@ class Interact():
             summaries = self.recall.summaries(service, channel, size=3)
             prompt = self.generate_prompt(summaries, convo[-3:], lts)
 
-        reply = self.choose_reply(prompt, convo, self.feels['goals'])
+        reply = self.choose_response(prompt, convo, self.feels['goals'])
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -390,7 +403,7 @@ class Interact():
             getattr(self.config.interact, "character", ""),
             f"It is {natural_time()} on {today()}.",
             f"{self.config.id.name} is feeling {self.feels['current']}.",
-            f"{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}." if self.feels['goals'] else ''
+            f"{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}" if self.feels['goals'] else ''
         ])
 
     def generate_prompt(self, summaries, convo, lts=None):

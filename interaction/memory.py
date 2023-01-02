@@ -111,17 +111,25 @@ class Recall(): # pylint: disable=too-many-arguments
         convo = self.stm.fetch(service, channel)
         if convo:
             return [
-                f"{c['speaker']}: {c['msg']}" for c in convo
-                if 'verb' not in c or c['verb'] == 'dialog'
+                f"{line['speaker']}: {line['msg']}" for line in convo
+                if 'verb' not in line or line['verb'] == 'dialog'
             ]
         return []
 
     def convo(self, service, channel):
         ''' Return the entire convo from stm (if any) '''
         convo = self.stm.fetch(service, channel)
-        if convo:
-            return [f"{c['speaker']}: {c['msg']}" for c in convo]
-        return []
+        if not convo:
+            return []
+
+        ret = []
+        for line in convo:
+            if 'verb' not in line or line['verb'] in ['dialog', None]:
+                ret.append(f"{line['speaker']}: {line['msg']}")
+            else:
+                ret.append(f"{line['speaker']} {line['verb']}: {line['msg']}")
+
+        return ret
 
     def summaries(self, service, channel, size=3):
         ''' Return the summary text from ltm (if any) '''
@@ -451,11 +459,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         ret = []
         for hit in history[::-1]:
-            summary = hit['_source']
-            summary['id'] = hit['_id']
             ret.append(hit)
 
-        log.debug(f"recall(): {ret}")
+        log.debug(f"lookup_summaries(): {ret}")
         return ret
 
     @staticmethod
@@ -539,7 +545,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         doc = {
             "service": service,
             "channel": channel,
-            "topic": topic,
+            "topic": topic.lower(),
             "opinion": opinion,
             "speaker_id": speaker_id,
             "@timestamp": get_cur_ts()
@@ -556,7 +562,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         query = {
             "bool": {
                 "must": [
-                    {"match": {"topic.keyword": topic}}
+                    {"match": {"topic.keyword": topic.lower()}}
                 ]
             }
         }
