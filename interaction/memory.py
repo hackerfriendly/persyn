@@ -507,12 +507,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     @staticmethod
     def uuid_to_entity(the_uuid):
-        ''' Return the equivalent short ID (str) for a uuid '''
+        ''' Return the equivalent short ID (str) for a uuid (str) '''
         return str(su.encode(uuid.UUID(str(the_uuid))))
 
     @staticmethod
     def entity_to_uuid(entity_id):
-        ''' Return the equivalent UUID (str) for a uuid '''
+        ''' Return the equivalent UUID (str) for a short ID (str) '''
         return str(su.decode(entity_id))
 
     def name_to_entity(self, service, channel, name):
@@ -525,7 +525,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Returns the entity_id and the elapsed time since the entity was first stored.
         '''
         if not speaker_id:
-            speaker_name = speaker_id
+            speaker_id = speaker_name
 
         if not entity_id:
             entity_id = self.name_to_entity(service, channel, speaker_id)
