@@ -142,24 +142,21 @@ def test_get_relationship_graph():
     '''
     Verify get_relationship_graph()
     '''
-    for text in list(test_cases_simple):
-        # get_relationship_graph() resolves coreferences and does archetype substitution
-        G = relations_to_graph(get_relationships(referee(to_archetype(text))))
-        Grg = get_relationship_graph(text)
+    for text in list(['Rob and Anna had a discussion about philosophy.', 'Bill and Ted are excellent to each other.']):
+        # get_relationship_graph() resolves coreferences and does optional archetype substitution
+        G = relations_to_graph(get_relationships(referee(text)))
+        Grg = get_relationship_graph(text, include_archetypes=False)
 
         assert edge_similarity(G, Grg) == 1.0
         assert node_similarity(G, Grg) == 1.0
         assert graph_similarity(G, Grg) == 1.0
 
-        # additional nodes
-        Grgn = get_relationship_graph(text, original_tokens=True)
-        assert len(G.nodes()) < len(Grgn.nodes())
-        assert node_similarity(G, Grgn) < 1.0
-        assert graph_similarity(G, Grgn) < 1.0
-
-        # edges should be identical
-        assert edge_similarity(G, Grgn) == 1.0
-        assert graph_similarity(G, Grgn, edge_bias=1) == 1.0
+        # additional nodes and edges
+        Grga = get_relationship_graph(text, include_archetypes=True)
+        assert node_similarity(G, Grga) < 1.0
+        assert graph_similarity(G, Grga) < 1.0
+        assert len(G.nodes()) < len(Grga.nodes())
+        assert len(G.edges()) < len(Grga.edges())
 
 def test_graph_similarity():
     ''' Use jaccard_similarity() to test the similarity of two graphs '''

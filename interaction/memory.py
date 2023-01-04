@@ -528,7 +528,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"lookup_relationships(): {ret}")
         return ret
 
-    def save_relationship_graph(self, service, channel, convo_id, text, original_tokens=True):
+    def save_relationship_graph(self, service, channel, convo_id, text, include_archetypes=True):
         ''' Save a relationship graph '''
         doc = {
             '@timestamp': get_cur_ts(),
@@ -536,7 +536,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             'channel': channel,
             'convo_id': convo_id,
             'graph': graph_to_json(
-                get_relationship_graph(text, original_tokens=original_tokens)
+                get_relationship_graph(text, include_archetypes=include_archetypes)
             ),
             'convo': text,
             'refresh': False

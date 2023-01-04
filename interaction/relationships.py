@@ -294,31 +294,29 @@ def relations_to_edgelist(relations):
                 ret.append((left, right, {'edge': rel['rel']}))
     return ret
 
-def get_relationship_graph(text, original_tokens=False, graph_type=nx.DiGraph):
+def get_relationship_graph(text, include_archetypes=True, graph_type=nx.DiGraph):
     '''
     Build a relationship graph from text:
-      * Archetype substitution is performed on the entire text
-      * Coreference resolution is run on that
+      * Coreference resolution is run on text
       * Relationships are extracted from each sentence
       * A directed graph is made of those relationships
 
-    If original_tokens is True, also add every token from the original
-    unmodified text.
+    If include_archetypes is True, also perform archetype substitution
+    and include those nodes and edges.
 
     Returns an nx graph.
     '''
     edgelist = []
-    for sent in nlp(referee(to_archetype(text))).sents:
+    for sent in nlp(referee(text)).sents:
         for rel in relations_to_edgelist(get_relationships(sent)):
             edgelist.append(rel)
 
-    G = nx.from_edgelist(edgelist, create_using=graph_type)
+    if include_archetypes:
+        for sent in nlp(referee(to_archetype(text))).sents:
+            for rel in relations_to_edgelist(get_relationships(sent)):
+                edgelist.append(rel)
 
-    if original_tokens:
-        for tok in nlp(text):
-            G.add_node(tok.text)
-
-    return G
+    return nx.from_edgelist(edgelist, create_using=graph_type)
 
 def load_graph(hit):
     ''' Load an nx graph from an ES hit '''
