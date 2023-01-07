@@ -184,8 +184,8 @@ def get_goals(
         "goals": interact.get_goals(service, channel)
     }
 
-if __name__ == '__main__':
-
+def main():
+    ''' Main entry '''
     parser = argparse.ArgumentParser(
         description='''Persyn interact-server. Run one server for each bot.'''
     )
@@ -212,6 +212,8 @@ if __name__ == '__main__':
         reload=False,
     )
 
+if __name__ == '__main__':
+    main()
 else:
     persyn_config = load_config()
     interact = Interact(persyn_config)
