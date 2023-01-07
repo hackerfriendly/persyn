@@ -4,14 +4,9 @@ Launch a persyn bot using tmux
 '''
 #pylint: disable=no-member, wrong-import-position
 import os
-import sys
 import argparse
 
-from pathlib import Path
 from subprocess import run
-
-# Add persyn root to sys.path
-sys.path.insert(0, str(Path(__file__).resolve()))
 
 # Color logging
 from utils.color_logging import log
