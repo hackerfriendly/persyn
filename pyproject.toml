@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
   "alt-profanity-check==1.1.3",
   "beautifulsoup4",
+  "boto3",
   "certifi",
   "click",
   "coreferee",
@@ -47,7 +48,12 @@ dependencies = [
 ]
 
 [project.scripts]
-launch_bot = "scripts.launch_bot:main"
+launch_bot = "launch_bot:main"
+interact = "interaction.interact_server:main"
+cns = "interaction.cns:main"
+slack = "chat.slack.bot:main"
+discord = "chat.discord.bot:main"
+mastodon = "chat.mastodon.bot:main"
 
 [project.optional-dependencies]
 dev = [

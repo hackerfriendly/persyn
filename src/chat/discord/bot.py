@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-discord-bot.py
+discord/bot.py
 
 Chat with your persyn on Discord.
 """
@@ -28,7 +28,7 @@ from utils.config import load_config
 from interaction.reminders import AsyncReminders
 
 # Mastodon support for image posting
-from chat.mastodon.donbot import Mastodon
+from chat.mastodon.bot import Mastodon
 
 # Common chat library
 from chat.common import Chat
@@ -233,7 +233,8 @@ async def dispatch(ctx):
         reminders.add(channel, 0, schedule_reply, f'reply-{uuid.uuid4()}', args=[ctx])
 
 
-if __name__ == '__main__':
+def main():
+    ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Discord chat module for Persyn'''
     )
@@ -328,3 +329,6 @@ if __name__ == '__main__':
     #     log.critical(f'kwargs: {kwargs}')
 
     app.run(persyn_config.chat.discord.token)
+
+if __name__ == '__main__':
+    main()

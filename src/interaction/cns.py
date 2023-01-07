@@ -64,8 +64,8 @@ services = {
     'mastodon': mastodon_msg
 }
 
-if __name__ == '__main__':
-
+def main():
+    ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Persyn central nervous system. Run one server for each bot.'''
     )
@@ -139,3 +139,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt as kbderr:
         print()
         raise SystemExit(0) from kbderr
+
+if __name__ == '__main__':
+    main()

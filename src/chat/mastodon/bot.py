@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-donbot.py
+mastodon/bot.py
 
 Chat with your persyn on Mastodon.
 """
@@ -364,7 +364,8 @@ class TheListener(StreamListener):
 #     # Handle commands and schedule a reply (if any)
 #     await dispatch(ctx)
 
-if __name__ == "__main__":
+def main():
+    ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Mastodon chat module for Persyn'''
     )
@@ -402,3 +403,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt as kbderr:
         print()
         raise SystemExit(0) from kbderr
+
+if __name__ == "__main__":
+    main()

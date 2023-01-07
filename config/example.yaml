@@ -26,6 +26,9 @@ memory:
 completion:
   engine: openai
   api_key: sk-your-api_key-goes-here
+  # Choose an OpenAI model:
+  #   https://beta.openai.com/docs/models/overview
+  #   https://beta.openai.com/docs/model-index-for-researchers
   model: text-davinci-003
   minimum_quality_score: -2.0
   temperature: 0.99

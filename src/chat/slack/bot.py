@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-slack.py
+slack/bot.py
 
 Chat with your persyn on Slack.
 """
@@ -30,7 +30,7 @@ from utils.config import load_config
 from interaction.reminders import Reminders
 
 # Mastodon support for image posting
-from chat.mastodon.donbot import Mastodon
+from chat.mastodon.bot import Mastodon
 
 # Common chat library
 from chat.common import Chat
@@ -43,6 +43,9 @@ known_bots = {}
 
 # Threaded reminders
 reminders = Reminders()
+
+# Defined in main()
+app = None
 
 ###
 # Slack helper functions
@@ -101,10 +104,8 @@ def say_something_later(say, channel, context, when, what=None):
         reminders.add(channel, when, catch_all, args=[say, yadda])
 
 
-###
-# main
-###
-if __name__ == "__main__":
+def main():
+    ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Slack chat module for Persyn'''
     )
@@ -121,6 +122,7 @@ if __name__ == "__main__":
     persyn_config = load_config(args.config_file)
 
     # Slack bolt App
+    global app
     app = App(token=persyn_config.chat.slack.bot_token)
 
     # Mastodon support
@@ -527,3 +529,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt as kbderr:
         print()
         raise SystemExit(0) from kbderr
+
+if __name__ == "__main__":
+    main()

@@ -73,6 +73,9 @@ class GPT():
         except openai.error.ServiceUnavailableError as err:
             log.critical("OpenAI Service Unavailable:", err)
             return None
+        except openai.error.RateLimitError as err:
+            log.critical("OpenAI RateLimitError:", err)
+            return None
 
         log.info(f"🧠 Prompt: {prompt}")
         # log.warning(response)
@@ -118,6 +121,9 @@ class GPT():
         except openai.error.ServiceUnavailableError as err:
             log.critical("OpenAI Service Unavailable:", err)
             return ""
+        except openai.error.RateLimitError as err:
+            log.critical("OpenAI RateLimitError:", err)
+            return ""
 
         reply = response.choices[0]['text'].strip()
         log.warning(f"☝️  opinion of {entity}: {reply}")
@@ -153,6 +159,9 @@ class GPT():
             return ""
         except openai.error.ServiceUnavailableError as err:
             log.critical("OpenAI Service Unavailable:", err)
+            return ""
+        except openai.error.RateLimitError as err:
+            log.critical("OpenAI RateLimitError:", err)
             return ""
 
         reply = response.choices[0]['text'].strip()
@@ -353,6 +362,9 @@ class GPT():
             return ""
         except openai.error.ServiceUnavailableError as err:
             log.critical("OpenAI Service Unavailable:", err)
+            return ""
+        except openai.error.RateLimitError as err:
+            log.critical("OpenAI RateLimitError:", err)
             return ""
 
         reply = response.choices[0]['text'].strip().split('\n')[0]

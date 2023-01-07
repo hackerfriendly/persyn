@@ -18,13 +18,13 @@ from wikipedia.exceptions import WikipediaException
 from Levenshtein import ratio
 
 # Long and short term memory
-from memory import Recall
+from interaction.memory import Recall
 
 # Time handling
-from chrono import natural_time, ago, today, elapsed, get_cur_ts
+from interaction.chrono import natural_time, ago, today, elapsed, get_cur_ts
 
 # Prompt completion
-from completion import LanguageModel
+from interaction.completion import LanguageModel
 
 # Color logging
 from utils.color_logging import log

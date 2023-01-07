@@ -14,22 +14,20 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
-TMUX = None
-
-def tmux_is_running(session):
+def tmux_is_running(session, tmux):
     ''' True if tmux session exists '''
     return run(
-        [TMUX, 'has-session', '-t', f'={session}'],
+        [tmux, 'has-session', '-t', f'={session}'],
         shell=False,
         check=False,
         capture_output=True
     ).returncode == 0
 
-def run_tmux_cmd(session, cmd):
+def run_tmux_cmd(session, cmd, tmux):
     ''' Start a new tmux session if needed, then add panes for each cmd '''
-    running = tmux_is_running(session)
+    running = tmux_is_running(session, tmux)
     tmux = ' '.join([
-            TMUX,
+            tmux,
             'split-pane' if running else 'new-session',
             '-t' if running else '-s',
             session,
@@ -68,41 +66,40 @@ def main():
     args = parser.parse_args()
     cfg = load_config(args.config_file)
 
-    TMUX = args.tmux
     session_name = args.session or cfg.id.name.lower().replace(' ', '')
 
     # iTerm's fantastic tmux integration.
     # https://iterm2.com/documentation-tmux-integration.html
-    cc = ' -CC' if os.environ.get('LC_TERMINAL', '') == 'iTerm2' else ''
+    ccmode = ' -CC' if os.environ.get('LC_TERMINAL', '') == 'iTerm2' else ''
 
-    if tmux_is_running(session_name):
-        raise SystemExit(f'Session {session_name} already exists. Attach with 👉 tmux{cc} attach -t {session_name}')
+    if tmux_is_running(session_name, args.tmux):
+        raise SystemExit(f'Session {session_name} already exists. Attach with 👉 tmux{ccmode} attach -t {session_name}')
 
     log.info(f"🤖 Starting services for {cfg.id.name}")
     if hasattr(cfg, 'interact') and hasattr(cfg.interact, 'workers'):
-        log.info("🧠 Starting interact-server")
-        run_tmux_cmd(session_name, ['src/interaction/interact-server.py', args.config_file])
+        log.info("🧠 Starting interact_server")
+        run_tmux_cmd(session_name, ['interact', args.config_file], args.tmux)
 
     if hasattr(cfg, 'cns'):
         log.info("⚡️ Starting cns")
-        run_tmux_cmd(session_name, ['src/interaction/cns.py', args.config_file])
+        run_tmux_cmd(session_name, ['cns', args.config_file], args.tmux)
 
     if hasattr(cfg, 'chat'):
         if hasattr(cfg.chat, 'slack'):
             log.info("👖 Starting slack")
-            run_tmux_cmd(session_name, ['src/chat/slack/slack.py', args.config_file])
+            run_tmux_cmd(session_name, ['slack', args.config_file], args.tmux)
 
         if hasattr(cfg.chat, 'discord'):
             log.info("🙀 Starting discord")
-            run_tmux_cmd(session_name, ['src/chat/discord/discord-bot.py', args.config_file])
+            run_tmux_cmd(session_name, ['discord', args.config_file], args.tmux)
 
         if hasattr(cfg.chat, 'mastodon'):
             log.info("🎺 Starting mastodon")
-            run_tmux_cmd(session_name, ['src/chat/mastodon/donbot.py', args.config_file])
+            run_tmux_cmd(session_name, ['mastodon', args.config_file], args.tmux)
 
     # TODO: dreams, captions, sdd, parrot, voice
 
-    log.info(f"\n{cfg.id.name} is running. Attach with 👉 tmux{cc} attach -t {session_name}")
+    log.info(f"\n{cfg.id.name} is running. Attach with 👉 tmux{ccmode} attach -t {session_name}")
 
 if __name__ == '__main__':
     main()

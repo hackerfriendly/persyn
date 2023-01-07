@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 '''
-interact-server.py
+interact_server.py
 
 A REST API for the limbic system.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import os
 import argparse
 
@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import RedirectResponse
 
-from interact import Interact
+from interaction.interact import Interact
 
 # Color logging
 from utils.color_logging import log
@@ -25,6 +25,9 @@ from utils.config import load_config
 
 # FastAPI
 app = FastAPI()
+
+# Initialize interact in main()
+interact = None
 
 @app.get("/", status_code=302)
 def root():
@@ -187,7 +190,7 @@ def get_goals(
 def main():
     ''' Main entry '''
     parser = argparse.ArgumentParser(
-        description='''Persyn interact-server. Run one server for each bot.'''
+        description='''Persyn interact_server. Run one server for each bot.'''
     )
     parser.add_argument(
         'config_file',
@@ -201,11 +204,13 @@ def main():
     args = parser.parse_args()
 
     persyn_config = load_config(args.config_file)
+    global interact
+    interact = Interact(persyn_config)
 
     log.info(f"💃 {persyn_config.id.name}'s interact server starting up")
 
     uvicorn.run(
-        'interact-server:app',
+        'interaction.interact_server:app',
         host=persyn_config.interact.hostname,
         port=persyn_config.interact.port,
         workers=persyn_config.interact.workers,
@@ -214,6 +219,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-else:
-    persyn_config = load_config()
-    interact = Interact(persyn_config)
