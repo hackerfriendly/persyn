@@ -54,6 +54,7 @@ cns = "interaction.cns:main"
 slack = "chat.slack.bot:main"
 discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
+stable_diffusion = "dreams.stable_diffusion:main"
 
 [project.optional-dependencies]
 dev = [
@@ -70,6 +71,16 @@ interrogator = [
 ]
 parrot = [
   "transformers==4.21.1",
+  "torch==1.12.1",
+  "torchvision==0.13.1"
+]
+# TODO: https://github.com/facebookresearch/xformers
+stable_diffusion = [
+  "accelerate",
+  "scipy",
+  "safetensors",
+  "transformers==4.21.1",
+  "diffusers",
   "torch==1.12.1",
   "torchvision==0.13.1"
 ]

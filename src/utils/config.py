@@ -16,7 +16,7 @@ def load_config(cfg=None):
     ''' Load the config and set some sensible default values. '''
 
     if cfg is None and 'PERSYN_CONFIG' not in os.environ:
-        raise SystemExit("Please set PERSYN_CONFIG to point to your yaml config.")
+        raise SystemExit("Please set PERSYN_CONFIG to point to your yaml config, or pass it as the first argument.")
 
     config_file = cfg or os.environ['PERSYN_CONFIG']
 

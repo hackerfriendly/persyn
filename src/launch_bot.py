@@ -43,7 +43,7 @@ def run_tmux_cmd(session, cmd, tmux):
     )
 
 def main():
-    ''' Main entry '''
+    ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Launch local services for your Persyn bot.''',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -96,6 +96,15 @@ def main():
         if hasattr(cfg.chat, 'mastodon'):
             log.info("🎺 Starting mastodon")
             run_tmux_cmd(session_name, ['mastodon', args.config_file], args.tmux)
+
+    if hasattr(cfg, 'dreams'):
+        if hasattr(cfg.dreams, 'workers'):
+            log.info("😴 Starting dreams server")
+            run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux)
+
+        if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers'):
+            log.info("🎨 Starting stable_diffusion")
+            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux)
 
     # TODO: dreams, captions, sdd, parrot, voice
 

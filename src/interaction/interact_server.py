@@ -188,7 +188,7 @@ def get_goals(
     }
 
 def main():
-    ''' Main entry '''
+    ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Persyn interact_server. Run one server for each bot.'''
     )

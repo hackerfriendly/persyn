@@ -7,7 +7,6 @@ A REST API for generating chat bot hallucinations.
 import json
 import os
 import random
-import sys
 import tempfile
 import uuid
 
