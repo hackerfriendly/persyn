@@ -5,7 +5,7 @@ relationship tests
 
 import random
 
-from relationships import (
+from interaction.relationships import (
     edge_similarity,
     get_relationship_graph,
     get_relationships,

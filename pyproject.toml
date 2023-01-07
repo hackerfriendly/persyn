@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "persyn"
+version = "0.0.0"
+authors = [
+  { name="Rob Flickenger", email="rob@hackerfriendly.com" },
+]
+description = "Personality Syndrome. Persyn for short."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "alt-profanity-check==1.1.3",
+  "beautifulsoup4",
+  "certifi",
+  "click",
+  "coreferee",
+  "discord.py",
+  "dotwiz",
+  "elasticsearch",
+  "fastapi[all]",
+  "flair",
+  "ftfy==6.1.1",
+  "humanize",
+  "Levenshtein",
+  "Mastodon.py",
+  "nlpcloud",
+  "nltk",
+  "openai",
+  "pyyaml",
+  "requests",
+  "scikit-learn==1.1.3",
+  "scipy==1.9.0",
+  "shortuuid",
+  "slack_bolt",
+  "spacy",
+  "spacytextblob",
+  "uvicorn",
+  "wikipedia"
+]
+
+[project.urls]
+"Homepage" = "https://persyn.io"
+"Bug Tracker" = "https://github.com/hackerfriendly/persyn/issues"

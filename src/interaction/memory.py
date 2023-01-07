@@ -6,10 +6,10 @@ import elasticsearch
 import shortuuid as su
 
 # Time
-from chrono import elapsed, get_cur_ts
+from interaction.chrono import elapsed, get_cur_ts
 
 # Relationship graphs
-from relationships import get_relationship_graph, ranked_matches, graph_to_json
+from interaction.relationships import get_relationship_graph, ranked_matches, graph_to_json
 
 # Color logging
 from utils.color_logging import ColorLog

@@ -9,7 +9,7 @@ from time import sleep
 
 import pytest
 
-from chrono import elapsed, get_cur_ts, natural_time
+from interaction.chrono import elapsed, get_cur_ts, natural_time
 
 def test_elapsed_time():
     ''' Elapsed time '''

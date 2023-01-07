@@ -36,3 +36,5 @@ Untitled*.ipynb
 src/dreams/stable-diffusion/
 src/dreams/stylegan2/
 go-*
+build/
+src/persyn.egg-info/

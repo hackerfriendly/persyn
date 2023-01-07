@@ -8,9 +8,9 @@ import uuid
 from time import sleep
 from copy import copy
 
-from chrono import elapsed
+from interaction.chrono import elapsed
 
-from memory import LongTermMemory, ShortTermMemory, Recall
+from interaction.memory import LongTermMemory, ShortTermMemory, Recall
 
 # Bot config
 from utils.config import load_config

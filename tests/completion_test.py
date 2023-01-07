@@ -6,7 +6,7 @@ completion (language model) tests
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from completion import LanguageModel
+from interaction.completion import LanguageModel
 
 # Bot config
 from utils.config import load_config
