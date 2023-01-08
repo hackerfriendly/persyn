@@ -47,7 +47,7 @@ class Mastodon():
 
         # Spacy for basic parsing
         if self.valid_config():
-            self.nlp = spacy.load("en_core_web_sm")
+            self.nlp = spacy.load(self.cfg.spacy.model)
             self.nlp.add_pipe('sentencizer')
 
     def valid_config(self):

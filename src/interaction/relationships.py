@@ -4,22 +4,21 @@ relationships.py: extract a relationship graph from text
 # pylint: disable=c-extension-no-member, import-error, wrong-import-position, invalid-name, too-many-branches, unused-import
 from operator import itemgetter
 
-# Color logging
-from utils.color_logging import ColorLog
-
-log = ColorLog()
-
 import spacy
+import networkx as nx
 
 from spacy.tokens import Doc
-
-import networkx as nx
 
 # !pip install coreferee
 # !python3 -m coreferee install en
 # !python3 -m spacy download en_core_web_lg
 
 import coreferee
+
+# Color logging
+from utils.color_logging import ColorLog
+
+log = ColorLog()
 
 # Merged pipeline
 nlp = spacy.load('en_core_web_lg')

@@ -334,7 +334,7 @@ class Sentiment(object):
         self.model = model
 
         if self.engine == "spacy":
-            self.nlp = spacy.load(self.model or "en_core_web_lg")
+            self.nlp = spacy.load(self.model or "en_core_web_sm")
             self.nlp.add_pipe('spacytextblob')
 
     def get_sentiment_score(self, prompt):

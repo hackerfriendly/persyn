@@ -49,6 +49,7 @@ dependencies = [
 
 [project.scripts]
 launch_bot = "launch_bot:main"
+kill_bot = "kill_bot:main"
 interact = "interaction.interact_server:main"
 cns = "interaction.cns:main"
 slack = "chat.slack.bot:main"
@@ -67,8 +68,8 @@ interrogator = [
   "tqdm",
   "transformers==4.21.1",
   "timm",
-  "clip @ git+https://github.com/openai/CLIP.git@main#egg=clip",
-  "blip @ git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip"
+#  "clip @ git+https://github.com/openai/CLIP.git@main#egg=clip",
+#  "blip @ git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip"
 ]
 parrot = [
   "transformers==4.21.1",
@@ -84,6 +85,17 @@ stable_diffusion = [
   "diffusers",
   "torch==1.12.1",
   "torchvision==0.13.1"
+]
+all = [
+  "accelerate",
+  "diffusers",
+  "safetensors",
+  "scipy",
+  "timm",
+  "torch==1.12.1",
+  "torchvision==0.13.1",
+  "tqdm",
+  "transformers==4.21.1"
 ]
 
 [project.urls]

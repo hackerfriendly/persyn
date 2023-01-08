@@ -34,7 +34,7 @@ class GPT():
         self.model_name = model_name
         self.forbidden = forbidden or []
         self.stats = Counter()
-        self.nlp = nlp or spacy.load("en_core_web_lg")
+        self.nlp = nlp or spacy.load("en_core_web_sm")
         self.sentiment = sentiment or Sentiment()
 
         if model_name.startswith('text-davinci-'):

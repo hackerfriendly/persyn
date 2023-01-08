@@ -41,7 +41,7 @@ class NLPCLOUD():
         self.model_name = model_name
         self.forbidden = forbidden or []
         self.stats = Counter()
-        self.nlp = nlp or spacy.load("en_core_web_lg")
+        self.nlp = nlp or spacy.load("en_core_web_sm")
 
         if model_name in MAX_TOKENS:
             self.max_prompt_length = MAX_TOKENS[model_name]

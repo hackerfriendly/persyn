@@ -19,7 +19,7 @@ from chat.common import Chat
 from chat.simple import slack_msg, discord_msg
 
 # Mastodon support for image posting
-from chat.mastodon.donbot import Mastodon
+from chat.mastodon.bot import Mastodon
 
 # Color logging
 from utils.color_logging import log

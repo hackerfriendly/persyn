@@ -11,7 +11,16 @@ from urllib.parse import urlparse
 from threading import Lock
 
 import yaml
+import spacy
+
 from dotwiz import DotWiz # pylint: disable=no-member
+
+def download_models(persyn_config):
+    ''' Download any required ML models '''
+    try:
+        spacy.load(persyn_config.spacy.model)
+    except OSError:
+        spacy.cli.download(persyn_config.spacy.model)
 
 def load_config(cfg=None):
     ''' Load the config and set some sensible default values. '''
@@ -55,7 +64,7 @@ def load_config(cfg=None):
             gpus = config['dreams']['gpus']
             config['dreams']['gpus'] = {}
             for gpu in gpus:
-                config['dreams']['gpus'][str(gpu)] = dict()
+                config['dreams']['gpus'][str(gpu)] = {}
                 config['dreams']['gpus'][str(gpu)]['name'] = gpus[gpu]
                 config['dreams']['gpus'][str(gpu)]['lock'] = Lock()
 
@@ -74,6 +83,11 @@ def load_config(cfg=None):
             if 'toot_length' not in config['chat']['mastodon']:
                 config['chat']['mastodon']['toot_length'] = 500
 
+    config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('sentiment', {})
 
-    return DotWiz(config)
+    # Check for required models
+    persyn_config = DotWiz(config)
+    download_models(persyn_config)
+
+    return persyn_config

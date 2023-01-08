@@ -33,9 +33,6 @@ completion:
   minimum_quality_score: -2.0
   temperature: 0.99
 
-  # Optional: choose a spacy model. https://spacy.io/models/en
-  # spacy_model: en_core_web_lg
-
 # Required: Personality server (interact-server.py)
 interact:
   url: http://localhost:8003
@@ -61,11 +58,11 @@ interact:
 chat:
   # Slack chat module
   #
-  slack:
-    # From Slack management, Apps > Basic Information > App-Level Tokens
-    app_token: xapp-your-app-token-here
-    # From OAuth & Permission > Bot User OAuth Token
-    bot_token: xoxb-your-bot-token-here
+  # slack:
+  #   # From Slack management, Apps > Basic Information > App-Level Tokens
+  #   app_token: xapp-your-app-token-here
+  #   # From OAuth & Permission > Bot User OAuth Token
+  #   bot_token: xoxb-your-bot-token-here
 
   # Discord chat module
   #
@@ -82,12 +79,18 @@ chat:
   #   secret: "/path/to/your/user.secret"
   #   toot_length: 500
 
+# Optional, but recommended: Spacy NLP model. https://spacy.io/models/en
+# en_core_web_sm is the minimum (default) required.
+# en_core_web_lg is highly recommended if you have the resources to run it.
+spacy:
+  model: "en_core_web_sm"
+
 # Optional, but recommended: Sentiment analysis engine
 sentiment:
   engine: "flair"
   model: "en-sentiment"
   # engine: "spacy"
-  # engine: "en_core_web_lg"
+  # model: "en_core_web_lg"
 # Optional: Central Nervous System. Used for image generation and posting images
 # to social media.
 #

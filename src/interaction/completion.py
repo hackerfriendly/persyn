@@ -17,7 +17,7 @@ class LanguageModel():
         self.engine = config.completion.engine
         self.bot_name = config.id.name
         self.stats = Counter()
-        self.nlp = spacy.load(getattr(config.completion, "spacy_model", "en_core_web_lg"))
+        self.nlp = spacy.load(config.spacy.model)
         self.sentiment = Sentiment(getattr(config.sentiment, "engine", "flair"),
                                    getattr(config.sentiment, "model", None))
         # Absolutely forbidden words
