@@ -1,7 +1,7 @@
 '''
 memory (elasticsearch) tests
 '''
-# pylint: disable=import-error, wrong-import-position, invalid-name
+# pylint: disable=import-error, wrong-import-position, invalid-name, no-member
 import datetime as dt
 import uuid
 
@@ -15,7 +15,7 @@ from interaction.memory import LongTermMemory, ShortTermMemory, Recall
 # Bot config
 from utils.config import load_config
 
-from utils.color_logging import log
+# from utils.color_logging import log
 
 persyn_config = load_config()
 
@@ -24,32 +24,11 @@ prefix = f"{persyn_config.id.name.lower()}-test"
 # Dynamic test index names
 now = dt.datetime.now().isoformat().replace(':','.').lower()
 
-ltm = LongTermMemory(
-    bot_name=persyn_config.id.name,
-    bot_id=persyn_config.id.guid,
-    url=persyn_config.memory.elastic.url,
-    auth_name=persyn_config.memory.elastic.user,
-    auth_key=persyn_config.memory.elastic.key,
-    index_prefix=prefix,
-    version=now,
-    verify_certs=True
-)
-
-recall = Recall(
-    bot_name=persyn_config.id.name,
-    bot_id=persyn_config.id.guid,
-    url=persyn_config.memory.elastic.url,
-    auth_name=persyn_config.memory.elastic.user,
-    auth_key=persyn_config.memory.elastic.key,
-    index_prefix=prefix,
-    version=now,
-    conversation_interval=0.5,
-    verify_certs=True
-)
+ltm = LongTermMemory(persyn_config, version=now)
 
 def test_stm():
     ''' Exercise the short term memory '''
-    stm = ShortTermMemory(conversation_interval=0.1)
+    stm = ShortTermMemory(persyn_config, conversation_interval=0.01)
 
     service = 'service1'
     channel = 'channel1'
@@ -111,8 +90,9 @@ def test_entities():
     speaker_name = "test_name"
     speaker_id = "test_id"
 
+    # This is computed using persyn_config.id.guid. If it changes, this value needs updating.
     eid = ltm.name_to_entity(service, channel, speaker_id)
-    assert eid == "j6GhcuBe5FAPRtNsdASut5"
+    assert eid == "HzfSLNaCdxgdzcbxPZw6aE"
 
     other_eids = set([
         ltm.name_to_entity(service, channel, "another_name"),
@@ -239,7 +219,11 @@ def test_lookup_summaries():
     # zero lines returns empty list
     assert ltm.lookup_summaries("my_service", "channel_a", None, 0) == [] # pylint: disable=use-implicit-booleaness-not-comparison
     # saved above
-    assert [s['_source']['summary'] for s in ltm.lookup_summaries("my_service", "channel_a", None, size=3)] == ["my_nice_summary"]
+    assert [
+        s['_source']['summary']
+        for s in ltm.lookup_summaries("my_service", "channel_a", None, size=3)
+    ] == ["my_nice_summary"]
+
     # correct order
     assert [s['_source']['summary'] for s in ltm.lookup_summaries("my_service", "channel_b", None, size=3)] == [
         "my_other_nice_summary",
@@ -249,6 +233,9 @@ def test_lookup_summaries():
 
 def test_recall():
     ''' Use stm + ltm together to autogenerate summaries '''
+
+    recall = Recall(persyn_config, version=now, conversation_interval=0.5)
+
     # Must match test_save_summaries()
     service = "my_service"
     channel = "channel_a"
@@ -258,7 +245,7 @@ def test_recall():
     c = recall.stm.fetch(service, channel)
     convo = recall.convo(service, channel)
     assert (s, c) == (["my_nice_summary"], [])
-    assert convo == []
+    assert not convo
 
     # new convo
     assert recall.save(service, channel, "message_another", "speaker_name_1", "speaker_id")
@@ -267,7 +254,7 @@ def test_recall():
     s = recall.summaries(service, channel)
     c = recall.stm.fetch(service, channel)
     convo = recall.convo(service, channel)
-    log.warning(c)
+
     assert s == ["my_nice_summary"]
     assert c[0]['speaker'] == "speaker_name_1"
     assert c[0]['msg'] == "message_another"

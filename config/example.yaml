@@ -15,6 +15,9 @@ memory:
     user: elastic-bot-user
     key: elastic-bot-password
     index_prefix: persyn
+    verify_certs: true
+  # Conversations end when this many seconds pass in silence
+  conversation_interval: 600
 
 # Required: Prompt completion options. Enable one of these.
 #

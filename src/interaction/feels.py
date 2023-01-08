@@ -317,7 +317,7 @@ def get_flair_score(prompt):
     ''' Run the flair sentiment prediction model. Returns a float, -1.0 to 1.0 '''
     global flair_sentiment
     if not flair_sentiment:
-         flair_sentiment = flair.models.TextClassifier.load('en-sentiment')
+        flair_sentiment = flair.models.TextClassifier.load('en-sentiment')
     sent = flair.data.Sentence(prompt)
     flair_sentiment.predict(sent)
 

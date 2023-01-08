@@ -37,9 +37,6 @@ def download_models(persyn_config):
 def load_config(cfg=None):
     ''' Load the config and set some sensible default values. '''
 
-    if 'VIRTUAL_ENV' not in os.environ:
-        raise SystemExit("Persyn must be run from inside a python virtualenv. See the install docs for details.")
-
     if cfg is None and 'PERSYN_CONFIG' not in os.environ:
         raise SystemExit("Please set PERSYN_CONFIG to point to your yaml config, or pass it as the first argument.")
 
@@ -97,6 +94,21 @@ def load_config(cfg=None):
         if 'mastodon' in config['chat']:
             if 'toot_length' not in config['chat']['mastodon']:
                 config['chat']['mastodon']['toot_length'] = 500
+
+    if 'memory' in config:
+        if 'conversation_interval' not in config['memory']:
+            config['memory']['conversation_interval'] = 600
+
+        if 'elastic' in config['memory']:
+            elastic_defaults = {
+                'version': 'v0',
+                'timeout': 30,
+                'index_prefix': config['id']['name'].replace(' ', '').lower()
+            }
+
+            for setting, val in elastic_defaults.items():
+                if setting not in config['memory']['elastic']:
+                    config['memory']['elastic'][setting] = val
 
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('sentiment', {})

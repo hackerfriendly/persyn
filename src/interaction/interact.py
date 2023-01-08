@@ -66,16 +66,7 @@ class Interact():
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         # Then create the Recall object using the Elasticsearch credentials.
-        self.recall = Recall(
-            bot_name=persyn_config.id.name,
-            bot_id=persyn_config.id.guid,
-            url=persyn_config.memory.elastic.url,
-            auth_name=persyn_config.memory.elastic.user,
-            auth_key=persyn_config.memory.elastic.key,
-            index_prefix=persyn_config.memory.elastic.index_prefix,
-            conversation_interval=600, # ten minutes
-            verify_certs=verify_certs
-        )
+        self.recall = Recall(persyn_config)
 
     def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
         '''
@@ -178,7 +169,11 @@ class Interact():
             visited = []
 
         # Use the entire existing convo first
-        ranked = self.recall.find_related_convos(service, channel, size=3)
+        ranked = self.recall.ltm.find_related_convos(
+            service, channel,
+            convo=self.recall.convo(service, channel),
+            size=3
+        )
         for hit in ranked:
             hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
             if hit_id not in visited:

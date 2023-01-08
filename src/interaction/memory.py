@@ -1,5 +1,5 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, no-name-in-module
 import uuid
 
 import elasticsearch
@@ -9,43 +9,21 @@ import shortuuid as su
 from interaction.chrono import elapsed, get_cur_ts
 
 # Relationship graphs
-from interaction.relationships import get_relationship_graph, ranked_matches, graph_to_json
+from interaction.relationships import Relationships
 
 # Color logging
 from utils.color_logging import ColorLog
 
 log = ColorLog()
 
-class Recall(): # pylint: disable=too-many-arguments
+class Recall():
     ''' Total Recall: stm + ltm. '''
-    def __init__(
-        self,
-        bot_name,
-        bot_id,
-        url,
-        auth_name,
-        auth_key,
-        index_prefix=None,
-        conversation_interval=600, # 10 minutes
-        verify_certs=True,
-        version="v0",
-        timeout=30
-    ):
-        self.bot_name = bot_name
-        self.bot_id = uuid.UUID(bot_id)
+    def __init__(self, persyn_config, version=None, conversation_interval=None):
+        self.bot_name = persyn_config.id.name
+        self.bot_id = uuid.UUID(persyn_config.id.guid)
 
-        self.stm = ShortTermMemory(conversation_interval)
-        self.ltm = LongTermMemory(
-            bot_name,
-            bot_id,
-            url,
-            auth_name,
-            auth_key,
-            index_prefix=index_prefix,
-            version=version,
-            verify_certs=verify_certs,
-            timeout=timeout
-        )
+        self.stm = ShortTermMemory(persyn_config, conversation_interval)
+        self.ltm = LongTermMemory(persyn_config, version)
 
     def save(self, service, channel, msg, speaker_name, speaker_id, verb=None):
         ''' Save to stm and ltm. Clears stm if it expired. Returns the current convo_id. '''
@@ -147,36 +125,12 @@ class Recall(): # pylint: disable=too-many-arguments
         ''' Return the timestamp of the last message from this channel (if any) '''
         return self.ltm.get_last_timestamp(service, channel)
 
-    def find_related_convos(self, service, channel, size=1, edge_bias=0.5):
-        '''
-        Find conversations related to the current convo using ES score and graph analysis.
-
-        Returns a ranked list of graph hits.
-        '''
-        # No convo? Nothing to match.
-        convo = self.convo(service, channel)
-        if not convo:
-            return []
-
-        convo_text = ' '.join(convo)
-
-        # No relationships? Nothing to match.
-        hits = self.ltm.lookup_relationships(service, channel, convo_text, size)
-        if not hits:
-            log.info("👨‍👩‍👧‍👦 find_related_convos():", "No hits, nothing to match.")
-            return []
-
-        G = get_relationship_graph(convo_text)
-
-        ranked = ranked_matches(G, hits, edge_bias=edge_bias)
-        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
-        return ranked
-
 class ShortTermMemory():
     ''' Wrapper class for in-process short term conversational memory. '''
-    def __init__(self, conversation_interval):
+    def __init__(self, persyn_config, conversation_interval=None):
         self.convo = {}
-        self.conversation_interval = conversation_interval
+        self.persyn_config = persyn_config
+        self.conversation_interval = conversation_interval or persyn_config.memory.conversation_interval
 
     def _new(self, service, channel):
         ''' Immediately initialize a new channel without sanity checking '''
@@ -294,29 +248,20 @@ class ShortTermMemory():
 
 class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
-    def __init__(
-        self,
-        bot_name,
-        bot_id,
-        url,
-        auth_name,
-        auth_key,
-        index_prefix=None,
-        verify_certs=True,
-        timeout=30,
-        version="v0"
-    ):
-        self.bot_name = bot_name
-        self.bot_id = uuid.UUID(bot_id)
-        self.bot_entity_id = self.uuid_to_entity(bot_id)
-        self.index_prefix = index_prefix or bot_name.lower()
-        self.version = version
+    def __init__(self, persyn_config, version=None):
+        self.relationships = Relationships(persyn_config)
+        self.persyn_config = persyn_config
+        self.bot_name = persyn_config.id.name
+        self.bot_id = uuid.UUID(persyn_config.id.guid)
+        self.bot_entity_id = self.uuid_to_entity(persyn_config.id.guid)
+        self.index_prefix = persyn_config.memory.elastic.index_prefix
+        self.version = version or persyn_config.memory.elastic.version
 
         self.es = elasticsearch.Elasticsearch( # pylint: disable=invalid-name
-            [url],
-            basic_auth=(auth_name, auth_key),
-            verify_certs=verify_certs,
-            request_timeout=timeout
+            [persyn_config.memory.elastic.url],
+            basic_auth=(persyn_config.memory.elastic.user, persyn_config.memory.elastic.key),
+            verify_certs=persyn_config.memory.elastic.verify_certs,
+            request_timeout=persyn_config.memory.elastic.timeout
         )
 
         self.index = {
@@ -366,7 +311,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         refresh=False
     ):
         '''
-        Save a line of conversation to ElasticSearch. Returns the convo doc.
+        Save a line of conversation to Elasticsearch. Returns the convo doc.
         '''
         prev_ts = self.get_last_timestamp(service, channel)
 
@@ -407,7 +352,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     # TODO: set refresh=False after separate summary thread is implemented.
     def save_summary(self, service, channel, convo_id, summary, keywords=None, refresh=True):
         '''
-        Save a conversation summary to ElasticSearch.
+        Save a conversation summary to Elasticsearch.
         '''
         if keywords is None:
             keywords = []
@@ -534,8 +479,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             'service': service,
             'channel': channel,
             'convo_id': convo_id,
-            'graph': graph_to_json(
-                get_relationship_graph(text, include_archetypes=include_archetypes)
+            'graph': self.relationships.graph_to_json(
+                self.relationships.get_relationship_graph(text, include_archetypes=include_archetypes)
             ),
             'convo': text,
             'refresh': False
@@ -724,3 +669,26 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         log.debug(f"👨‍👩‍👧 return: {ret}")
         return ret
+
+    def find_related_convos(self, service, channel, convo, size=1, edge_bias=0.5):
+        '''
+        Find conversations related to convo using ES score and graph analysis.
+
+        Returns a ranked list of graph hits.
+        '''
+        if not convo:
+            return []
+
+        convo_text = ' '.join(convo)
+
+        # No relationships? Nothing to match.
+        hits = self.lookup_relationships(service, channel, convo_text, size)
+        if not hits:
+            log.info("👨‍👩‍👧‍👦 find_related_convos():", "No hits, nothing to match.")
+            return []
+
+        G = self.relationships.get_relationship_graph(convo_text)
+
+        ranked = self.relationships.ranked_matches(G, hits, edge_bias=edge_bias)
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
+        return ranked
