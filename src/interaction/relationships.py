@@ -9,10 +9,6 @@ import networkx as nx
 
 from spacy.tokens import Doc
 
-# !pip install coreferee
-# !python3 -m coreferee install en
-# !python3 -m spacy download en_core_web_lg
-
 import coreferee
 
 # Color logging
@@ -27,11 +23,12 @@ class Relationships():
     def __init__(self, persyn_config):
         self.persyn_config = persyn_config
 
-        # Merged pipeline
+        # Coreference resolved pipeline
         self.nlp = spacy.load(persyn_config.spacy.model)
         self.nlp.add_pipe('coreferee')
         self.nlp.add_pipe('sentencizer')
 
+        # Merged pipeline
         self.nlp_merged = spacy.load(persyn_config.spacy.model)
         self.nlp_merged.add_pipe('merge_entities')
         self.nlp_merged.add_pipe('merge_noun_chunks')
