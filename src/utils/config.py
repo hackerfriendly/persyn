@@ -9,21 +9,36 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 from threading import Lock
+from subprocess import run
 
 import yaml
 import spacy
+import coreferee
 
 from dotwiz import DotWiz # pylint: disable=no-member
 
 def download_models(persyn_config):
     ''' Download any required ML models '''
     try:
-        spacy.load(persyn_config.spacy.model)
+        nlp = spacy.load(persyn_config.spacy.model)
     except OSError:
         spacy.cli.download(persyn_config.spacy.model)
+        nlp = spacy.load(persyn_config.spacy.model)
+
+    try:
+        nlp.add_pipe('coreferee')
+    except coreferee.errors.ModelNotSupportedError:
+        run(['python', '-m', 'coreferee', 'install', 'en'], shell=False, check=True)
+        nlp.add_pipe('coreferee')
+
+    nlp.remove_pipe('coreferee')
+    del nlp
 
 def load_config(cfg=None):
     ''' Load the config and set some sensible default values. '''
+
+    if 'VIRTUAL_ENV' not in os.environ:
+        raise SystemExit("Persyn must be run from inside a python virtualenv. See the install docs for details.")
 
     if cfg is None and 'PERSYN_CONFIG' not in os.environ:
         raise SystemExit("Please set PERSYN_CONFIG to point to your yaml config, or pass it as the first argument.")
