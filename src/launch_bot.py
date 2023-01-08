@@ -106,7 +106,11 @@ def main():
             log.info("🎨 Starting stable_diffusion")
             run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux)
 
-    # TODO: dreams, captions, sdd, parrot, voice
+        # if hasattr(cfg.dreams, 'captions') and hasattr(cfg.dreams.captions, 'workers'):
+        #     log.info("🖼  Starting interrogator")
+        #     run_tmux_cmd(session_name, ['interrogator', args.config_file], args.tmux)
+
+    # TODO: parrot, CLIP interrogator
 
     log.info(f"\n{cfg.id.name} is running. Attach with 👉 tmux{ccmode} attach -t {session_name}")
 
