@@ -4,7 +4,7 @@ cns.py
 
 The central nervous system. Listen for events and inject them into interact.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import json
 import os
 import argparse
@@ -26,6 +26,10 @@ from utils.color_logging import log
 
 # Bot config
 from utils.config import load_config
+
+# Defined in main()
+mastodon = None
+persyn_config = None
 
 def mastodon_msg(_, chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
@@ -79,11 +83,13 @@ def main():
     # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
 
     args = parser.parse_args()
+    global persyn_config
     persyn_config = load_config(args.config_file)
 
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')
 
+    global mastodon
     mastodon = Mastodon(args.config_file)
     mastodon.login()
 
@@ -123,8 +129,8 @@ def main():
                         log.critical(f"Unknown service {msg['service']}, skipping message: {sqsm.body}")
                         continue
 
-                except json.JSONDecodeError as e:
-                    log.critical(f"Bad json, skipping message: {sqsm.body}")
+                except json.JSONDecodeError as err:
+                    log.critical(f"Bad json, skipping message: {sqsm.body}", err)
                     continue
 
                 finally:

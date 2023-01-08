@@ -2,20 +2,29 @@
 dreams.py
 
 A REST API for generating chat bot hallucinations.
+
+TODO:
+This daemon was conceived in an earlier time (spring 2022), when many image engines roamed the earth,
+before Stable Diffusion rose to dominate them all.
+
+It needs a complete overhaul to make it easier to support local engines and external APIs.
+
+Notably, all local rendering is currently broken.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, no-member, invalid-name
 import json
 import os
 import random
 import tempfile
 import uuid
+import argparse
 
 from pathlib import Path
 from subprocess import run, CalledProcessError
-from threading import Lock
 
 import boto3
 import requests
+import uvicorn
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.responses import RedirectResponse
@@ -26,14 +35,11 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
-persyn_config = load_config()
+# These are defined in main()
+persyn_config = None
+sqs = None
 
 app = FastAPI()
-
-sqs = boto3.resource('sqs', region_name=getattr(persyn_config.id, 'aws_region', None))
-
-for g in persyn_config.dreams.gpus:
-    persyn_config.dreams.gpus[g] = Lock()
 
 SCRIPT_PATH = Path(__file__).resolve().parent
 
@@ -67,7 +73,7 @@ def wait_for_gpu():
     ''' Return the device name of first available GPU. Blocks until one is available and sets the lock. '''
     while True:
         gpu = random.choice(list(persyn_config.dreams.gpus))
-        if persyn_config.dreams.gpus[gpu].acquire(timeout=1):
+        if persyn_config.dreams.gpus[gpu]['lock'].acquire(timeout=1):
             return gpu
 
 def process_prompt(cmd, service, channel, queue, prompt, images, tmpdir, bot_name):
@@ -80,7 +86,7 @@ def process_prompt(cmd, service, channel, queue, prompt, images, tmpdir, bot_nam
             env['CUDA_VISIBLE_DEVICES'] = gpu
             run(cmd, check=True, env=env)
         finally:
-            persyn_config.dreams.gpus[gpu].release()
+            persyn_config.dreams.gpus[gpu]['lock'].release()
 
         upload_files(Path(tmpdir).glob('*'))
 
@@ -156,7 +162,7 @@ def stylegan2(service, channel, prompt, queue, model, image_id, bot_name, style)
         process_prompt(cmd, service, channel, queue, prompt, [image], tmpdir, bot_name)
 
 def sdd(service, channel, prompt, queue, model, image_id, bot_name, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
-    ''' Fetch images from sdd.py '''
+    ''' Fetch images from stable_diffusion.py '''
     url = getattr(persyn_config.dreams.stable_diffusion, 'url', None)
     if not url:
         raise HTTPException(
@@ -173,7 +179,7 @@ def sdd(service, channel, prompt, queue, model, image_id, bot_name, style, steps
         "guidance": guidance
     }
 
-    response = requests.post(f"{url}/generate/", params=req, stream=True)
+    response = requests.post(f"{url}/generate/", params=req, stream=True, timeout=120)
 
     if not response.ok:
         raise HTTPException(
@@ -360,3 +366,37 @@ def generate(
         "model": model,
         "image_id": image_id
     }
+
+def main():
+    ''' Main event '''
+    parser = argparse.ArgumentParser(
+        description='''Persyn dreams server. Do persyns dream of electric sheep?'''
+    )
+    parser.add_argument(
+        'config_file',
+        type=str,
+        nargs='?',
+        help='Path to bot config (default: use $PERSYN_CONFIG)',
+        default=os.environ.get('PERSYN_CONFIG', None)
+    )
+    # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
+
+    args = parser.parse_args()
+
+    global persyn_config
+    global sqs
+    persyn_config = load_config(args.config_file)
+    sqs = boto3.resource('sqs', region_name=getattr(persyn_config.id, 'aws_region', None))
+
+    log.info("😴 Dreams server starting up")
+
+    uvicorn.run(
+        'dreams.dreams:app',
+        host=persyn_config.dreams.hostname,
+        port=persyn_config.dreams.port,
+        workers=persyn_config.dreams.workers,
+        reload=False,
+    )
+
+if __name__ == "__main__":
+    main()

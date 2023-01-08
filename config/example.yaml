@@ -41,10 +41,6 @@ interact:
   url: http://localhost:8003
 
   # If running locally, specify the number of local workers to launch.
-  #
-  # This is only required if the hostname is not localhost, or if you
-  # need more workers to handle the load.
-  #
   # workers: 1
 
   # Optional: Provide a description of the bot's character or personality to
@@ -107,11 +103,23 @@ sentiment:
 # Optional: Dream image generation server (dreams.py)
 # dreams:
 #   url: http://localhost:8001
+#
+# If running locally, specify the number of local workers to launch.
+#   workers: 1
+#
 #   gpus:
 #     # CUDA number and a name for each local GPU to use for image generation
-#     1: Nvidia 2080
-#     2: Titan X
-#     3: A100
+#     0: RTX 2080
+#     1: Titan X
+#     2: A100
+
+#   # Supported image engines. Only required if generating images.
+#   engines:
+#     stylegan2:
+#       models:
+#         - ffhq
+#         - waifu
+#     stable-diffusion:
 
 #   # Image upload SCP destination and URL. Only required if generating images.
 #   upload:
@@ -122,19 +130,21 @@ sentiment:
 #   # Optional: Stable Diffusion image server (sdd.py)
 #   stable_diffusion:
 #     url: http://localhost:8005
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
 
 #   # Optional: Prompt Parrot server for 🪄 prompt enhancement (prompt-parrot.py)
 #   parrot:
 #     url: http://localhost:8004
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
 
 #   # Optional: CLIP Interrogator server for image recognition (interrogator.py)
 #   captions:
 #     url: http://localhost:9090
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
 
-#   # Supported image engines. Only required if generating images.
-#   engines:
-#     stylegan2:
-#       models:
-#         - ffhq
-#         - waifu
-#     stable-diffusion:

@@ -54,6 +54,7 @@ cns = "interaction.cns:main"
 slack = "chat.slack.bot:main"
 discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
+dreams = "dreams.dreams:main"
 stable_diffusion = "dreams.stable_diffusion:main"
 
 [project.optional-dependencies]
