@@ -4,19 +4,20 @@ clip-interrigator by pharmapsychotic, https://github.com/pharmapsychotic/clip-in
 
 Adapted to FastAPI by hackerfriendly
 '''
+# pylint: disable=import-error, no-name-in-module, no-member, wrong-import-position
 import hashlib
 import math
 import os
 import pickle
-import sys
 import base64
+import argparse
 
 from io import BytesIO
-from typing import Optional
 
 import numpy as np
 import requests
 import torch
+import uvicorn
 
 from models.blip import blip_decoder
 from PIL import Image
@@ -24,12 +25,18 @@ from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 from tqdm import tqdm
 
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from pydantic import BaseModel
 
-import clip # argparse: disable=wrong-import-position
+import clip
+
+# Color logging
+from utils.color_logging import log
+
+# Bot config
+from utils.config import load_config
 
 CHUNK_SIZE = 2048
 BLIP_IMAGE_EVAL_SIZE = 384
@@ -56,6 +63,7 @@ clip_model.cuda().eval()
 DATA_PATH = 'data'
 
 class LabelTable():
+    ''' LabelTable. This is horrible and needs a complete rewrite. '''
     def __init__(self, labels, desc):
         self.labels = labels
         self.embeds = []
@@ -96,6 +104,7 @@ class LabelTable():
         return [top_labels[0][i].numpy() for i in range(top_count)]
 
     def rank(self, image_features, top_count=1):
+        ''' rank labels '''
         if len(self.labels) <= CHUNK_SIZE:
             tops = self._rank(image_features, self.embeds, top_count=top_count)
             return [self.labels[i] for i in tops]
@@ -159,11 +168,11 @@ def interrogate(image):
         image_features = clip_model.encode_image(images).float()
     image_features /= image_features.norm(dim=-1, keepdim=True)
 
-    flaves = flavors.rank(image_features, 2048)
+    # flaves = flavors.rank(image_features, 2048)
     best_medium = mediums.rank(image_features, 1)[0]
-    best_artist = artists.rank(image_features, 1)[0]
-    best_trending = trendings.rank(image_features, 1)[0]
-    best_movement = movements.rank(image_features, 1)[0]
+    # best_artist = artists.rank(image_features, 1)[0]
+    # best_trending = trendings.rank(image_features, 1)[0]
+    # best_movement = movements.rank(image_features, 1)[0]
 
     best_prompt = caption
     best_sim = similarity(image_features, best_prompt)
@@ -256,15 +265,7 @@ async def root():
     return RedirectResponse("/docs")
 
 @app.post("/caption/")
-async def caption(
-    img: ImageToCaption
-    # seed: Optional[int] = Query(-1),
-    # steps: Optional[int] = Query(ge=1, le=100, default=40),
-    # width: Optional[int] = Query(512),
-    # height: Optional[int] = Query(512),
-    # guidance: Optional[float] = Query(7.5),
-    # safe: Optional[bool] = Query(True),
-    ):
+async def caption(img: ImageToCaption):
     ''' Generate a caption with clip-interrogator '''
 
     if img.data.startswith('http://') or img.data.startswith('https://'):
@@ -277,3 +278,35 @@ async def caption(
         image = Image.open(buf).convert('RGB')
 
     return { "caption": interrogate(image) }
+
+
+def main():
+    ''' Main event '''
+    parser = argparse.ArgumentParser(
+        description='''Picture captions by interrogator.py.'''
+    )
+    parser.add_argument(
+        'config_file',
+        type=str,
+        nargs='?',
+        help='Path to bot config (default: use $PERSYN_CONFIG)',
+        default=os.environ.get('PERSYN_CONFIG', None)
+    )
+    # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
+
+    args = parser.parse_args()
+
+    persyn_config = load_config(args.config_file)
+
+    log.info("🖼 Caption server starting up")
+
+    uvicorn.run(
+        'dreams.interrogator:app',
+        host=persyn_config.dreams.captions.hostname,
+        port=persyn_config.dreams.captions.port,
+        workers=persyn_config.dreams.captions.workers,
+        reload=False,
+    )
+
+if __name__ == '__main__':
+    main()
