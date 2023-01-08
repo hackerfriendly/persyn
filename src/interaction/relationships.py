@@ -32,6 +32,10 @@ class Relationships():
         self.nlp.add_pipe('coreferee')
         self.nlp.add_pipe('sentencizer')
 
+        self.nlp_merged = spacy.load(persyn_config.spacy.model)
+        self.nlp_merged.add_pipe('merge_entities')
+        self.nlp_merged.add_pipe('merge_noun_chunks')
+
         self.archetypes = [
             "Alice", "Bob", "Carol", "Dave", "Eve",
             "Frank", "Gavin", "Heidi", "Ivan", "Judy",
@@ -128,13 +132,7 @@ class Relationships():
         }
 
         # Merge nouns
-        self.nlp.add_pipe('merge_entities')
-        self.nlp.add_pipe('merge_noun_chunks')
-
-        doc = self.nlp(str(doc))
-
-        self.nlp.remove_pipe('merge_entities')
-        self.nlp.remove_pipe('merge_noun_chunks')
+        doc = self.nlp_merged(str(doc))
 
         # Resolve coreferences
         doc = self.referee(doc)
