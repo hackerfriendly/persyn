@@ -64,18 +64,6 @@ dev = [
   "pylint",
   "jupyterlab"
 ]
-interrogator = [
-  "tqdm",
-  "transformers==4.21.1",
-  "timm",
-#  "clip @ git+https://github.com/openai/CLIP.git@main#egg=clip",
-#  "blip @ git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip"
-]
-parrot = [
-  "transformers==4.21.1",
-  "torch==1.12.1",
-  "torchvision==0.13.1"
-]
 # TODO: https://github.com/facebookresearch/xformers
 stable_diffusion = [
   "accelerate",
