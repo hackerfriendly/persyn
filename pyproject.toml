@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "persyn"
-version = "0.0.0"
+version = "0.0.2"
 authors = [
   { name="Rob Flickenger", email="rob@hackerfriendly.com" },
 ]
