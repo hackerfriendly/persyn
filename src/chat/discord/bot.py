@@ -4,7 +4,7 @@ discord/bot.py
 
 Chat with your persyn on Discord.
 """
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
 import os
 import random
@@ -35,6 +35,78 @@ from chat.common import Chat
 
 # Coroutine reminders
 reminders = AsyncReminders()
+
+# Defined in main()
+app = None
+chat = None
+persyn_config = None
+mastodon = None
+
+intents = discord.Intents.default()
+intents.message_content = True # pylint: disable=assigning-non-slot
+app = discord.Client(intents=intents)
+
+@app.event
+async def on_ready():
+    ''' Ready player 0! '''
+    log.info(f"Logged into chat.service: discord as {app.user} (guilds: {[g.name for g in app.guilds]})")
+
+@app.event
+async def on_message(ctx):
+    ''' Default message handler. '''
+    channel = get_channel(ctx)
+
+    # Don't talk to yourself.
+    if it_me(ctx.author.id):
+        return
+
+    # Interrupt any rejoinder in progress
+    reminders.cancel(channel)
+
+    if ctx.author.bot:
+        log.warning(f'🤖 BOT DETECTED: {ctx.author.name} ({ctx.author.id})')
+        # 95% chance to just ignore them
+        if random.random() < 0.95:
+            return
+
+    # Handle commands and schedule a reply (if any)
+    await dispatch(ctx)
+
+@app.event
+async def on_raw_reaction_add(ctx):
+    ''' on_raw_reaction_add '''
+    channel = await app.fetch_channel(ctx.channel_id)
+    message = await channel.fetch_message(ctx.message_id)
+
+    if not it_me(message.author.id):
+        log.warning("👎 Not posting image that isn't mine.")
+        return
+
+    for embed in message.embeds:
+        fetch_and_post_to_masto(embed.image.url, embed.description)
+
+        # log.critical(embed.image.url)
+
+    # if len(message.embeds) > 0:
+    #     log.critical(message.embeds[0])
+
+
+    log.info(f'Reaction added: {ctx.member} : {ctx.emoji} ({message.id})')
+
+@app.event
+async def on_raw_reaction_remove(ctx):
+    ''' on_raw_reaction_remove '''
+    channel = await app.fetch_channel(ctx.channel_id)
+    message = await channel.fetch_message(ctx.message_id)
+
+    log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.id})')
+
+# @app.event
+# async def on_error(event, *args, **kwargs):
+#     ''' on_error '''
+#     log.critical(f'ERROR: {event}')
+#     log.critical(f'args: {args}')
+#     log.critical(f'kwargs: {kwargs}')
 
 def it_me(author_id):
     ''' Return True if the given id is one of ours '''
@@ -248,86 +320,20 @@ def main():
     # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
 
     args = parser.parse_args()
+
+    global persyn_config
     persyn_config = load_config(args.config_file)
 
     # Mastodon support
+    global mastodon
     mastodon = Mastodon(args.config_file)
     mastodon.login()
 
-    intents = discord.Intents.default()
-    intents.message_content = True # pylint: disable=assigning-non-slot
-
     # Chat library
+    global chat
     chat = Chat(persyn_config, service='discord')
 
-    app = discord.Client(intents=intents)
-
-    # Ugh, you can't instantiate App until you have the token, which requires
-    # the config to be loaded. So Discord events follow. -_-
-    ###
-
-    @app.event
-    async def on_ready():
-        ''' Ready player 0! '''
-        log.info(f"Logged into chat.service: discord as {app.user} (guilds: {[g.name for g in app.guilds]})")
-
-    @app.event
-    async def on_message(ctx):
-        ''' Default message handler. '''
-        channel = get_channel(ctx)
-
-        # Don't talk to yourself.
-        if it_me(ctx.author.id):
-            return
-
-        # Interrupt any rejoinder in progress
-        reminders.cancel(channel)
-
-        if ctx.author.bot:
-            log.warning(f'🤖 BOT DETECTED: {ctx.author.name} ({ctx.author.id})')
-            # 95% chance to just ignore them
-            if random.random() < 0.95:
-                return
-
-        # Handle commands and schedule a reply (if any)
-        await dispatch(ctx)
-
-    @app.event
-    async def on_raw_reaction_add(ctx):
-        ''' on_raw_reaction_add '''
-        channel = await app.fetch_channel(ctx.channel_id)
-        message = await channel.fetch_message(ctx.message_id)
-
-        if not it_me(message.author.id):
-            log.warning("👎 Not posting image that isn't mine.")
-            return
-
-        for embed in message.embeds:
-            fetch_and_post_to_masto(embed.image.url, embed.description)
-
-            # log.critical(embed.image.url)
-
-        # if len(message.embeds) > 0:
-        #     log.critical(message.embeds[0])
-
-
-        log.info(f'Reaction added: {ctx.member} : {ctx.emoji} ({message.id})')
-
-    @app.event
-    async def on_raw_reaction_remove(ctx):
-        ''' on_raw_reaction_remove '''
-        channel = await app.fetch_channel(ctx.channel_id)
-        message = await channel.fetch_message(ctx.message_id)
-
-        log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.id})')
-
-    # @app.event
-    # async def on_error(event, *args, **kwargs):
-    #     ''' on_error '''
-    #     log.critical(f'ERROR: {event}')
-    #     log.critical(f'args: {args}')
-    #     log.critical(f'kwargs: {kwargs}')
-
+    # Discord client
     app.run(persyn_config.chat.discord.token)
 
 if __name__ == '__main__':
