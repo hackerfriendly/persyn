@@ -1,7 +1,0 @@
-#!/bin/bash
-if [ -z "$1" ]; then
-  echo "Usage: kill_bot [session name]"
-  exit 1
-fi
-
-tmux kill-session -t $1

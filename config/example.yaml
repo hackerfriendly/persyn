@@ -15,6 +15,9 @@ memory:
     user: elastic-bot-user
     key: elastic-bot-password
     index_prefix: persyn
+    verify_certs: true
+  # Conversations end when this many seconds pass in silence
+  conversation_interval: 600
 
 # Required: Prompt completion options. Enable one of these.
 #
@@ -26,22 +29,18 @@ memory:
 completion:
   engine: openai
   api_key: sk-your-api_key-goes-here
+  # Choose an OpenAI model:
+  #   https://beta.openai.com/docs/models/overview
+  #   https://beta.openai.com/docs/model-index-for-researchers
   model: text-davinci-003
   minimum_quality_score: -2.0
   temperature: 0.99
-
-  # Optional: choose a spacy model. https://spacy.io/models/en
-  # spacy_model: en_core_web_lg
 
 # Required: Personality server (interact-server.py)
 interact:
   url: http://localhost:8003
 
   # If running locally, specify the number of local workers to launch.
-  #
-  # This is only required if the hostname is not localhost, or if you
-  # need more workers to handle the load.
-  #
   # workers: 1
 
   # Optional: Provide a description of the bot's character or personality to
@@ -62,11 +61,11 @@ interact:
 chat:
   # Slack chat module
   #
-  slack:
-    # From Slack management, Apps > Basic Information > App-Level Tokens
-    app_token: xapp-your-app-token-here
-    # From OAuth & Permission > Bot User OAuth Token
-    bot_token: xoxb-your-bot-token-here
+  # slack:
+  #   # From Slack management, Apps > Basic Information > App-Level Tokens
+  #   app_token: xapp-your-app-token-here
+  #   # From OAuth & Permission > Bot User OAuth Token
+  #   bot_token: xoxb-your-bot-token-here
 
   # Discord chat module
   #
@@ -83,12 +82,18 @@ chat:
   #   secret: "/path/to/your/user.secret"
   #   toot_length: 500
 
+# Optional, but recommended: Spacy NLP model. https://spacy.io/models/en
+# en_core_web_sm is the minimum (default) required.
+# en_core_web_lg is highly recommended if you have the resources to run it.
+spacy:
+  model: "en_core_web_sm"
+
 # Optional, but recommended: Sentiment analysis engine
 sentiment:
   engine: "flair"
   model: "en-sentiment"
   # engine: "spacy"
-  # engine: "en_core_web_lg"
+  # model: "en_core_web_lg"
 # Optional: Central Nervous System. Used for image generation and posting images
 # to social media.
 #
@@ -104,11 +109,23 @@ sentiment:
 # Optional: Dream image generation server (dreams.py)
 # dreams:
 #   url: http://localhost:8001
+#
+# If running locally, specify the number of local workers to launch.
+#   workers: 1
+#
 #   gpus:
 #     # CUDA number and a name for each local GPU to use for image generation
-#     1: Nvidia 2080
-#     2: Titan X
-#     3: A100
+#     0: RTX 2080
+#     1: Titan X
+#     2: A100
+
+#   # Supported image engines. Only required if generating images.
+#   engines:
+#     stylegan2:
+#       models:
+#         - ffhq
+#         - waifu
+#     stable-diffusion:
 
 #   # Image upload SCP destination and URL. Only required if generating images.
 #   upload:
@@ -119,19 +136,21 @@ sentiment:
 #   # Optional: Stable Diffusion image server (sdd.py)
 #   stable_diffusion:
 #     url: http://localhost:8005
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
 
 #   # Optional: Prompt Parrot server for 🪄 prompt enhancement (prompt-parrot.py)
 #   parrot:
 #     url: http://localhost:8004
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
 
 #   # Optional: CLIP Interrogator server for image recognition (interrogator.py)
 #   captions:
 #     url: http://localhost:9090
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
 
-#   # Supported image engines. Only required if generating images.
-#   engines:
-#     stylegan2:
-#       models:
-#         - ffhq
-#         - waifu
-#     stable-diffusion:
