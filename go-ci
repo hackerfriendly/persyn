@@ -1,0 +1,19 @@
+#!/bin/bash
+cd $(dirname $0)
+PERSYN=$(/bin/pwd)
+
+cd ${PERSYN}/dreams/clip-interrogator
+
+. env/bin/activate
+
+export CUDA_VISIBLE_DEVICES=0
+
+# for nvcc
+export PATH=$PATH:/usr/local/cuda-11.6/bin/
+
+while :; do
+	figlet -f slant -w 100 Clip Interrogator starting up | lolcat -a -d 5
+	. ${PERSYN}/config/dreams.conf
+	uvicorn interrogator:app --port ${CAPTION_SERVER_PORT} --host ${CAPTION_SERVER_HOST}
+	sleep 1
+done

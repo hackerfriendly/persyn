@@ -1,0 +1,14 @@
+#!/bin/bash
+cd $(dirname $0)/dreams/prompt-parrot
+
+. env/bin/activate
+
+# for nvcc
+export PATH=$PATH:/usr/local/cuda-11.6/bin/
+
+while :; do
+	figlet -f slant -w 100 Prompt Parrot starting up | lolcat -a -d 5
+	. ../../config/parrot.conf
+	uvicorn prompt-parrot:app --port ${PARROT_SERVER_PORT} --host ${PARROT_SERVER_HOST}
+	sleep 1
+done

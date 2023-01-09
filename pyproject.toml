@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "persyn"
+version = "0.0.2"
+authors = [
+  { name="Rob Flickenger", email="rob@hackerfriendly.com" },
+]
+description = "Personality Syndrome. Persyn for short."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "alt-profanity-check==1.1.3",
+  "beautifulsoup4",
+  "boto3",
+  "certifi",
+  "click",
+  "coreferee",
+  "discord.py",
+  "dotwiz",
+  "elasticsearch",
+  "fastapi[all]",
+  "flair",
+  "ftfy==6.1.1",
+  "humanize",
+  "Levenshtein",
+  "Mastodon.py",
+  "nlpcloud",
+  "nltk",
+  "openai",
+  "pyyaml",
+  "requests",
+  "scikit-learn==1.1.3",
+  "scipy==1.9.0",
+  "shortuuid",
+  "slack_bolt",
+  "spacy",
+  "spacytextblob",
+  "uvicorn",
+  "wikipedia"
+]
+
+[project.scripts]
+launch_bot = "launch_bot:main"
+kill_bot = "kill_bot:main"
+interact = "interaction.interact_server:main"
+cns = "interaction.cns:main"
+slack = "chat.slack.bot:main"
+discord = "chat.discord.bot:main"
+mastodon = "chat.mastodon.bot:main"
+dreams = "dreams.dreams:main"
+stable_diffusion = "dreams.stable_diffusion:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pylint",
+  "jupyterlab"
+]
+# TODO: https://github.com/facebookresearch/xformers
+stable_diffusion = [
+  "accelerate",
+  "scipy",
+  "safetensors",
+  "transformers==4.21.1",
+  "diffusers",
+  "torch==1.12.1",
+  "torchvision==0.13.1"
+]
+all = [
+  "accelerate",
+  "diffusers",
+  "safetensors",
+  "scipy",
+  "timm",
+  "torch==1.12.1",
+  "torchvision==0.13.1",
+  "tqdm",
+  "transformers==4.21.1"
+]
+
+[project.urls]
+"Homepage" = "https://persyn.io"
+"Bug Tracker" = "https://github.com/hackerfriendly/persyn/issues"

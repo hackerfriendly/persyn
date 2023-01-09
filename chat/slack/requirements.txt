@@ -1,4 +1,0 @@
-slack_bolt
-requests
-tweepy
-click

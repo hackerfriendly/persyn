@@ -1,0 +1,156 @@
+# Bot config and secrets
+
+# Bot identity
+id:
+  # Display name
+  name: My Bot
+  # Every bot gets its own GUID. Run uuidgen to get a fresh one.
+  guid: fed828a8-64c8-4f46-a15d-93973724614c
+
+# Required: At least one long-term memory service must be defined.
+# Currently only Elasticsearch is supported.
+memory:
+  elastic:
+    url: https://your-elasticsearch-instance.es.us-west-2.aws.found.io:443
+    user: elastic-bot-user
+    key: elastic-bot-password
+    index_prefix: persyn
+    verify_certs: true
+  # Conversations end when this many seconds pass in silence
+  conversation_interval: 600
+
+# Required: Prompt completion options. Enable one of these.
+#
+#   openai: https://beta.openai.com/account/api-keys
+#  gooseai: https://goose.ai/dashboard/apikeys
+# nlpcloud: https://nlpcloud.com/home/token
+
+# Currently only openai is supported, others are experimental.
+completion:
+  engine: openai
+  api_key: sk-your-api_key-goes-here
+  # Choose an OpenAI model:
+  #   https://beta.openai.com/docs/models/overview
+  #   https://beta.openai.com/docs/model-index-for-researchers
+  model: text-davinci-003
+  minimum_quality_score: -2.0
+  temperature: 0.99
+
+# Required: Personality server (interact-server.py)
+interact:
+  url: http://localhost:8003
+
+  # If running locally, specify the number of local workers to launch.
+  # workers: 1
+
+  # Optional: Provide a description of the bot's character or personality to
+  # include in each completion prompt. This can give the bot a more nuanced and
+  # characteristic tone.
+  #
+  # character: |
+  #   Persyn is a fun-loving bot. She frequently uses sarcasm and irony to get a
+  #   laugh out of people. She likes ice cream and dancing the tango.
+
+  # Optional: Provide a custom output filter (in the form of a Python
+  # expression) that is applied to all interaction replies. For example, a bot
+  # that doesn't use capitalization or commas:
+  #
+  # filter: re.sub(r",", "", reply.lower())
+
+# Chat modules. Enable one or more of these to talk to your bot.
+chat:
+  # Slack chat module
+  #
+  # slack:
+  #   # From Slack management, Apps > Basic Information > App-Level Tokens
+  #   app_token: xapp-your-app-token-here
+  #   # From OAuth & Permission > Bot User OAuth Token
+  #   bot_token: xoxb-your-bot-token-here
+
+  # Discord chat module
+  #
+  # discord:
+  #   token: your-discord-token-here
+  #   webhook: https://discord.com/api/webhooks/path-to-your-webhook
+
+  # Mastodon chat module
+  #
+  # Run masto-login.py to authenticate and generate the MASTODON_SECRET file.
+  #
+  # mastodon:
+  #   instance: "https://mastodon.social/"
+  #   secret: "/path/to/your/user.secret"
+  #   toot_length: 500
+
+# Optional, but recommended: Spacy NLP model. https://spacy.io/models/en
+# en_core_web_sm is the minimum (default) required.
+# en_core_web_lg is highly recommended if you have the resources to run it.
+spacy:
+  model: "en_core_web_sm"
+
+# Optional, but recommended: Sentiment analysis engine
+sentiment:
+  engine: "flair"
+  model: "en-sentiment"
+  # engine: "spacy"
+  # model: "en_core_web_lg"
+# Optional: Central Nervous System. Used for image generation and posting images
+# to social media.
+#
+# If this is set, also provide AWS credentials (either ~/.aws/credentials,
+# AWS environment variables, or an instance profile if running on EC2).
+#
+# The queue will be automatically created on first use.
+#
+# cns:
+#   sqs_queue: example
+#   aws_region: us-west-2
+
+# Optional: Dream image generation server (dreams.py)
+# dreams:
+#   url: http://localhost:8001
+#
+# If running locally, specify the number of local workers to launch.
+#   workers: 1
+#
+#   gpus:
+#     # CUDA number and a name for each local GPU to use for image generation
+#     0: RTX 2080
+#     1: Titan X
+#     2: A100
+
+#   # Supported image engines. Only required if generating images.
+#   engines:
+#     stylegan2:
+#       models:
+#         - ffhq
+#         - waifu
+#     stable-diffusion:
+
+#   # Image upload SCP destination and URL. Only required if generating images.
+#   upload:
+#     url_base: https://server.example.com/images/
+#     dest_path: user@server.example.com:htdocs/images/
+#     opts:
+
+#   # Optional: Stable Diffusion image server (sdd.py)
+#   stable_diffusion:
+#     url: http://localhost:8005
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
+
+#   # Optional: Prompt Parrot server for 🪄 prompt enhancement (prompt-parrot.py)
+#   parrot:
+#     url: http://localhost:8004
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
+
+#   # Optional: CLIP Interrogator server for image recognition (interrogator.py)
+#   captions:
+#     url: http://localhost:9090
+#
+#   If running locally, specify the number of local workers to launch.
+#     workers: 1
+
