@@ -4,7 +4,7 @@ slack/bot.py
 
 Chat with your persyn on Slack.
 """
-# pylint: disable=import-error, wrong-import-position
+# pylint: disable=import-error, wrong-import-position, no-member, invalid-name
 import argparse
 import os
 import random
@@ -46,6 +46,9 @@ reminders = Reminders()
 
 # Defined in main()
 app = None
+persyn_config = None
+mastodon = None
+chat = None
 
 ###
 # Slack helper functions
@@ -87,23 +90,6 @@ def get_caption(url):
 
     return chat.get_caption(resp.content)
 
-def say_something_later(say, channel, context, when, what=None):
-    ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
-
-    reminders.cancel(channel)
-
-    if what:
-        reminders.add(channel, when, say, args=what)
-    else:
-        # yadda yadda yadda
-        yadda = {
-            'channel_id': channel,
-            'user_id': context['user_id'],
-            'matches': ['...']
-        }
-        reminders.add(channel, when, catch_all, args=[say, yadda])
-
-
 def main():
     ''' Main event '''
     parser = argparse.ArgumentParser(
@@ -119,6 +105,7 @@ def main():
     # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
 
     args = parser.parse_args()
+    global persyn_config
     persyn_config = load_config(args.config_file)
 
     # Slack bolt App
@@ -126,10 +113,12 @@ def main():
     app = App(token=persyn_config.chat.slack.bot_token)
 
     # Mastodon support
+    global mastodon
     mastodon = Mastodon(args.config_file)
     mastodon.login()
 
     # Chat library
+    global chat
     chat = Chat(persyn_config, service=app.client.auth_test().data['url'])
 
     log.info(f"👖 Logged into chat.service: {chat.service}")
@@ -137,6 +126,22 @@ def main():
     # Ugh, you can't instantiate App until you have the token, which requires
     # the config to be loaded. So Slack events follow. -_-
     ###
+    def say_something_later(say, channel, context, when, what=None):
+        ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
+
+        reminders.cancel(channel)
+
+        if what:
+            reminders.add(channel, when, say, args=what)
+        else:
+            # yadda yadda yadda
+            yadda = {
+                'channel_id': channel,
+                'user_id': context['user_id'],
+                'matches': ['...']
+            }
+            reminders.add(channel, when, catch_all, args=[say, yadda])
+
     @app.message(re.compile(r"^help$", re.I))
     def help_me(say, context): # pylint: disable=unused-argument
         ''' TODO: These should really be / commands. '''
