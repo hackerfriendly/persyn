@@ -220,8 +220,8 @@ class Relationships():
                 # Only include a clause if it has a left, rel, and right.
                 if all(ret.values()) and ret not in clauses:
                     clauses.insert(0, ret)
-                    # Add a link to terminating punctuation, if any, skipping '.'.
-                    if sent[-1].dep_ == 'punct' and sent[-1].text != '.':
+                    # Add a link to terminating punctuation if it is a soldier or a hunchback
+                    if sent[-1].dep_ == 'punct' and sent[-1].text in ['!', '?']:
                         clauses.append({'left': ret['right'], 'rel': 'punct', 'right': [sent[-1].text]})
 
         return clauses
