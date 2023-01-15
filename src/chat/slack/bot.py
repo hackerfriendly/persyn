@@ -180,8 +180,8 @@ def main():
             channel,
             chat.get_summary(channel, max_tokens=30),
             engine="stable-diffusion",
-            width=768,
-            height=768,
+            width=704,
+            height=704,
             guidance=15
         )
 
@@ -208,7 +208,7 @@ def main():
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
-        chat.take_a_photo(channel, prompt, engine="stable-diffusion", width=768, height=768, guidance=15)
+        chat.take_a_photo(channel, prompt, engine="stable-diffusion", width=704, height=704, guidance=15)
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
         ents = chat.get_entities(prompt)

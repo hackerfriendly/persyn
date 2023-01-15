@@ -112,8 +112,8 @@ class Mastodon():
             engine=engine,
             style=style,
             model=model,
-            width=768,
-            height=768,
+            width=704,
+            height=704,
             guidance=15
         )
         ents = self.chat.get_entities(prompt)

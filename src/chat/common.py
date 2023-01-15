@@ -55,7 +55,7 @@ class Chat():
         if summary:
             if photo:
                 # HQ summaries: slower, but worth the wait.
-                self.take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}", width=768, height=768, guidance=15)
+                self.take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}", width=704, height=704, guidance=15)
             return summary
 
         return " :spiral_note_pad: :interrobang: "
