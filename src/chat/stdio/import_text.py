@@ -1,28 +1,16 @@
 #!/usr/bin/env python3
 """
-persyn.py
+import_text.py
 
-Chat with your persyn on the command line.
+Import text files. Creates relationship graphs and optionally summarizes as it imports.
+Summarization is run through the completion model, so use with caution.
+
+Text should be preformatted to remove line breaks within paragraphs.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import argparse
 import os
-import random
-import sys
-import tempfile
-import uuid
-
-from pathlib import Path
-from hashlib import sha256
-
-from mastodon import Mastodon as MastoNative, MastodonError, MastodonMalformedEventError, StreamListener
-from bs4 import BeautifulSoup
-
-import requests
-import spacy
-
-# Color logging
-from utils.color_logging import log
+import re
 
 # Bot config
 from utils.config import load_config
@@ -45,7 +33,12 @@ def main():
     parser.add_argument('--title', type=str, help='A title for this document (required)')
     parser.add_argument('--author', type=str, help='Author of this document (required)')
     parser.add_argument('--convo_id', type=str, help='convo_id (if not specified, generate one)', default=None)
-    parser.add_argument('--archetypes', action='store_true', help='Convert entities to archetypes (default: False)', default=False)
+    parser.add_argument(
+        '--archetypes',
+        action='store_true',
+        help='Convert entities to archetypes (default: False)',
+        default=False
+    )
     parser.add_argument('files', nargs='?', type=str, help='One or more text files to import')
 
     args = parser.parse_args()
@@ -55,8 +48,11 @@ def main():
 
     with fileinput.FileInput(files=args.files, mode='r') as f:
         for line in f:
-            if not line.strip():
+            line = line.strip()
+            if not line or not re.search('[a-zA-Z]', line):
                 continue
+
+            print(line)
 
             assert interact.recall.ltm.save_relationship_graph(
                     service='import_service',
@@ -65,6 +61,7 @@ def main():
                     text=line,
                     include_archetypes=False
             ) == 'created'
+
 
 if __name__ == '__main__':
     main()
