@@ -342,8 +342,13 @@ class GPT():
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
         ''' Ask GPT for a summary'''
+        if not text:
+            log.warning('get_summary():', "No text, skipping summary.")
+            return ""
+
         prompt=f"{text}\n\n{summarizer}\n"
         if len(prompt) > self.max_prompt_length:
+            # TODO: be smarter here. Rather than truncate, summarize in chunks.
             log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length}")
             textlen = self.max_prompt_length - len(summarizer) - 3
             prompt = f"{text[:textlen]}\n\n{summarizer}\n"
