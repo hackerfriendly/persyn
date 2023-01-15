@@ -446,18 +446,26 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Return a list of convo graphs matching the search term for this channel.
         '''
+
         # TODO: match speaker id HERE when cross-channel entity merging is working
         query = {
             "bool": {
-                "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
-                ]
+                "should": [
+                    {"match": {"service.keyword": "import_service"}},
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": service}},
+                                {"match": {"channel.keyword": channel}}
+                            ],
+                        }
+                    }
+                ],
             }
         }
 
         if search:
-            query['bool']['must'].append({"match": {"convo": {"query": search}}})
+            query['bool']['should'][1]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['relationship'],
@@ -490,6 +498,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             log.critical("∑ Could not save relationship:", rep)
         else:
             log.info("∑ relationship saved.")
+        return rep['result']
 
     @staticmethod
     def entity_key(service, channel, name):
