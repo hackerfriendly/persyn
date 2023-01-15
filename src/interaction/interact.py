@@ -183,10 +183,12 @@ class Interact():
             convo=[convo[-1]],
             size=1
         )
-        log.warning("gather_memories() ranked:", ranked)
+
         for hit in ranked:
             hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
             if hit_id not in visited:
+                if hit['hit']['_source']['service'] == 'import_service':
+                    log.info("📚 Hit found from import:", hit['hit']['_source']['channel'])
                 self.inject_idea(
                     service, channel,
                     self.completion.get_summary(hit['hit']['_source']['convo']),
