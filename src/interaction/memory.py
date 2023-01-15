@@ -451,7 +451,13 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         query = {
             "bool": {
                 "should": [
-                    {"match": {"service.keyword": "import_service"}},
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": "import_service"}},
+                            ]
+                        }
+                    },
                     {
                         "bool": {
                             "must": [
@@ -465,7 +471,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
 
         if search:
-            query['bool']['should'][1]['bool']['must'].append({"match": {"convo": {"query": search}}})
+            for i in range(len(query['bool']['should'])):
+                query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['relationship'],

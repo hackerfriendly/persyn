@@ -168,12 +168,22 @@ class Interact():
         if visited is None:
             visited = []
 
-        # Use the entire existing convo first
+        convo = self.recall.convo(service, channel)
+
+        if not convo:
+            return visited
+
+        # Use the entire existing convo, and just the last line on imported text
         ranked = self.recall.ltm.find_related_convos(
             service, channel,
-            convo=self.recall.convo(service, channel),
+            convo=convo,
             size=3
+        ) + self.recall.ltm.find_related_convos(
+            "import_service", "no_channel",
+            convo=[convo[-1]],
+            size=1
         )
+        log.warning("gather_memories() ranked:", ranked)
         for hit in ranked:
             hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
             if hit_id not in visited:
