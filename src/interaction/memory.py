@@ -506,9 +506,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
         rep = self.save_relationship(**doc)
         if rep['result'] != 'created':
-            log.critical("∑ Could not save relationship:", rep)
-        else:
-            log.info("∑ relationship saved.")
+            log.critical("📉 Could not save relationship:", rep)
         return rep['result']
 
     @staticmethod
