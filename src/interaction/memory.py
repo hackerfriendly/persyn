@@ -1,6 +1,7 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 # pylint: disable=invalid-name, no-name-in-module
 import uuid
+import logging
 
 import elasticsearch
 import shortuuid as su
@@ -15,6 +16,9 @@ from interaction.relationships import Relationships
 from utils.color_logging import ColorLog
 
 log = ColorLog()
+
+# Silence Elasticsearch transport
+logging.getLogger('elastic_transport.transport').setLevel(logging.CRITICAL)
 
 class Recall():
     ''' Total Recall: stm + ltm. '''
