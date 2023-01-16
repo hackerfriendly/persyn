@@ -422,15 +422,29 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         # TODO: match speaker id HERE when cross-channel entity merging is working
         query = {
             "bool": {
-                "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
-                ]
+                "should": [
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": "import_service"}},
+                            ]
+                        }
+                    },
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": service}},
+                                {"match": {"channel.keyword": channel}}
+                            ],
+                        }
+                    }
+                ],
             }
         }
 
         if search:
-            query['bool']['must'].append({"match": {"summary": {"query": search}}})
+            for i in range(len(query['bool']['should'])):
+                query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['summary'],
