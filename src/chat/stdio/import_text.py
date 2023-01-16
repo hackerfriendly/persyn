@@ -7,7 +7,7 @@ Summarization is run through the completion model, so use with caution.
 
 Text should be preformatted to remove line breaks within paragraphs.
 """
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
 import os
 import re
@@ -23,17 +23,22 @@ from interaction.interact import Interact
 # Defined in main
 interact = None
 
-def save_graph(channel, convo_id, text, include_archetypes):
-    ''' Save the relationship graph '''
+def save_imported_convo(service, channel, convo_id, text, author, summarize=False):
+    ''' Save the imported conversation '''
     log.debug('👉', text)
 
-    return interact.recall.ltm.save_relationship_graph(
-        service='import_service',
-        channel=channel,
-        convo_id=convo_id,
-        text=text,
-        include_archetypes=include_archetypes
-    )
+    if summarize:
+        interact.recall.save(service, channel, text, author, None, verb="wrote")
+        interact.summarize_convo(service, channel, save=True, dialog_only=False)
+
+    else:
+        interact.recall.ltm.save_relationship_graph(
+            service=service,
+            channel=channel,
+            convo_id=convo_id,
+            text=text,
+            include_archetypes=True
+        )
 
 def main():
     ''' Main event '''
@@ -50,9 +55,9 @@ def main():
     parser.add_argument('--author', type=str, help='Author of this document (required)')
     parser.add_argument('--convo_id', type=str, help='convo_id (if not specified, generate one)', default=None)
     parser.add_argument(
-        '--archetypes',
+        '--summarize',
         action='store_true',
-        help='Convert entities to archetypes (default: False)',
+        help='Summarize text using completion (default: False, might cost $)',
         default=False
     )
     parser.add_argument('files', nargs='+', help='One or more text files to import')
@@ -63,7 +68,13 @@ def main():
     global interact
     interact = Interact(persyn_config)
 
+    service = 'import_service'
     channel = f"{args.author.replace('|', '_')}|{args.title}"
+
+    # Make a cup of tea and settle down in your favorite chair.
+    if args.summarize:
+        interact.recall.save(service, channel, f"{args.title} by {args.author}",
+                             persyn_config.id.name, persyn_config.id.guid, verb="reads")
 
     for file in args.files:
         with open(file, mode='r', encoding='utf-8') as f:
@@ -73,14 +84,17 @@ def main():
                 if not line or not re.search('[a-zA-Z]', line):
                     continue
 
-                if len(' '.join(lines)) + len(line) > interact.completion.max_prompt_length:
-                    assert save_graph(channel, args.convo_id, ' '.join(lines), args.archetypes) == "created"
+                convo = ' '.join(lines)
+                if len(convo) + len(line) + 1 > interact.completion.max_prompt_length:
+                    save_imported_convo(
+                        service, channel, args.convo_id, convo, args.author, summarize=args.summarize
+                    )
                     lines = [line]
                 else:
                     lines.append(line)
 
             if lines:
-                assert save_graph(channel, args.convo_id, ' '.join(lines), args.archetypes) == "created"
+                save_imported_convo(service, channel, args.convo_id, convo, args.author, summarize=args.summarize)
 
         log.info(f"📚 imported: {file}")
 
