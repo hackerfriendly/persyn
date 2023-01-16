@@ -58,6 +58,7 @@ mastodon = "chat.mastodon.bot:main"
 dreams = "dreams.dreams:main"
 stable_diffusion = "dreams.stable_diffusion:main"
 import_text = "chat.stdio.import_text:main"
+autobus = "interaction.cns_autobus:main"
 
 [project.optional-dependencies]
 dev = [

@@ -12,14 +12,17 @@ import requests
 # Color logging
 from utils.color_logging import log
 
+# Bot config
+from utils.config import load_config
+
 # Artist names
 from utils.art import artists
 
 class Chat():
     ''' Container class for common chat functions '''
-    def __init__(self, config, service=None):
+    def __init__(self, config_file, service=None):
         ''' da setup '''
-        self.config = config
+        self.config = load_config(config_file)
         self.service = service
 
         if not hasattr(self.config.chat, 'photo_triggers'):

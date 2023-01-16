@@ -331,7 +331,7 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(persyn_config, service='discord')
+    chat = Chat(args.config_file, service='discord')
 
     # Discord client
     app.run(persyn_config.chat.discord.token)

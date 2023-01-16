@@ -30,6 +30,7 @@ from utils.config import load_config
 # Defined in main()
 mastodon = None
 persyn_config = None
+persyn_config_file = None
 
 def mastodon_msg(_, chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
@@ -40,13 +41,13 @@ def mastodon_msg(_, chat, channel, bot_name, caption, images): # pylint: disable
 
 def image_ready(event, service):
     ''' An image has been generated '''
-    chat = Chat(persyn_config, service=event['service'])
+    chat = Chat(persyn_config_file, service=event['service'])
     services[service](persyn_config, chat, event['channel'], event['bot_name'], event['caption'], event['images'])
 
 def say_something(event, service):
     ''' Send a message to a service + channel '''
-    chat = Chat(persyn_config, service=event['service'])
-    services[service](persyn_config, chat, event['channel'], event['bot_name'], event['message'])
+    chat = Chat(persyn_config_file, service=event['service'])
+    services[service](persyn_config_file, chat, event['channel'], event['bot_name'], event['message'])
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
@@ -85,6 +86,9 @@ def main():
     args = parser.parse_args()
     global persyn_config
     persyn_config = load_config(args.config_file)
+
+    global persyn_config_file
+    persyn_config_file = args.config_file
 
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')

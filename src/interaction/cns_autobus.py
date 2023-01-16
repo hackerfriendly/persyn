@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+'''
+cns-autobus.py
+
+The central nervous system. Listen for events and inject them into interact. Uses Redis instead of Boto.
+'''
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
+import os
+import argparse
+
+import autobus
+
+# Common chat library
+from chat.common import Chat
+from chat.simple import slack_msg, discord_msg
+
+# Mastodon support for image posting
+from chat.mastodon.bot import Mastodon
+
+# Message classes
+from interaction.messages import SendChat
+
+# Color logging
+from utils.color_logging import log
+
+# Bot config
+from utils.config import load_config
+
+# Defined in main()
+mastodon = None
+persyn_config = None
+persyn_config_file = None
+
+def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
+    ''' Post images to Mastodon '''
+    for image in images:
+        mastodon.fetch_and_post_image(
+            f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn"
+        )
+
+
+services = {
+    'https://persyn.slack.com/': slack_msg,
+    'discord': discord_msg,
+    'mastodon': mastodon_msg
+}
+
+
+def image_ready(event, service):
+    ''' An image has been generated '''
+    chat = Chat(persyn_config, service=event['service'])
+    services[service](persyn_config, chat, event['channel'], event['bot_name'], event['caption'], event['images'])
+
+
+def say_something(event):
+    ''' Send a message to a service + channel '''
+    chat = Chat(event.config, service=event.service)
+    services[event.service](persyn_config, chat, event.channel, event.bot_name, event.msg)
+
+# def new_idea(msg):
+    # ''' Inject a new idea '''
+    # chat.inject_idea(
+    #     channel=msg['channel'],
+    #     idea=f"an image of '{msg['caption']}' was posted to {persyn_config.dreams.upload.url_base}/{msg['guid']}.jpg",
+    #     verb="notices"
+    # )
+
+
+
+
+@autobus.subscribe(SendChat)
+def send_chat(event):
+    say_something(event)
+
+
+
+
+
+def main():
+    ''' Main event '''
+    parser = argparse.ArgumentParser(
+        description='''Persyn central nervous system. Run one server for each bot.'''
+    )
+    parser.add_argument(
+        'config_file',
+        type=str,
+        nargs='?',
+        help='Path to bot config (default: use $PERSYN_CONFIG)',
+        default=os.environ.get('PERSYN_CONFIG', None)
+    )
+    # parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
+
+    args = parser.parse_args()
+    global persyn_config
+    persyn_config = load_config(args.config_file)
+
+    global persyn_config_file
+    persyn_config_file = args.config_file
+
+    if not hasattr(persyn_config, 'cns'):
+        raise SystemExit('cns not defined in config, exiting.')
+
+    global mastodon
+    mastodon = Mastodon(args.config_file)
+    mastodon.login()
+
+    log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
+
+    try:
+        autobus.run()
+
+    # Exit gracefully on ^C (so the wrapper script while loop continues)
+    except KeyboardInterrupt as kbderr:
+        print()
+        raise SystemExit(0) from kbderr
+
+if __name__ == '__main__':
+    main()

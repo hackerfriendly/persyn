@@ -119,7 +119,7 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(persyn_config, service=app.client.auth_test().data['url'])
+    chat = Chat(args.config_file, service=app.client.auth_test().data['url'])
 
     log.info(f"👖 Logged into chat.service: {chat.service}")
 
