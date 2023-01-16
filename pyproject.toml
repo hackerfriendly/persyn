@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "persyn"
-version = "0.0.2"
+version = "0.0.3-dev"
 authors = [
   { name="Rob Flickenger", email="rob@hackerfriendly.com" },
 ]
@@ -57,6 +57,7 @@ discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
 dreams = "dreams.dreams:main"
 stable_diffusion = "dreams.stable_diffusion:main"
+import_text = "chat.stdio.import_text:main"
 
 [project.optional-dependencies]
 dev = [
@@ -69,10 +70,10 @@ stable_diffusion = [
   "accelerate",
   "scipy",
   "safetensors",
-  "transformers==4.21.1",
+  "transformers",
   "diffusers",
-  "torch==1.12.1",
-  "torchvision==0.13.1"
+  "torch",
+  "torchvision"
 ]
 all = [
   "accelerate",
@@ -80,10 +81,10 @@ all = [
   "safetensors",
   "scipy",
   "timm",
-  "torch==1.12.1",
-  "torchvision==0.13.1",
+  "torch",
+  "torchvision",
   "tqdm",
-  "transformers==4.21.1"
+  "transformers"
 ]
 
 [project.urls]

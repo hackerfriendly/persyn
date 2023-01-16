@@ -105,8 +105,6 @@ def vdiff_cfg(service, channel, prompt, queue, model, image_id, steps, bot_name)
             f'{SCRIPT_PATH}/v-diffusion-pytorch/cfg_sample.py',
             '--out', f'{tmpdir}/{image}',
             '--steps', f'{steps}',
-            # Bigger is nice but quite slow (~40 minutes for 500 steps)
-            # '--size', '768', '768',
             '--size', '512', '512',
             '--seed', f'{random.randint(0, 2**64 - 1)}',
             '--model', model,

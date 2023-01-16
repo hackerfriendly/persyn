@@ -68,7 +68,7 @@ class Interact():
         # Then create the Recall object using the Elasticsearch credentials.
         self.recall = Recall(persyn_config)
 
-    def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0):
+    def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0, dialog_only=True):
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
@@ -87,14 +87,19 @@ class Interact():
             ' '.join(self.recall.convo(service, channel))
         )
 
-        dialog = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
-        if not dialog:
-            dialog = [f"{self.config.id.name} isn't sure what is happening."]
+        if dialog_only:
+            text = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
+        else:
+            text = self.recall.convo(service, channel)
+
+        if not text:
+            text = [f"{self.config.id.name} isn't sure what is happening."]
+
 
         log.warning("∑ summarizing convo")
 
         summary = self.completion.get_summary(
-            text='\n'.join(dialog),
+            text='\n'.join(text),
             summarizer="To briefly summarize this conversation,",
             max_tokens=max_tokens
         )
@@ -115,7 +120,7 @@ class Interact():
             return summary + f"\nKeywords: {keywords}"
 
         if context_lines:
-            return "\n".join(dialog[-context_lines:] + [summary])
+            return "\n".join(text[-context_lines:] + [summary])
 
         return summary
 
@@ -168,15 +173,27 @@ class Interact():
         if visited is None:
             visited = []
 
-        # Use the entire existing convo first
+        convo = self.recall.convo(service, channel)
+
+        if not convo:
+            return visited
+
+        # Use the entire existing convo, and just the last line on imported text
         ranked = self.recall.ltm.find_related_convos(
             service, channel,
-            convo=self.recall.convo(service, channel),
+            convo=convo,
             size=3
+        ) + self.recall.ltm.find_related_convos(
+            "import_service", "no_channel",
+            convo=[convo[-1]],
+            size=1
         )
+
         for hit in ranked:
             hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
             if hit_id not in visited:
+                if hit['hit']['_source']['service'] == 'import_service':
+                    log.info("📚 Hit found from import:", hit['hit']['_source']['channel'])
                 self.inject_idea(
                     service, channel,
                     self.completion.get_summary(hit['hit']['_source']['convo']),

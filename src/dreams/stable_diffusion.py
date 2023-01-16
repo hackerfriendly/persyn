@@ -93,7 +93,7 @@ def clear_cuda_mem():
     gc.collect()
     torch.cuda.empty_cache()
 
-def generate_image(prompt, seed, steps, width=768, height=768, guidance=15):
+def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
     ''' Generate and return an image array using the first available GPU '''
     gpu = wait_for_gpu()
 
@@ -120,7 +120,8 @@ def generate_image(prompt, seed, steps, width=768, height=768, guidance=15):
         clear_cuda_mem()
         GPUS[gpu].release()
 
-def safe_generate_image(prompt, seed, steps, width=768, height=768, guidance=15, safe=True):
+
+def safe_generate_image(prompt, seed, steps, width=704, height=704, guidance=15, safe=True):
     ''' Generate an image and check NSFW. Returns a FastAPI StreamingResponse. '''
 
     image = generate_image(prompt, seed, steps, width, height, guidance)
@@ -154,8 +155,8 @@ def generate(
     prompt: Optional[str] = Query(""),
     seed: Optional[int] = Query(-1),
     steps: Optional[int] = Query(ge=1, le=100, default=40),
-    width: Optional[int] = Query(768),
-    height: Optional[int] = Query(768),
+    width: Optional[int] = Query(704),
+    height: Optional[int] = Query(704),
     guidance: Optional[float] = Query(15),
     safe: Optional[bool] = Query(True),
     ):

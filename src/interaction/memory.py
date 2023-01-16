@@ -1,6 +1,7 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 # pylint: disable=invalid-name, no-name-in-module
 import uuid
+import logging
 
 import elasticsearch
 import shortuuid as su
@@ -15,6 +16,9 @@ from interaction.relationships import Relationships
 from utils.color_logging import ColorLog
 
 log = ColorLog()
+
+# Silence Elasticsearch transport
+logging.getLogger('elastic_transport.transport').setLevel(logging.CRITICAL)
 
 class Recall():
     ''' Total Recall: stm + ltm. '''
@@ -418,15 +422,29 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         # TODO: match speaker id HERE when cross-channel entity merging is working
         query = {
             "bool": {
-                "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
-                ]
+                "should": [
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": "import_service"}},
+                            ]
+                        }
+                    },
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": service}},
+                                {"match": {"channel.keyword": channel}}
+                            ],
+                        }
+                    }
+                ],
             }
         }
 
         if search:
-            query['bool']['must'].append({"match": {"summary": {"query": search}}})
+            for i in range(len(query['bool']['should'])):
+                query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['summary'],
@@ -446,18 +464,33 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Return a list of convo graphs matching the search term for this channel.
         '''
+
         # TODO: match speaker id HERE when cross-channel entity merging is working
         query = {
             "bool": {
-                "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
-                ]
+                "should": [
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": "import_service"}},
+                            ]
+                        }
+                    },
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": service}},
+                                {"match": {"channel.keyword": channel}}
+                            ],
+                        }
+                    }
+                ],
             }
         }
 
         if search:
-            query['bool']['must'].append({"match": {"convo": {"query": search}}})
+            for i in range(len(query['bool']['should'])):
+                query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['relationship'],
@@ -487,9 +520,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
         rep = self.save_relationship(**doc)
         if rep['result'] != 'created':
-            log.critical("∑ Could not save relationship:", rep)
-        else:
-            log.info("∑ relationship saved.")
+            log.critical("📉 Could not save relationship:", rep)
+        return rep['result']
 
     @staticmethod
     def entity_key(service, channel, name):
