@@ -91,8 +91,8 @@ class Mastodon():
             service='mastodon',
             interact_url=self.cfg.interact.url,
             dreams_url=self.cfg.dreams.url,
-            captions_url=self.cfg.captions.url,
-            parrot_url=self.cfg.parrot.url
+            captions_url=self.cfg.dreams.captions.url,
+            parrot_url=self.cfg.dreams.parrot.url
         )
 
         return True
