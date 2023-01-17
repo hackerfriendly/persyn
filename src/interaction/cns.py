@@ -38,10 +38,20 @@ def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disabl
         )
 
 services = {
-    'https://persyn.slack.com/': slack_msg,
+    'slack': slack_msg,
     'discord': discord_msg,
     'mastodon': mastodon_msg
 }
+
+def get_service(svc):
+    ''' Find the correct service for the dispatcher '''
+    if 'slack.com' in svc:
+        return 'slack'
+    if svc in services:
+        return svc
+
+    log.critical(f"Unknown service: {svc}")
+    return None
 
 def say_something(event):
     ''' Send a message to a service + channel '''
@@ -53,7 +63,7 @@ def say_something(event):
         captions_url=persyn_config.dreams.captions.url,
         parrot_url=persyn_config.dreams.parrot.url
     )
-    services[event.service](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
+    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
