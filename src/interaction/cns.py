@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 '''
-cns.py
+cns-autobus.py
 
-The central nervous system. Listen for events and inject them into interact.
+The central nervous system. Listen for events and inject them into interact. Uses Redis instead of Boto.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
-import json
 import os
 import argparse
-# import uuid
 
-import boto3
-
-from botocore.exceptions import ClientError
+import autobus
 
 # Common chat library
 from chat.common import Chat
@@ -20,6 +16,9 @@ from chat.simple import slack_msg, discord_msg
 
 # Mastodon support for image posting
 from chat.mastodon.bot import Mastodon
+
+# Message classes
+from interaction.messages import SendChat
 
 # Color logging
 from utils.color_logging import log
@@ -30,24 +29,31 @@ from utils.config import load_config
 # Defined in main()
 mastodon = None
 persyn_config = None
-persyn_config_file = None
 
-def mastodon_msg(_, chat, channel, bot_name, caption, images): # pylint: disable=unused-argument
+def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
     for image in images:
         mastodon.fetch_and_post_image(
             f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn"
         )
 
-def image_ready(event, service):
-    ''' An image has been generated '''
-    chat = Chat(persyn_config_file, service=event['service'])
-    services[service](persyn_config, chat, event['channel'], event['bot_name'], event['caption'], event['images'])
+services = {
+    'https://persyn.slack.com/': slack_msg,
+    'discord': discord_msg,
+    'mastodon': mastodon_msg
+}
 
-def say_something(event, service):
+def say_something(event):
     ''' Send a message to a service + channel '''
-    chat = Chat(persyn_config_file, service=event['service'])
-    services[service](persyn_config_file, chat, event['channel'], event['bot_name'], event['message'])
+    chat = Chat(
+        bot_name=event.bot_name,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+    services[event.service](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
@@ -57,17 +63,11 @@ def say_something(event, service):
     #     verb="notices"
     # )
 
-# Map all event types to the relevant functions
-events = {
-    'image-ready': image_ready,
-    'say': say_something
-}
+@autobus.subscribe(SendChat)
+def send_chat(event):
+    ''' Dispatch chat event w/ optional images '''
+    say_something(event)
 
-services = {
-    'slack': slack_msg,
-    'discord': discord_msg,
-    'mastodon': mastodon_msg
-}
 
 def main():
     ''' Main event '''
@@ -87,9 +87,6 @@ def main():
     global persyn_config
     persyn_config = load_config(args.config_file)
 
-    global persyn_config_file
-    persyn_config_file = args.config_file
-
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')
 
@@ -97,54 +94,11 @@ def main():
     mastodon = Mastodon(args.config_file)
     mastodon.login()
 
-    sqs = boto3.resource('sqs', region_name=persyn_config.cns.aws_region)
-
-    try:
-        queue = sqs.get_queue_by_name(QueueName=persyn_config.cns.sqs_queue)
-    except ClientError:
-        try:
-            queue = sqs.create_queue(
-                QueueName=persyn_config.cns.sqs_queue,
-                Attributes={
-                    'DelaySeconds': '0',
-                    'MessageRetentionPeriod': '345600'
-                }
-            )
-        except ClientError as sqserr:
-            raise RuntimeError from sqserr
-
     log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
 
     try:
-        while True:
-            for sqsm in queue.receive_messages(WaitTimeSeconds=20):
-                log.info(f"⚡️ {sqsm.body}")
+        autobus.run()
 
-                try:
-                    msg = json.loads(sqsm.body)
-
-                    if 'slack.com' in msg['service']:
-                        chat_service = 'slack'
-                    elif msg['service'] == 'discord':
-                        chat_service = 'discord'
-                    elif msg['service'] == 'mastodon':
-                        chat_service = 'mastodon'
-                    else:
-                        log.critical(f"Unknown service {msg['service']}, skipping message: {sqsm.body}")
-                        continue
-
-                except json.JSONDecodeError as err:
-                    log.critical(f"Bad json, skipping message: {sqsm.body}", err)
-                    continue
-
-                finally:
-                    sqsm.delete()
-
-                try:
-                    events[msg['event_type']](msg, chat_service)
-
-                except AttributeError:
-                    log.critical(f"⚡️ Unknown event type: {msg['event_type']}")
     # Exit gracefully on ^C (so the wrapper script while loop continues)
     except KeyboardInterrupt as kbderr:
         print()
