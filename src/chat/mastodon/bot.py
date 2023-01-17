@@ -4,7 +4,7 @@ mastodon/bot.py
 
 Chat with your persyn on Mastodon.
 """
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
 import os
 import random
@@ -86,7 +86,14 @@ class Mastodon():
             f"Logged into Mastodon as @{creds.username}@{self.cfg.chat.mastodon.instance} ({creds.display_name})"
         )
 
-        self.chat = Chat(self.cfg, service='mastodon')
+        self.chat = Chat(
+            bot_name=self.cfg.id.name,
+            service='mastodon',
+            interact_url=self.cfg.interact.url,
+            dreams_url=self.cfg.dreams.url,
+            captions_url=self.cfg.dreams.captions.url,
+            parrot_url=self.cfg.dreams.parrot.url
+        )
 
         return True
 

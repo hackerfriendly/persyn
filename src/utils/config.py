@@ -112,6 +112,8 @@ def load_config(cfg=None):
 
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('sentiment', {})
+    config.setdefault('interact', {'url': None})
+    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'parrot': {'url': None}, 'stable_diffusion': {'url': None}})
 
     # Check for required models
     persyn_config = DotWiz(config)

@@ -331,7 +331,14 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(persyn_config, service='discord')
+    chat = Chat(
+        bot_name=persyn_config.id.name,
+        service='discord',
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
 
     # Discord client
     app.run(persyn_config.chat.discord.token)
