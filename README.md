@@ -37,7 +37,21 @@ The default install only includes chat support. If you'd also like to generate a
 (env) $ pip install persyn[all]
 ```
 
+Image posting now requires Schuyler Erle's https://github.com/schuyler/autobus/ which must be installed manually (for now).
+
 Tmux is also highly recommended, and is required for using the bot launcher.
+
+# Configure a new bot
+
+Create a new config file, using `config/example.yaml` as a template.
+
+Every bot should have a unique guid. Run `uuidgen` and paste it into your config under id > guid.
+
+You will need a language model for prompt completion. OpenAI is currently the most reliable and best tested. Follow one of the URLs in the example to obtain an API key.
+
+At least one chat module (Slack, Discord, or Mastodon) should be enabled so you can interact with the bot.
+
+Image generation requires several additional components mentioned in the example config. Install docs coming soon.
 
 # Running a bot
 

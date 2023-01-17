@@ -38,10 +38,10 @@ completion:
 
 # Required: Personality server (interact-server.py)
 interact:
-  url: http://localhost:8003
+  url: http://localhost:8001
 
   # If running locally, specify the number of local workers to launch.
-  # workers: 1
+  workers: 1
 
   # Optional: Provide a description of the bot's character or personality to
   # include in each completion prompt. This can give the bot a more nuanced and
@@ -84,7 +84,8 @@ chat:
 
 # Optional, but recommended: Spacy NLP model. https://spacy.io/models/en
 # en_core_web_sm is the minimum (default) required.
-# en_core_web_lg is highly recommended if you have the resources to run it.
+# Other options are en_core_web_md, en_core_web_lg, or en_core_web_trf.
+# These are more accurate for some tasks, but require significantly more resources.
 spacy:
   model: "en_core_web_sm"
 
@@ -92,50 +93,28 @@ spacy:
 sentiment:
   engine: "flair"
   model: "en-sentiment"
-  # engine: "spacy"
-  # model: "en_core_web_lg"
-# Optional: Central Nervous System. Used for image generation and posting images
-# to social media.
-#
-# If this is set, also provide AWS credentials (either ~/.aws/credentials,
-# AWS environment variables, or an instance profile if running on EC2).
-#
-# The queue will be automatically created on first use.
-#
-# cns:
-#   sqs_queue: example
-#   aws_region: us-west-2
 
-# Optional: Dream image generation server (dreams.py)
+# # Optional: Central Nervous System. Used for image generation and posting images to social media.
+# # This also requires autobus, https://github.com/schuyler/autobus/
+# cns:
+#   workers: 1
+
+# # Optional: Dream image generation multiplexer (dreams.py)
 # dreams:
-#   url: http://localhost:8001
+#   url: http://localhost:8002
 #
 # If running locally, specify the number of local workers to launch.
 #   workers: 1
 #
-#   gpus:
-#     # CUDA number and a name for each local GPU to use for image generation
-#     0: RTX 2080
-#     1: Titan X
-#     2: A100
-
-#   # Supported image engines. Only required if generating images.
-#   engines:
-#     stylegan2:
-#       models:
-#         - ffhq
-#         - waifu
-#     stable-diffusion:
-
 #   # Image upload SCP destination and URL. Only required if generating images.
 #   upload:
 #     url_base: https://server.example.com/images/
 #     dest_path: user@server.example.com:htdocs/images/
 #     opts:
 
-#   # Optional: Stable Diffusion image server (sdd.py)
+#   # Optional: Stable Diffusion image server (sdd.py) for image generation
 #   stable_diffusion:
-#     url: http://localhost:8005
+#     url: http://localhost:8003
 #
 #   If running locally, specify the number of local workers to launch.
 #     workers: 1
@@ -149,7 +128,7 @@ sentiment:
 
 #   # Optional: CLIP Interrogator server for image recognition (interrogator.py)
 #   captions:
-#     url: http://localhost:9090
+#     url: http://localhost:8005
 #
 #   If running locally, specify the number of local workers to launch.
 #     workers: 1
