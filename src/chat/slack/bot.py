@@ -119,7 +119,14 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(args.config_file, service=app.client.auth_test().data['url'])
+    chat = Chat(
+        bot_name=persyn_config.id.name,
+        service=app.client.auth_test().data['url'],
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
 
     log.info(f"👖 Logged into chat.service: {chat.service}")
 

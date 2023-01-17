@@ -86,7 +86,14 @@ class Mastodon():
             f"Logged into Mastodon as @{creds.username}@{self.cfg.chat.mastodon.instance} ({creds.display_name})"
         )
 
-        self.chat = Chat(self.config_file, service='mastodon')
+        self.chat = Chat(
+            bot_name=self.cfg.id.name,
+            service='mastodon',
+            interact_url=self.cfg.interact.url,
+            dreams_url=self.cfg.dreams.url,
+            captions_url=self.cfg.captions.url,
+            parrot_url=self.cfg.parrot.url
+        )
 
         return True
 

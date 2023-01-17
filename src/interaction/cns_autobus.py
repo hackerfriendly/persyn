@@ -29,7 +29,6 @@ from utils.config import load_config
 # Defined in main()
 mastodon = None
 persyn_config = None
-persyn_config_file = None
 
 def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
@@ -38,24 +37,23 @@ def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disabl
             f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn"
         )
 
-
 services = {
     'https://persyn.slack.com/': slack_msg,
     'discord': discord_msg,
     'mastodon': mastodon_msg
 }
 
-
-def image_ready(event, service):
-    ''' An image has been generated '''
-    chat = Chat(persyn_config, service=event['service'])
-    services[service](persyn_config, chat, event['channel'], event['bot_name'], event['caption'], event['images'])
-
-
 def say_something(event):
     ''' Send a message to a service + channel '''
-    chat = Chat(event.config, service=event.service)
-    services[event.service](persyn_config, chat, event.channel, event.bot_name, event.msg)
+    chat = Chat(
+        bot_name=event.bot_name,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+    services[event.service](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
 
 # def new_idea(msg):
     # ''' Inject a new idea '''
@@ -65,15 +63,10 @@ def say_something(event):
     #     verb="notices"
     # )
 
-
-
-
 @autobus.subscribe(SendChat)
 def send_chat(event):
+    ''' Dispatch chat event w/ optional images '''
     say_something(event)
-
-
-
 
 
 def main():
@@ -93,9 +86,6 @@ def main():
     args = parser.parse_args()
     global persyn_config
     persyn_config = load_config(args.config_file)
-
-    global persyn_config_file
-    persyn_config_file = args.config_file
 
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')

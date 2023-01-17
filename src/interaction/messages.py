@@ -1,12 +1,12 @@
 '''
 CNS autobus messages
 '''
+from typing import Optional
 import autobus
-import dotwiz
 
 class SendChat(autobus.Event):
     service: str
     channel: str
     bot_name: str
     msg: str
-    config: str
+    images: Optional[list[str]]

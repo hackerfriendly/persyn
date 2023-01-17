@@ -44,21 +44,21 @@ dependencies = [
   "spacy",
   "spacytextblob",
   "uvicorn",
-  "wikipedia"
+  "wikipedia",
+  "asyncio"
 ]
 
 [project.scripts]
 launch_bot = "launch_bot:main"
 kill_bot = "kill_bot:main"
 interact = "interaction.interact_server:main"
-cns = "interaction.cns:main"
 slack = "chat.slack.bot:main"
 discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
-dreams = "dreams.dreams:main"
+dreams = "dreams.dreams:launch"
 stable_diffusion = "dreams.stable_diffusion:main"
 import_text = "chat.stdio.import_text:main"
-autobus = "interaction.cns_autobus:main"
+cns = "interaction.cns_autobus:main"
 
 [project.optional-dependencies]
 dev = [
