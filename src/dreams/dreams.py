@@ -43,7 +43,7 @@ persyn_config = None
 
 app = FastAPI()
 
-def post_to_queue(service, channel, prompt, images, bot_name):
+def post_to_autobus(service, channel, prompt, images, bot_name):
     ''' Post the completed image notification to autobus '''
     event = SendChat(
         service=service,
@@ -105,7 +105,7 @@ def sdd(service, channel, prompt, model, image_id, bot_name, style, steps, seed,
         upload_files([fname])
 
     if service:
-        post_to_queue(service, channel, prompt, [f"{image_id}.jpg"], bot_name)
+        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name)
 
 @app.get("/", status_code=302)
 async def root():
