@@ -89,7 +89,7 @@ def send_chat(event):
     if event.bot_id == persyn_config.id.guid:
         say_something(event)
     else:
-        log.warning(f"⚡️ send_chat(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+        log.debug(f"⚡️ send_chat(): ignoring message for {event.bot_id}", f"({event.bot_name})")
 
 @autobus.subscribe(Idea)
 def inject_idea(event):
@@ -97,7 +97,7 @@ def inject_idea(event):
     if event.bot_id == persyn_config.id.guid:
         new_idea(event)
     else:
-        log.warning(f"⚡️ inject_idea(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+        log.debug(f"⚡️ inject_idea(): ignoring message for {event.bot_id}", f"({event.bot_name})")
 
 def main():
     ''' Main event '''
