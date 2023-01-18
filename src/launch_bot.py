@@ -80,14 +80,14 @@ def main():
         raise SystemExit(f'Session {session_name} already exists. Attach with 👉 tmux{ccmode} attach -t {session_name}')
 
     log.info(f"🤖 Starting services for {cfg.id.name}")
-    if hasattr(cfg, 'interact') and hasattr(cfg.interact, 'workers'):
+    if hasattr(cfg, 'interact') and hasattr(cfg.interact, 'workers') and cfg.interact.workers > 0:
         gpu = None
         if hasattr(cfg.interact, 'gpu'):
             gpu = cfg.interact.gpu
         log.info("🧠 Starting interact_server")
         run_tmux_cmd(session_name, ['interact', args.config_file], args.tmux, gpu)
 
-    if hasattr(cfg, 'cns'):
+    if hasattr(cfg, 'cns') and hasattr(cfg.cns, 'workers') and cfg.cns.workers > 0:
         log.info("⚡️ Starting cns")
         run_tmux_cmd(session_name, ['cns', args.config_file], args.tmux)
 
@@ -105,11 +105,11 @@ def main():
             run_tmux_cmd(session_name, ['mastodon', args.config_file], args.tmux)
 
     if hasattr(cfg, 'dreams'):
-        if hasattr(cfg.dreams, 'workers'):
+        if hasattr(cfg.dreams, 'workers') and cfg.dreams.workers > 0:
             log.info("😴 Starting dreams server")
             run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux)
 
-        if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers'):
+        if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers') and cfg.dreams.stable_diffusion.workers > 0:
             log.info("🎨 Starting stable_diffusion")
             run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux)
 
