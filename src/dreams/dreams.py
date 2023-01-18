@@ -12,7 +12,6 @@ It needs a complete overhaul to make it easier to support local engines and exte
 Notably, all local rendering is currently broken.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, no-member, invalid-name
-import json
 import os
 import random
 import tempfile
@@ -22,7 +21,7 @@ import asyncio
 import autobus
 
 from pathlib import Path
-from subprocess import run, CalledProcessError
+from subprocess import run
 
 import requests
 import uvicorn
@@ -215,14 +214,14 @@ async def main():
     uvicorn_server = uvicorn.Server(uvicorn_config)
 
     try:
-        await autobus.start()
+        await autobus.start(url=persyn_config.cns.redis)
         await uvicorn_server.serve()
     finally:
         await autobus.stop()
 
 def launch():
+    ''' asyncio wrapper to allow launching from pyproject.toml scripts '''
     asyncio.run(main())
 
 if __name__ == "__main__":
     launch()
-

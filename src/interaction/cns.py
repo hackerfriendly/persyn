@@ -107,7 +107,7 @@ def main():
     log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
 
     try:
-        autobus.run()
+        autobus.run(url=persyn_config.cns.redis)
 
     # Exit gracefully on ^C (so the wrapper script while loop continues)
     except KeyboardInterrupt as kbderr:

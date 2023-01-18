@@ -97,6 +97,12 @@ sentiment:
 # # Optional: Central Nervous System. Used for image generation and posting images to social media.
 # # This also requires autobus, https://github.com/schuyler/autobus/
 # cns:
+#   # Location of your redis server (default)
+#   # redis: redis://localhost:6379/
+#   # If using a simple password with the default user:
+#   # redis: redis://:secret@my.redis.server:6379/
+#   # Using SSL and an ACL with a username:
+#   # redis: rediss://user:secret@my.redis.server:6379/
 #   workers: 1
 
 # # Optional: Dream image generation multiplexer (dreams.py)
