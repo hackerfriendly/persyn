@@ -18,7 +18,7 @@ from chat.simple import slack_msg, discord_msg
 from chat.mastodon.bot import Mastodon
 
 # Message classes
-from interaction.messages import SendChat
+from interaction.messages import SendChat, Idea
 
 # Color logging
 from utils.color_logging import log
@@ -66,13 +66,22 @@ def say_something(event):
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
 
-# def new_idea(msg):
-    # ''' Inject a new idea '''
-    # chat.inject_idea(
-    #     channel=msg['channel'],
-    #     idea=f"an image of '{msg['caption']}' was posted to {persyn_config.dreams.upload.url_base}/{msg['guid']}.jpg",
-    #     verb="notices"
-    # )
+def new_idea(event):
+    ''' Inject a new idea '''
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+    chat.inject_idea(
+        channel=event.channel,
+        idea=event.idea,
+        verb=event.verb
+    )
 
 @autobus.subscribe(SendChat)
 def send_chat(event):
@@ -80,7 +89,15 @@ def send_chat(event):
     if event.bot_id == persyn_config.id.guid:
         say_something(event)
     else:
-        log.warning("⚡️ send_chat(): ignoring message for:", event.bot_id)
+        log.warning(f"⚡️ send_chat(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+
+@autobus.subscribe(Idea)
+def inject_idea(event):
+    ''' Dispatch idea event. '''
+    if event.bot_id == persyn_config.id.guid:
+        new_idea(event)
+    else:
+        log.warning(f"⚡️ inject_idea(): ignoring message for {event.bot_id}", f"({event.bot_name})")
 
 def main():
     ''' Main event '''
