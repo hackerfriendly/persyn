@@ -42,14 +42,15 @@ persyn_config = None
 
 app = FastAPI()
 
-def post_to_autobus(service, channel, prompt, images, bot_name):
+def post_to_autobus(service, channel, prompt, images, bot_name, bot_id):
     ''' Post the completed image notification to autobus '''
     event = SendChat(
         service=service,
         channel=channel,
         images=images,
         msg=prompt,
-        bot_name=bot_name
+        bot_name=bot_name,
+        bot_id=bot_id
     )
     autobus.publish(event)
     log.info(f"🚌 Image post: {len(images)} sent to autobus")
@@ -69,7 +70,7 @@ def wait_for_gpu():
         if persyn_config.dreams.gpus[gpu]['lock'].acquire(timeout=1):
             return gpu
 
-def sdd(service, channel, prompt, model, image_id, bot_name, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
+def sdd(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
     ''' Fetch images from stable_diffusion.py '''
     if not persyn_config.dreams.stable_diffusion.url:
         raise HTTPException(
@@ -104,7 +105,7 @@ def sdd(service, channel, prompt, model, image_id, bot_name, style, steps, seed,
         upload_files([fname])
 
     if service:
-        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name)
+        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name, bot_id)
 
 @app.get("/", status_code=302)
 async def root():
@@ -127,6 +128,7 @@ def generate(
     service: str = None,
     channel: str = None,
     bot_name: str = None,
+    bot_id: str = None,
     style: str = None,
     seed: int = -1,
     steps: int = 50,
@@ -169,6 +171,7 @@ def generate(
         model=model,
         image_id=image_id,
         bot_name=bot_name,
+        bot_id=bot_id,
         style=style,
         steps=steps,
         seed=seed,

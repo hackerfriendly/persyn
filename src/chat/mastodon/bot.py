@@ -88,6 +88,7 @@ class Mastodon():
 
         self.chat = Chat(
             bot_name=self.cfg.id.name,
+            bot_id=self.cfg.id.guid,
             service='mastodon',
             interact_url=self.cfg.interact.url,
             dreams_url=self.cfg.dreams.url,

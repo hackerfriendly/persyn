@@ -25,6 +25,7 @@ class Chat():
     def __init__(self, **kwargs):
         ''' da setup '''
         self.bot_name = kwargs['bot_name']
+        self.bot_id = kwargs['bot_id']
         self.service = kwargs['service']
         self.photo_triggers = kwargs.get('photo_triggers', default_photo_triggers)
 
@@ -173,6 +174,7 @@ class Chat():
             "prompt": prompt,
             "model": model,
             "bot_name": self.bot_name,
+            "bot_id": self.bot_id,
             "style": style,
             "seed": seed,
             "steps": steps,

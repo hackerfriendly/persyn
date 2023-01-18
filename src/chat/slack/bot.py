@@ -121,6 +121,7 @@ def main():
     global chat
     chat = Chat(
         bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
         service=app.client.auth_test().data['url'],
         interact_url=persyn_config.interact.url,
         dreams_url=persyn_config.dreams.url,

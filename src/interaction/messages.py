@@ -8,5 +8,6 @@ class SendChat(autobus.Event):
     service: str
     channel: str
     bot_name: str
+    bot_id: str
     msg: str
     images: Optional[list[str]]

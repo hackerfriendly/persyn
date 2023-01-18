@@ -57,6 +57,7 @@ def say_something(event):
     ''' Send a message to a service + channel '''
     chat = Chat(
         bot_name=event.bot_name,
+        bot_id=event.bot_id,
         service=event.service,
         interact_url=persyn_config.interact.url,
         dreams_url=persyn_config.dreams.url,
@@ -75,9 +76,11 @@ def say_something(event):
 
 @autobus.subscribe(SendChat)
 def send_chat(event):
-    ''' Dispatch chat event w/ optional images '''
-    say_something(event)
-
+    ''' Dispatch chat event w/ optional images. '''
+    if event.bot_id == persyn_config.id.guid:
+        say_something(event)
+    else:
+        log.warning("⚡️ send_chat(): ignoring message for:", event.bot_id)
 
 def main():
     ''' Main event '''
