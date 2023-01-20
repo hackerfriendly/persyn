@@ -101,7 +101,8 @@ def load_config(cfg=None):
             elastic_defaults = {
                 'version': 'v0',
                 'timeout': 30,
-                'index_prefix': config['id']['name'].replace(' ', '').lower()
+                'index_prefix': config['id']['name'].replace(' ', '').lower(),
+                'verify_certs': True
             }
 
             for setting, val in elastic_defaults.items():
