@@ -15,6 +15,7 @@ class SendChat(autobus.Event):
     msg: str
     images: Optional[list[str]]
 
+
 class Idea(autobus.Event):
     ''' Inject an idea '''
     service: str
@@ -23,3 +24,13 @@ class Idea(autobus.Event):
     bot_id: str
     idea: str
     verb: str
+
+
+class Summarize(autobus.Event):
+    ''' Summarize the current channel immediately. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    photo: bool
+    max_tokens: int

@@ -55,10 +55,12 @@ interact = "interaction.interact_server:main"
 slack = "chat.slack.bot:main"
 discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
+cns = "interaction.cns:main"
 dreams = "dreams.dreams:launch"
 stable_diffusion = "dreams.stable_diffusion:main"
 import_text = "chat.stdio.import_text:main"
-cns = "interaction.cns:main"
+inject_idea = "chat.stdio.inject_idea:main"
+summarize = "chat.stdio.summarize:main"
 
 [project.optional-dependencies]
 dev = [

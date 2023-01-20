@@ -18,7 +18,7 @@ from chat.simple import slack_msg, discord_msg
 from chat.mastodon.bot import Mastodon
 
 # Message classes
-from interaction.messages import SendChat, Idea
+from interaction.messages import SendChat, Idea, Summarize
 
 # Color logging
 from utils.color_logging import log
@@ -83,8 +83,28 @@ def new_idea(event):
         verb=event.verb
     )
 
+def summarize_channel(event):
+    ''' Summarize the channel '''
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+    summary = chat.get_summary(
+        channel=event.channel,
+        save=True,
+        photo=event.photo,
+        max_tokens=event.max_tokens
+    )
+    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
+
+
 @autobus.subscribe(SendChat)
-def send_chat(event):
+def chat_event(event):
     ''' Dispatch chat event w/ optional images. '''
     if event.bot_id == persyn_config.id.guid:
         say_something(event)
@@ -92,12 +112,21 @@ def send_chat(event):
         log.debug(f"⚡️ send_chat(): ignoring message for {event.bot_id}", f"({event.bot_name})")
 
 @autobus.subscribe(Idea)
-def inject_idea(event):
+def idea_event(event):
     ''' Dispatch idea event. '''
     if event.bot_id == persyn_config.id.guid:
         new_idea(event)
     else:
         log.debug(f"⚡️ inject_idea(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+
+@autobus.subscribe(Summarize)
+def summarize_event(event):
+    ''' Dispatch summarize event. '''
+    if event.bot_id == persyn_config.id.guid:
+        summarize_channel(event)
+    else:
+        log.debug(f"⚡️ summarize_channel(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+
 
 def main():
     ''' Main event '''
