@@ -119,6 +119,7 @@ sentiment:
 #   workers: 1
 #
 #   # Image upload SCP destination and URL. Only required if generating images.
+#   # dest_path can use user@server:path/ or a local /path/ if you're using a local webserver.
 #   upload:
 #     url_base: https://server.example.com/images/
 #     dest_path: user@server.example.com:htdocs/images/

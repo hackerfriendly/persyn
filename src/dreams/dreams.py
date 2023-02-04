@@ -3,13 +3,12 @@ dreams.py
 
 A REST API for generating chat bot hallucinations.
 
-TODO:
-This daemon was conceived in an earlier time (spring 2022), when many image engines roamed the earth,
-before Stable Diffusion rose to dominate them all.
+Dreams acts as a multiplexer for image generation engines. A request is made to an external API
+to generate an image (optionally based on a prompt). When the image is ready, it is copied to
+a public facing webserver via scp, and a chat containing the image is posted to the autobus.
 
-It needs a complete overhaul to make it easier to support local engines and external APIs.
-
-Notably, all local rendering is currently broken.
+Currently only stable diffusion is supported (via stable_diffusion.py), but any number of engines
+can easily be added (Stable Diffusion API, DALL-E, Midjourney, etc.)
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, no-member, invalid-name
 import os
@@ -62,13 +61,6 @@ def upload_files(files):
         run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
     else:
         run(['/usr/bin/scp'] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
-
-def wait_for_gpu():
-    ''' Return the device name of first available GPU. Blocks until one is available and sets the lock. '''
-    while True:
-        gpu = random.choice(list(persyn_config.dreams.gpus))
-        if persyn_config.dreams.gpus[gpu]['lock'].acquire(timeout=1):
-            return gpu
 
 def sdd(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
     ''' Fetch images from stable_diffusion.py '''
@@ -139,20 +131,6 @@ def generate(
     ''' Make an image and post it '''
     image_id = uuid.uuid4()
 
-    # engines = ['stable-diffusion', 'sdd']
-
-    # if engine not in engines:
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail=f"Invalid engine {engine}. Choose one of: {', '.join(list(engines))}"
-    #     )
-
-    # if model and model not in models[engine]:
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail=f"Invalid model {model} for {engine}. Choose one of: {', '.join(list(models[engine]))}"
-    #     )
-
     prompt = prompt.strip().replace('\n', ' ').replace(':', ' ')
 
     if not prompt:
@@ -205,7 +183,7 @@ async def main():
     global persyn_config
     persyn_config = load_config(args.config_file)
 
-    log.info("😴 Dreams server starting up")
+    log.info("🐑 Dreams server starting up")
 
     uvicorn_config = uvicorn.Config(
         'dreams.dreams:app',
