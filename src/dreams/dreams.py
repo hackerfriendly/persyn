@@ -217,7 +217,7 @@ async def main():
     uvicorn_server = uvicorn.Server(uvicorn_config)
 
     try:
-        await autobus.start(url=persyn_config.cns.redis)
+        await autobus.start(url=persyn_config.cns.redis, namespace=persyn_config.id.guid)
         await uvicorn_server.serve()
     finally:
         await autobus.stop()

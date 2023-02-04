@@ -49,7 +49,7 @@ def main():
     )
 
     async def inject_idea():
-        await autobus.start(url=persyn_config.cns.redis)
+        await autobus.start(url=persyn_config.cns.redis, namespace=persyn_config.id.guid)
         autobus.publish(event)
         await asyncio.sleep(0.1)
         await autobus.stop()
