@@ -70,7 +70,13 @@ chat:
   # Discord chat module
   #
   # discord:
+  #   # Get your token here: https://discord.com/developers/applications/
+  #   # Set up General Information, then under Bot enable all intents
+  #   # Then OAuth2 > URL Generator > Scopes and add Bot scope.
+  #   # Then under Permissions:
+  #   #   Send Messages, Attach Files, Read Message History, Add Reactions
   #   token: your-discord-token-here
+  #   # Get your webhook from Server Settings > Integrations > Webhooks
   #   webhook: https://discord.com/api/webhooks/path-to-your-webhook
 
   # Mastodon chat module
