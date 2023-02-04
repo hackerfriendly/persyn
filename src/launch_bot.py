@@ -23,12 +23,12 @@ def tmux_is_running(session, tmux):
         capture_output=True
     ).returncode == 0
 
-def run_tmux_cmd(session, cmd, tmux, cuda=None):
+def run_tmux_cmd(session, cmd, tmux, cuda=None, loc='split-pane'):
     ''' Start a new tmux session if needed, then add panes for each cmd '''
     running = tmux_is_running(session, tmux)
     tmux = ' '.join([
             tmux,
-            'split-pane' if running else 'new-session',
+            loc if running else 'new-session',
             '-t' if running else '-s',
             session,
             '-d'
@@ -107,11 +107,11 @@ def main():
     if hasattr(cfg, 'dreams'):
         if hasattr(cfg.dreams, 'workers') and cfg.dreams.workers > 0:
             log.info("😴 Starting dreams server")
-            run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux)
+            run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux, loc='new-window')
 
         if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers') and cfg.dreams.stable_diffusion.workers > 0:
             log.info("🎨 Starting stable_diffusion")
-            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux)
+            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux, loc='new-window')
 
         # if hasattr(cfg.dreams, 'captions') and hasattr(cfg.dreams.captions, 'workers'):
         #     log.info("🖼  Starting interrogator")
