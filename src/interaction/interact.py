@@ -289,7 +289,7 @@ class Interact():
             else:
                 wiki = None
                 try:
-                    if wikipedia.page(entity).original_title.lower() != entity.lower():
+                    if wikipedia.page(entity, auto_suggest=False).original_title.lower() != entity.lower():
                         log.warning("❎ no exact match found")
                         continue
 
