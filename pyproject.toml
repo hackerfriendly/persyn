@@ -62,6 +62,7 @@ import_text = "chat.stdio.import_text:main"
 inject_idea = "chat.stdio.inject_idea:main"
 summarize = "chat.stdio.summarize:main"
 send_chat = "chat.stdio.send_chat:main"
+elaborate = "chat.stdio.elaborate:main"
 
 [project.optional-dependencies]
 dev = [

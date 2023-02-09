@@ -18,7 +18,7 @@ from chat.simple import slack_msg, discord_msg
 from chat.mastodon.bot import Mastodon
 
 # Message classes
-from interaction.messages import SendChat, Idea, Summarize
+from interaction.messages import SendChat, Idea, Summarize, Elaborate
 
 # Color logging
 from utils.color_logging import log
@@ -102,6 +102,25 @@ def summarize_channel(event):
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
+def elaborate(event):
+    ''' Continue the train of thought '''
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+    reply = chat.get_reply(
+        channel=event.channel,
+        msg='...',
+        speaker_name=event.bot_name,
+        speaker_id=event.bot_id
+    )
+    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply[0])
+
 
 @autobus.subscribe(SendChat)
 def chat_event(event):
@@ -109,7 +128,7 @@ def chat_event(event):
     if event.bot_id == persyn_config.id.guid:
         say_something(event)
     else:
-        log.debug(f"⚡️ send_chat(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+        log.error(f"⚡️ chat_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
 
 @autobus.subscribe(Idea)
 def idea_event(event):
@@ -117,7 +136,7 @@ def idea_event(event):
     if event.bot_id == persyn_config.id.guid:
         new_idea(event)
     else:
-        log.debug(f"⚡️ inject_idea(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+        log.error(f"⚡️ idea_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
 
 @autobus.subscribe(Summarize)
 def summarize_event(event):
@@ -125,7 +144,16 @@ def summarize_event(event):
     if event.bot_id == persyn_config.id.guid:
         summarize_channel(event)
     else:
-        log.debug(f"⚡️ summarize_channel(): ignoring message for {event.bot_id}", f"({event.bot_name})")
+        log.error(f"⚡️ summarize_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+
+@autobus.subscribe(Elaborate)
+def elaborate_event(event):
+    ''' Dispatch elaborate event. '''
+    if event.bot_id == persyn_config.id.guid:
+        elaborate(event)
+    else:
+        log.error(f"⚡️ elaborate_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+
 
 
 def main():

@@ -34,3 +34,11 @@ class Summarize(autobus.Event):
     bot_id: str
     photo: bool
     max_tokens: int
+
+
+class Elaborate(autobus.Event):
+    ''' Continue the train of thought. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
