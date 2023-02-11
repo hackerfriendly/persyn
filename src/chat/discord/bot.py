@@ -187,7 +187,9 @@ async def schedule_reply(ctx):
     for goal in goals_achieved:
         await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
 
-    chat.summarize_later(channel, reminders)
+    # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
+    if not channel.startswith('dm|'):
+        chat.summarize_later(channel, reminders)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
