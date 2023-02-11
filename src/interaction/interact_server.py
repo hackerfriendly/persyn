@@ -7,15 +7,23 @@ A REST API for the limbic system.
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import os
 import argparse
+import asyncio
 
-import uvicorn
-
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import RedirectResponse
 
+import uvicorn
+
+# The event bus
+import autobus
+
+# Interaction routines
 from interaction.interact import Interact
+
+# Message classes
+from interaction.messages import Opine
 
 # Color logging
 from utils.color_logging import log
@@ -27,6 +35,7 @@ from utils.config import load_config
 app = FastAPI()
 
 # Initialize interact in main()
+persyn_config = None
 interact = None
 
 @app.get("/", status_code=302)
@@ -187,7 +196,29 @@ def get_goals(
         "goals": interact.get_goals(service, channel)
     }
 
-def main():
+
+@app.post("/opine/")
+async def opine(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    entities: List[str] = Query(...)
+):
+    ''' Ask the autobus to gather opinions about entities '''
+
+    event = Opine(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        entities=entities
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+async def main():
     ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Persyn interact_server. Run one server for each bot.'''
@@ -203,19 +234,31 @@ def main():
 
     args = parser.parse_args()
 
+    global persyn_config
     persyn_config = load_config(args.config_file)
     global interact
     interact = Interact(persyn_config)
 
     log.info(f"💃 {persyn_config.id.name}'s interact server starting up")
 
-    uvicorn.run(
+    uvicorn_config = uvicorn.Config(
         'interaction.interact_server:app',
         host=persyn_config.interact.hostname,
         port=persyn_config.interact.port,
         workers=persyn_config.interact.workers,
         reload=False,
     )
+    uvicorn_server = uvicorn.Server(uvicorn_config)
+
+    try:
+        await autobus.start(url=persyn_config.cns.redis, namespace=persyn_config.id.guid)
+        await uvicorn_server.serve()
+    finally:
+        await autobus.stop()
+
+def launch():
+    ''' asyncio wrapper to allow launching from pyproject.toml scripts '''
+    asyncio.run(main())
 
 if __name__ == '__main__':
-    main()
+    launch()

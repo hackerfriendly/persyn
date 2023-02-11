@@ -10,6 +10,8 @@ import argparse
 
 import autobus
 
+from spacy.lang.en.stop_words import STOP_WORDS
+
 # Common chat library
 from chat.common import Chat
 from chat.simple import slack_msg, discord_msg
@@ -17,8 +19,14 @@ from chat.simple import slack_msg, discord_msg
 # Mastodon support for image posting
 from chat.mastodon.bot import Mastodon
 
+# Long and short term memory
+from interaction.memory import Recall
+
+# Prompt completion
+from interaction.completion import LanguageModel
+
 # Message classes
-from interaction.messages import SendChat, Idea, Summarize, Elaborate
+from interaction.messages import SendChat, Idea, Summarize, Elaborate, Opine
 
 # Color logging
 from utils.color_logging import log
@@ -29,6 +37,8 @@ from utils.config import load_config
 # Defined in main()
 mastodon = None
 persyn_config = None
+recall = None
+completion = None
 
 def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
@@ -121,6 +131,41 @@ def elaborate(event):
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply[0])
 
+def opine(event):
+    ''' Recall opinions of entities (if any) '''
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+
+    for entity in event.entities:
+        if not entity.strip() or entity in STOP_WORDS:
+            continue
+
+        opinions = recall.opine(event.service, event.channel, entity)
+        if opinions:
+            log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
+            if len(opinions) == 1:
+                opinion = opinions[0]
+            else:
+                opinion = completion.nlp(completion.get_summary(
+                    text='\n'.join(opinions),
+                    summarizer=f"{event.bot_name}'s opinion about {entity} can be briefly summarized as:",
+                    max_tokens=75
+                )).text
+
+            if opinion not in recall.stm.get_bias(event.service, event.channel):
+                recall.stm.add_bias(event.service, event.channel, opinion)
+                chat.inject_idea(
+                    channel=event.channel,
+                    idea=opinion,
+                    verb=f"thinks about {entity}"
+                )
 
 @autobus.subscribe(SendChat)
 def chat_event(event):
@@ -154,6 +199,13 @@ def elaborate_event(event):
     else:
         log.error(f"⚡️ elaborate_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
 
+@autobus.subscribe(Opine)
+def opine_event(event):
+    ''' Dispatch opine event. '''
+    if event.bot_id == persyn_config.id.guid:
+        opine(event)
+    else:
+        log.error(f"⚡️ opine_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
 
 
 def main():
@@ -180,6 +232,12 @@ def main():
     global mastodon
     mastodon = Mastodon(args.config_file)
     mastodon.login()
+
+    global recall
+    recall = Recall(persyn_config)
+
+    global completion
+    completion = LanguageModel(config=persyn_config)
 
     log.info(f"⚡️ {persyn_config.id.name}'s CNS is online")
 

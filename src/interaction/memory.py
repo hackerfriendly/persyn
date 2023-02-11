@@ -184,17 +184,22 @@ class ShortTermMemory():
 
         return self.convo_id(service, channel)
 
-    def add_bias(self, service, channel, line):
+    def add_bias(self, service, channel, opinion):
         '''
-        Append a short-term opinion to a channel. Returns the convo_id.
+        Append a short-term opinion to a channel if it's not already there. Returns the current opinions.
         '''
-        self.convo[service][channel]['opinions'].append(line)
-        return self.convo_id(service, channel)
+        if not self.exists(service, channel):
+            self.create(service, channel)
+        if opinion not in self.convo[service][channel]['opinions']:
+            self.convo[service][channel]['opinions'].append(opinion)
+        return self.convo[service][channel]['opinions']
 
     def get_bias(self, service, channel):
         '''
         Return all short-term opinions for a channel.
         '''
+        if not self.exists(service, channel):
+            self.create(service, channel)
         return self.convo[service][channel]['opinions']
 
     def add_goal(self, service, channel, goal):

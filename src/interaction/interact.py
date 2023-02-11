@@ -9,6 +9,8 @@ import random
 import re # used by custom filters
 import urllib3
 
+import requests
+
 from spacy.lang.en.stop_words import STOP_WORDS
 
 # just-in-time Wikipedia
@@ -258,29 +260,32 @@ class Interact():
         return visited
 
     def gather_facts(self, service, channel, entities):
-        ''' Gather facts (from Wikipedia) and opinions (from memory) '''
+        '''
+        Gather facts (from Wikipedia) and opinions (from memory).
+
+        This happens asynchronously via the event bus, so facts and opinions
+        might not be immediately available for conversation.
+        '''
         if not entities:
             return
 
-        for entity in random.sample(entities, k=min(3, len(entities))):
-            if entity == '' or entity in STOP_WORDS:
-                continue
+        the_sample = random.sample(entities, k=min(3, len(entities)))
 
-            opinions = self.recall.opine(service, channel, entity)
-            if opinions:
-                log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
-                if len(opinions) == 1:
-                    opinion = opinions[0]
-                else:
-                    opinion = self.completion.nlp(self.completion.get_summary(
-                        text='\n'.join(opinions),
-                        summarizer=f"{self.config.id.name}'s opinion about {entity} can be briefly summarized as:",
-                        max_tokens=75
-                    )).text
+        req = {
+            "service": service,
+            "channel": channel,
+            "entities": the_sample
+        }
+        try:
+            reply = requests.post(f"{self.config.interact.url}/opine/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /opine/ to interact: {err}")
+            return
 
-                if opinion not in self.recall.stm.get_bias(service, channel):
-                    self.recall.stm.add_bias(service, channel, opinion)
-                    self.inject_idea(service, channel, opinion, f"thinks about {entity}")
+        # self.gather_opinions(event)
+
+        for entity in the_sample:
 
             log.warning(f'❇️  look up "{entity}" on Wikipedia')
 

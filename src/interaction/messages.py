@@ -42,3 +42,12 @@ class Elaborate(autobus.Event):
     channel: str
     bot_name: str
     bot_id: str
+
+
+class Opine(autobus.Event):
+    ''' Form an opinion about entities. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    entities: list
