@@ -202,16 +202,12 @@ class GPT():
         Filter or fix low quality GPT responses
         '''
         try:
+            # No whitespace or surrounding quotes
+            text = text.strip().strip('"')
             # Skip blanks
             if not text:
                 self.stats.update(['blank'])
                 return None
-            # No urls
-            if 'http' in text or '.com/' in text:
-                self.stats.update(['URL'])
-                return None
-            # No whitespace
-            text = text.strip()
             # Putting words Rob: In people's mouths
             match = re.search(r'^(.*)?\s+(\w+: .*)', text)
             if match:
