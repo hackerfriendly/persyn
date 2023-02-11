@@ -106,7 +106,7 @@ def main():
 
     if hasattr(cfg, 'dreams'):
         if hasattr(cfg.dreams, 'workers') and cfg.dreams.workers > 0:
-            log.info("😴 Starting dreams server")
+            log.info("🐑 Starting dreams server")
             run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux, loc='new-window')
 
         if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers') and cfg.dreams.stable_diffusion.workers > 0:
