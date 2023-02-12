@@ -177,7 +177,7 @@ def main():
             for goal in current_goals:
                 say(f":goal_net: {goal}")
         else:
-            say(":shrug:")
+            say("No goals. :shrug:")
 
     @app.message(re.compile(r"^:art:$"))
     def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
@@ -332,16 +332,13 @@ def main():
             if random.random() < 0.95:
                 return
 
-        (the_reply, goals_achieved) = chat.get_reply(channel, msg, speaker_name, speaker_id)
+        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
         say(the_reply)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
         reminders.cancel(channel, name='summarizer')
-
-        for goal in goals_achieved:
-            say(f"🏆 _achievement unlocked: {goal}_")
 
         chat.summarize_later(channel, reminders)
 
@@ -372,12 +369,9 @@ def main():
         speaker_name = get_display_name(speaker_id)
         msg = substitute_names(body['event']['text'])
 
-        reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
+        reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
         say(reply)
-
-        for goal in goals_achieved:
-            say(f"🏆 _achievement unlocked: {goal}_")
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -486,12 +480,9 @@ def main():
                 if not msg.strip():
                     msg = "..."
 
-                reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
-
+                reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
                 say(reply)
 
-                for goal in goals_achieved:
-                    say(f"🏆 _achievement unlocked: {goal}_")
             else:
                 say(
                     random.choice([

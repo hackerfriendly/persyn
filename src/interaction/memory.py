@@ -74,6 +74,10 @@ class Recall():
         ''' Add a goal to this channel. '''
         return self.stm.add_goal(service, channel, goal)
 
+    def remove_goal(self, service, channel, goal):
+        ''' Remove a goal from this channel. '''
+        return self.stm.remove_goal(service, channel, goal)
+
     def get_goals(self, service, channel):
         ''' Return the temparary goals for this channel, if any. '''
         return self.stm.get_goals(service, channel)
@@ -204,7 +208,7 @@ class ShortTermMemory():
 
     def add_goal(self, service, channel, goal):
         '''
-        Append a short-term goal to a channel. Returns the convo_id.
+        Append a short-term goal to a channel. Returns the current goals.
         '''
         if not self.exists(service, channel):
             self.create(service, channel)
@@ -215,6 +219,20 @@ class ShortTermMemory():
         # five max
         if len(self.convo[service][channel]['goals']) > 5:
             self.convo[service][channel]['goals'] = self.convo[service][channel]['goals'][:5]
+
+        return self.convo[service][channel]['goals']
+
+    def remove_goal(self, service, channel, goal):
+        '''
+        Remove a short-term goal from a channel. Returns the current goals.
+        '''
+        if not self.exists(service, channel):
+            self.create(service, channel)
+
+        try:
+            self.convo[service][channel]['goals'].remove(goal)
+        except ValueError:
+            pass
 
         return self.convo[service][channel]['goals']
 

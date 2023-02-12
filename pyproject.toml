@@ -64,6 +64,7 @@ summarize = "chat.stdio.summarize:main"
 send_chat = "chat.stdio.send_chat:main"
 elaborate = "chat.stdio.elaborate:main"
 opine = "chat.stdio.opine:main"
+add_goal = "chat.stdio.add_goal:main"
 
 [project.optional-dependencies]
 dev = [

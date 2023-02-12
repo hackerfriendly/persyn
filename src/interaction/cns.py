@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 '''
-cns-autobus.py
+cns.py
 
-The central nervous system. Listen for events and inject them into interact. Uses Redis instead of Boto.
+The central nervous system. Listen for events on the event bus and inject results into interact.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import os
 import argparse
+
+from random import random
 
 import autobus
 
@@ -15,6 +17,8 @@ from spacy.lang.en.stop_words import STOP_WORDS
 # just-in-time Wikipedia
 import wikipedia
 from wikipedia.exceptions import WikipediaException
+
+from Levenshtein import ratio
 
 # Common chat library
 from chat.common import Chat
@@ -30,7 +34,7 @@ from interaction.memory import Recall
 from interaction.completion import LanguageModel
 
 # Message classes
-from interaction.messages import SendChat, Idea, Summarize, Elaborate, Opine, Wikipedia
+from interaction.messages import SendChat, Idea, Summarize, Elaborate, Opine, Wikipedia, CheckGoals, AddGoal
 
 # Color logging
 from utils.color_logging import log
@@ -69,7 +73,7 @@ def get_service(svc):
     log.critical(f"Unknown service: {svc}")
     return None
 
-def say_something(event):
+async def say_something(event):
     ''' Send a message to a service + channel '''
     chat = Chat(
         bot_name=event.bot_name,
@@ -82,7 +86,8 @@ def say_something(event):
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
 
-def new_idea(event):
+
+async def new_idea(event):
     ''' Inject a new idea '''
     chat = Chat(
         bot_name=event.bot_name,
@@ -99,7 +104,8 @@ def new_idea(event):
         verb=event.verb
     )
 
-def summarize_channel(event):
+
+async def summarize_channel(event):
     ''' Summarize the channel '''
     chat = Chat(
         bot_name=event.bot_name,
@@ -118,7 +124,8 @@ def summarize_channel(event):
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
-def elaborate(event):
+
+async def elaborate(event):
     ''' Continue the train of thought '''
     chat = Chat(
         bot_name=event.bot_name,
@@ -135,9 +142,10 @@ def elaborate(event):
         speaker_name=event.bot_name,
         speaker_id=event.bot_id
     )
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply[0])
+    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
 
-def opine(event):
+
+async def opine(event):
     ''' Recall opinions of entities (if any) '''
     chat = Chat(
         bot_name=event.bot_name,
@@ -173,7 +181,7 @@ def opine(event):
                     verb=f"thinks about {entity}"
                 )
 
-def wikipedia_summary(event):
+async def wikipedia_summary(event):
     ''' Summarize some wikipedia pages '''
     chat = Chat(
         bot_name=event.bot_name,
@@ -191,6 +199,8 @@ def wikipedia_summary(event):
 
         log.warning(f'📚 Look up "{entity}" on Wikipedia')
 
+        entity = entity.strip().lower()
+
         # Missing? Look it up.
         # None? Ignore it.
         # Present? Use it.
@@ -203,7 +213,7 @@ def wikipedia_summary(event):
                     log.warning(f"❎ no exact match found for {entity}")
                     continue
 
-                log.warning("✅ found it.")
+                log.warning(f"✅ found {entity}")
                 wiki = wikipedia.summary(entity, sentences=3)
 
                 summary = completion.nlp(completion.get_summary(
@@ -215,60 +225,117 @@ def wikipedia_summary(event):
                 wikicache[entity] = ' '.join([s.text for s in summary.sents][:3])
 
             except WikipediaException:
-                log.warning("❎ no unambiguous wikipedia entry found")
+                log.warning(f"❎ no unambiguous wikipedia entry found for {entity}")
                 wikicache[entity] = None
                 continue
 
         if entity in wikicache and wikicache[entity] is not None:
             chat.inject_idea(event.service, event.channel, wikicache[entity])
 
+
+async def add_goal(event):
+    ''' Add a new goal '''
+    # don't repeat yourself
+    goals = recall.get_goals(event.service, event.channel) or ['']
+    for goal in goals:
+        if ratio(goal, event.goal) < 0.6: # and random.random() < 0.5:
+            log.info("🏅 New goal:", event.goal)
+            recall.add_goal(event.service, event.channel, event.goal)
+        else:
+            log.warning(f'🏅 We already have a goal like "{event.goal}", skipping.')
+
+async def goals_achieved(event):
+    ''' Have we achieved our goals? '''
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+
+    for goal in event.goals:
+        goal_achieved = completion.get_summary(
+            event.convo,
+            summarizer=f"Q: True or False: {persyn_config.id.name} achieved the goal of {goal}.\nA:",
+            max_tokens=10
+        )
+
+        log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
+        if 'true' in goal_achieved.lower():
+            log.warning(f"🏆 Goal achieved: {goal}")
+            services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, f"🏆 _achievement unlocked: {goal}_")
+            recall.remove_goal(event.service, event.channel, goal)
+        else:
+            log.warning(f"🚫 Goal not yet achieved: {goal}")
+
+    # Any new goals?
+    summary = completion.nlp(completion.get_summary(
+        text=event.convo,
+        summarizer=f"{persyn_config.id.name}'s goal is",
+        max_tokens=100
+    ))
+
+    # 1 sentence max please.
+    the_goal = ' '.join([s.text for s in summary.sents][:1])
+
+    # some goals are too easy
+    for taboo in ['remember', 'learn']:
+        if taboo in the_goal:
+            return
+
+    new_goal = AddGoal(
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        service=event.service,
+        channel=event.channel,
+        goal=the_goal
+    )
+    await add_goal(new_goal)
+
+
 @autobus.subscribe(SendChat)
-def chat_event(event):
+async def chat_event(event):
     ''' Dispatch chat event w/ optional images. '''
-    if event.bot_id == persyn_config.id.guid:
-        say_something(event)
-    else:
-        log.error(f"⚡️ chat_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+    await say_something(event)
 
 @autobus.subscribe(Idea)
-def idea_event(event):
+async def idea_event(event):
     ''' Dispatch idea event. '''
-    if event.bot_id == persyn_config.id.guid:
-        new_idea(event)
-    else:
-        log.error(f"⚡️ idea_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+    await new_idea(event)
 
 @autobus.subscribe(Summarize)
-def summarize_event(event):
+async def summarize_event(event):
     ''' Dispatch summarize event. '''
-    if event.bot_id == persyn_config.id.guid:
-        summarize_channel(event)
-    else:
-        log.error(f"⚡️ summarize_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+    await summarize_channel(event)
 
 @autobus.subscribe(Elaborate)
-def elaborate_event(event):
+async def elaborate_event(event):
     ''' Dispatch elaborate event. '''
-    if event.bot_id == persyn_config.id.guid:
-        elaborate(event)
-    else:
-        log.error(f"⚡️ elaborate_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+    await elaborate(event)
 
 @autobus.subscribe(Opine)
-def opine_event(event):
+async def opine_event(event):
     ''' Dispatch opine event. '''
-    if event.bot_id == persyn_config.id.guid:
-        opine(event)
-    else:
-        log.error(f"⚡️ opine_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+    await opine(event)
 
 @autobus.subscribe(Wikipedia)
-def wiki_event(event):
+async def wiki_event(event):
     ''' Dispatch wikipedia event. '''
-    if event.bot_id == persyn_config.id.guid:
-        wikipedia_summary(event)
-    else:
-        log.error(f"⚡️ wiki_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
+    await wikipedia_summary(event)
+
+@autobus.subscribe(CheckGoals)
+async def check_goals_event(event):
+    ''' Dispatch CheckGoals event. '''
+    await goals_achieved(event)
+
+@autobus.subscribe(AddGoal)
+async def goals_event(event):
+    ''' Dispatch AddGoal event. '''
+    await add_goal(event)
+
 
 def main():
     ''' Main event '''

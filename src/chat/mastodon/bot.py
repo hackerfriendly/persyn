@@ -225,7 +225,7 @@ class Mastodon():
 
         else:
             if status:
-                (the_reply, goals_achieved) = self.chat.get_reply(
+                the_reply = self.chat.get_reply(
                     channel,
                     msg,
                     status.account.username,
@@ -236,11 +236,8 @@ class Mastodon():
                     to_status=status
                 )
             else:
-                (the_reply, goals_achieved) = self.chat.get_reply(channel, msg, self.cfg.id.name, self.cfg.id.guid)
+                the_reply = self.chat.get_reply(channel, msg, self.cfg.id.name, self.cfg.id.guid)
                 my_response = self.toot(the_reply)
-
-            for goal in goals_achieved:
-                log.info(f"🏆 _achievement unlocked: {goal}_")
 
             self.chat.summarize_later(channel, self.reminders)
 

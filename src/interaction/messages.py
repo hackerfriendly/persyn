@@ -60,3 +60,22 @@ class Wikipedia(autobus.Event):
     bot_name: str
     bot_id: str
     entities: List[str]
+
+
+class CheckGoals(autobus.Event):
+    ''' Check progress against goals. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    convo: str
+    goals: List[str]
+
+
+class AddGoal(autobus.Event):
+    ''' Add a new goal. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    goal: str

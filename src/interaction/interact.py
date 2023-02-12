@@ -11,10 +11,6 @@ import urllib3
 
 import requests
 
-from spacy.lang.en.stop_words import STOP_WORDS
-
-from Levenshtein import ratio
-
 # Long and short term memory
 from interaction.memory import Recall
 
@@ -135,14 +131,15 @@ class Interact():
             scored = self.completion.get_replies(
                 prompt=prompt,
                 convo=convo,
-                goals=goals
+                goals=goals,
+                n=2
             )
 
-        # Uh-oh. Just keep it brief.
+        # Uh-oh. Just ignore whatever was last said.
         if not scored:
             log.warning("😳 No surviving replies, one last try.")
             scored = self.completion.get_replies(
-                prompt=self.generate_prompt([], convo[-4:]),
+                prompt=self.generate_prompt([], convo[:-1]),
                 convo=convo,
                 goals=goals
             )
@@ -280,48 +277,21 @@ class Interact():
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
-        achieved = []
+        self.feels['goals'] = self.recall.get_goals(service, channel)
 
         if self.feels['goals']:
-            goal = random.choice(self.feels['goals'])
-            goal_achieved = self.completion.get_summary(
-                '\n'.join(convo),
-                summarizer=f"Q: True or False: {self.config.id.name} achieved the goal of {goal}.\nA:",
-                max_tokens=10
-            )
+            req = {
+                "service": service,
+                "channel": channel,
+                "convo": '\n'.join(convo),
+                "goals": self.feels['goals']
+            }
 
-            log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
-            if 'true' in goal_achieved.lower():
-                log.warning(f"🏆 Goal achieved: {goal}")
-                achieved.append(goal)
-                self.feels['goals'].remove(goal)
-            else:
-                log.warning(f"🚫 Goal not yet achieved: {goal}")
-
-        summary = self.completion.nlp(self.completion.get_summary(
-            text='\n'.join(convo),
-            summarizer=f"{self.config.id.name}'s goal is",
-            max_tokens=100
-        ))
-
-        # 1 sentence max please.
-        the_goal = ' '.join([s.text for s in summary.sents][:1])
-
-        # some goals are too easy
-        for taboo in ['remember', 'learn']:
-            if taboo in the_goal:
-                return achieved
-
-        # don't repeat yourself
-        for goal in self.recall.get_goals(service, channel):
-            if ratio(goal, the_goal) > 0.6:
-                return achieved
-
-        # we've been handing out too many trophies
-        if random.random() < 0.5:
-            self.recall.add_goal(service, channel, the_goal)
-
-        return achieved
+            try:
+                reply = requests.post(f"{self.config.interact.url}/goal_achieved/", params=req, timeout=10)
+                reply.raise_for_status()
+            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+                log.critical(f"🤖 Could not post /goal_achieved/ to interact: {err}")
 
     def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
         '''
@@ -359,7 +329,7 @@ class Interact():
         self.gather_facts(service, channel, entities)
 
         # Goals
-        achieved = self.check_goals(service, channel, convo)
+        self.check_goals(service, channel, convo)
 
         # Our mind might have been wandering, so remember the last thing that was said.
         if last_sentence:
@@ -389,12 +359,11 @@ class Interact():
                 log.warning(f"🤮 Custom filter failed: {err}")
 
         self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
-
         self.feels['current'] = self.completion.get_feels(f'{prompt} {reply}')
 
         log.warning("😄 Feeling:", self.feels['current'])
 
-        return (reply, achieved)
+        return reply
 
     def default_prompt_prefix(self):
         ''' The default prompt prefix '''

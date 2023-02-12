@@ -102,11 +102,8 @@ class Chat():
 
         resp = response.json()
         reply = resp['reply']
-        goals_achieved = resp['goals_achieved']
 
         log.warning(f"[{channel}] {self.bot_name}:", reply)
-        if goals_achieved:
-            log.warning(f"[{channel}] {self.bot_name}:", f"🏆 {goals_achieved}")
 
         if any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
@@ -115,7 +112,7 @@ class Chat():
                 engine="stable-diffusion"
             )
 
-        return (reply, goals_achieved)
+        return reply
 
     def summarize_later(self, channel, reminders, when=None):
         '''

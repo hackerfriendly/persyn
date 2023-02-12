@@ -59,10 +59,8 @@ def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
-    (reply, achieved) = interact.get_reply(service, channel, msg, speaker_name, speaker_id)
     return {
-        "reply": reply,
-        "goals_achieved": achieved
+        "reply": interact.get_reply(service, channel, msg, speaker_name, speaker_id)
     }
 
 @app.post("/summary/")
