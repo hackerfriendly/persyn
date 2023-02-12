@@ -1,8 +1,11 @@
 ''' OpenAI completion engine '''
+# pylint: disable=invalid-name
+
 import re
 import string
 
 from collections import Counter
+from time import sleep
 
 import openai
 import spacy
@@ -45,7 +48,7 @@ class GPT():
         openai.api_key = api_key
         openai.api_base = api_base
 
-    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
+    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5, retry_on_error=True):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
@@ -62,19 +65,23 @@ class GPT():
                 prompt=prompt[:self.max_prompt_length],
                 temperature=temperature,
                 max_tokens=max_tokens,
-                n=8,
+                n=n,
                 frequency_penalty=1.2,
                 presence_penalty=0.8,
                 stop=stop
             )
         except openai.error.APIConnectionError as err:
-            log.critical("OpenAI APIConnectionError:", err)
+            log.critical("get_replies(): OpenAI APIConnectionError:", err)
             return None
         except openai.error.ServiceUnavailableError as err:
-            log.critical("OpenAI Service Unavailable:", err)
+            log.critical("get_replies(): OpenAI Service Unavailable:", err)
             return None
         except openai.error.RateLimitError as err:
-            log.critical("OpenAI RateLimitError:", err)
+            log.warning("get_replies(): OpenAI RateLimitError:", err)
+            if retry_on_error:
+                log.warning("get_replies(): retrying in 1 second")
+                sleep(1)
+                self.get_replies(prompt, convo, goals, stop, temperature, max_tokens, n=2, retry_on_error=False)
             return None
 
         log.info(f"🧠 Prompt: {prompt}")
