@@ -227,25 +227,6 @@ class Chat():
         return reply.json()['entities']
         # return [e for e in reply.json()['entities'] if e not in speakers()]
 
-    def get_daydream(self, channel):
-        ''' Ask interact to daydream about this channel. '''
-        if not self.interact_url:
-            log.error("💭 get_daydream() called with no URL defined, skipping.")
-            return None
-
-        req = {
-            "service": self.service,
-            "channel": channel,
-        }
-        try:
-            reply = requests.post(f"{self.interact_url}/daydream/", params=req, timeout=10)
-            reply.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /daydream/ to interact: {err}")
-            return []
-
-        return reply.json()['daydream']
-
     def get_status(self, channel):
         ''' Ask interact for status. '''
         if not self.interact_url:

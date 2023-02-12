@@ -12,6 +12,10 @@ import autobus
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
+# just-in-time Wikipedia
+import wikipedia
+from wikipedia.exceptions import WikipediaException
+
 # Common chat library
 from chat.common import Chat
 from chat.simple import slack_msg, discord_msg
@@ -26,7 +30,7 @@ from interaction.memory import Recall
 from interaction.completion import LanguageModel
 
 # Message classes
-from interaction.messages import SendChat, Idea, Summarize, Elaborate, Opine
+from interaction.messages import SendChat, Idea, Summarize, Elaborate, Opine, Wikipedia
 
 # Color logging
 from utils.color_logging import log
@@ -39,6 +43,8 @@ mastodon = None
 persyn_config = None
 recall = None
 completion = None
+
+wikicache = {}
 
 def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
@@ -167,6 +173,55 @@ def opine(event):
                     verb=f"thinks about {entity}"
                 )
 
+def wikipedia_summary(event):
+    ''' Summarize some wikipedia pages '''
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+
+    for entity in event.entities:
+        if not entity.strip() or entity in STOP_WORDS:
+            continue
+
+        log.warning(f'📚 Look up "{entity}" on Wikipedia')
+
+        # Missing? Look it up.
+        # None? Ignore it.
+        # Present? Use it.
+        if entity in wikicache and wikicache[entity] is not None:
+            log.warning(f'🤑 wiki cache hit: "{entity}"')
+        else:
+            wiki = None
+            try:
+                if not wikipedia.page(entity, auto_suggest=False):
+                    log.warning(f"❎ no exact match found for {entity}")
+                    continue
+
+                log.warning("✅ found it.")
+                wiki = wikipedia.summary(entity, sentences=3)
+
+                summary = completion.nlp(completion.get_summary(
+                    text=f"This Wikipedia article:\n{wiki}",
+                    summarizer="Can be briefly summarized as: ",
+                    max_tokens=75
+                ))
+                # 3 sentences max please.
+                wikicache[entity] = ' '.join([s.text for s in summary.sents][:3])
+
+            except WikipediaException:
+                log.warning("❎ no unambiguous wikipedia entry found")
+                wikicache[entity] = None
+                continue
+
+        if entity in wikicache and wikicache[entity] is not None:
+            chat.inject_idea(event.service, event.channel, wikicache[entity])
+
 @autobus.subscribe(SendChat)
 def chat_event(event):
     ''' Dispatch chat event w/ optional images. '''
@@ -207,6 +262,13 @@ def opine_event(event):
     else:
         log.error(f"⚡️ opine_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
 
+@autobus.subscribe(Wikipedia)
+def wiki_event(event):
+    ''' Dispatch wikipedia event. '''
+    if event.bot_id == persyn_config.id.guid:
+        wikipedia_summary(event)
+    else:
+        log.error(f"⚡️ wiki_event(): dropping message for {event.bot_id}", f"({event.bot_name})")
 
 def main():
     ''' Main event '''

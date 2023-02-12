@@ -3,7 +3,7 @@ CNS autobus messages
 '''
 # pylint: disable=too-few-public-methods
 
-from typing import Optional
+from typing import Optional, List
 import autobus
 
 class SendChat(autobus.Event):
@@ -45,9 +45,18 @@ class Elaborate(autobus.Event):
 
 
 class Opine(autobus.Event):
-    ''' Form an opinion about entities. '''
+    ''' Recall your opinion about entities. '''
     service: str
     channel: str
     bot_name: str
     bot_id: str
-    entities: list
+    entities: List[str]
+
+
+class Wikipedia(autobus.Event):
+    ''' Summarize some Wikipedia pages. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    entities: List[str]

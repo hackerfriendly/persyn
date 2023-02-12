@@ -13,10 +13,6 @@ import requests
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
-# just-in-time Wikipedia
-import wikipedia
-from wikipedia.exceptions import WikipediaException
-
 from Levenshtein import ratio
 
 # Long and short term memory
@@ -39,9 +35,6 @@ class Interact():
     '''
     def __init__(self, persyn_config):
         self.config = persyn_config
-
-        # local Wikipedia cache
-        self.wikicache = {}
 
         # How are we feeling today? TODO: This needs to be per-channel, particularly the goals.
         self.feels = {'current': "nothing in particular", 'goals': []}
@@ -276,46 +269,14 @@ class Interact():
             "channel": channel,
             "entities": the_sample
         }
-        try:
-            reply = requests.post(f"{self.config.interact.url}/opine/", params=req, timeout=10)
-            reply.raise_for_status()
-        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-            log.critical(f"🤖 Could not post /opine/ to interact: {err}")
-            return
 
-        # self.gather_opinions(event)
-
-        for entity in the_sample:
-
-            log.warning(f'❇️  look up "{entity}" on Wikipedia')
-
-            if entity in self.wikicache:
-                log.warning(f'🤑 wiki cache hit: "{entity}"')
-            else:
-                wiki = None
-                try:
-                    if wikipedia.page(entity, auto_suggest=False).original_title.lower() != entity.lower():
-                        log.warning("❎ no exact match found")
-                        continue
-
-                    log.warning("✅ found it.")
-                    wiki = wikipedia.summary(entity, sentences=3)
-
-                    summary = self.completion.nlp(self.completion.get_summary(
-                        text=f"This Wikipedia article:\n{wiki}",
-                        summarizer="Can be briefly summarized as: ",
-                        max_tokens=75
-                    ))
-                    # 2 sentences max please.
-                    self.wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
-
-                except WikipediaException:
-                    log.warning("❎ no unambigous wikipedia entry found")
-                    self.wikicache[entity] = None
-                    continue
-
-                if entity in self.wikicache and self.wikicache[entity] is not None:
-                    self.inject_idea(service, channel, self.wikicache[entity])
+        for endpoint in ('opine', 'wikipedia'):
+            try:
+                reply = requests.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
+                reply.raise_for_status()
+            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+                log.critical(f"🤖 Could not post /{endpoint}/ to interact: {err}")
+                return
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
@@ -491,47 +452,6 @@ class Interact():
         ''' return a list of all entities in text '''
         nlp = self.completion.nlp(text)
         return list({n.text.strip() for n in nlp.ents if n.text.strip() != self.config.id.name})
-
-    def daydream(self, service, channel):
-        ''' Chew on recent conversation '''
-        paragraph = '\n\n'
-        newline = '\n'
-        summaries = self.recall.summaries(service, channel, size=5)
-        convo = self.recall.convo(service, channel)
-
-        reply = {}
-        entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))
-
-        for entity in random.sample(entities, k=min(3, len(entities))):
-            if entity == '' or entity in STOP_WORDS:
-                continue
-
-            if entity in self.wikicache:
-                log.warning(f"🤑 wiki cache hit: {entity}")
-                reply[entity] = self.wikicache[entity]
-            else:
-                try:
-                    hits = wikipedia.search(entity)
-                    if hits:
-                        try:
-                            wiki = wikipedia.summary(hits[0:1], sentences=3)
-                            summary = self.completion.nlp(self.completion.get_summary(
-                                text=f"This Wikipedia article:\n{wiki}",
-                                summarizer="Can be summarized as: ",
-                                max_tokens=100
-                            ))
-                            # 2 sentences max please.
-                            reply[entity] = ' '.join([s.text for s in summary.sents][:2])
-                            self.wikicache[entity] = reply[entity]
-                        except WikipediaException:
-                            continue
-
-                except WikipediaException:
-                    continue
-
-        log.warning("💭 daydream entities:")
-        log.warning(reply)
-        return reply
 
     def inject_idea(self, service, channel, idea, verb="recalls"):
         '''

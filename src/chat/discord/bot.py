@@ -269,7 +269,6 @@ async def dispatch(ctx):
   `status`: Say exactly what is on {persyn_config.id.name}'s mind.
   `nouns`: Some things worth thinking about.
   `reflect`: {persyn_config.id.name}'s opinion of those things.
-  `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
   `goals`: See {persyn_config.id.name}'s current goals
 
   *Image generation:*

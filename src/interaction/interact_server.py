@@ -23,7 +23,7 @@ import autobus
 from interaction.interact import Interact
 
 # Message classes
-from interaction.messages import Opine
+from interaction.messages import Opine, Wikipedia
 
 # Color logging
 from utils.color_logging import log
@@ -117,16 +117,6 @@ def handle_entities(
         "entities": interact.extract_entities(text)
     }
 
-@app.post("/daydream/")
-def handle_daydream(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
-    return {
-        "daydream": interact.daydream(service, channel)
-    }
-
 @app.post("/inject/")
 def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
@@ -196,7 +186,6 @@ def get_goals(
         "goals": interact.get_goals(service, channel)
     }
 
-
 @app.post("/opine/")
 async def opine(
     service: str = Query(..., min_length=1, max_length=255),
@@ -206,6 +195,27 @@ async def opine(
     ''' Ask the autobus to gather opinions about entities '''
 
     event = Opine(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        entities=entities
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+@app.post("/wikipedia/")
+async def wiki(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    entities: List[str] = Query(..., min_length=1, max_length=255)
+):
+    ''' Summarize some Wikipedia pages '''
+
+    event = Wikipedia(
         service=service,
         channel=channel,
         bot_name=persyn_config.id.name,

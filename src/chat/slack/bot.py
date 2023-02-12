@@ -159,7 +159,6 @@ def main():
     `status`: Say exactly what is on {persyn_config.id.name}'s mind.
     `nouns`: Some things worth thinking about.
     `reflect`: {persyn_config.id.name}'s opinion of those things.
-    `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
     `goals`: See {persyn_config.id.name}'s current goals
 
     *Image generation:*
@@ -265,34 +264,6 @@ def main():
         ''' Say the entities mentioned on this channel '''
         channel = context['channel_id']
         say("> " + ", ".join(chat.get_entities(chat.get_status(channel))))
-
-    @app.message(re.compile(r"^daydream$", re.I))
-    def daydream(say, context):
-        ''' Let your mind wander '''
-        channel = context['channel_id']
-        say(f"_{persyn_config.id.name}'s mind starts to wander..._")
-
-        ideas = chat.get_daydream(channel)
-
-        for idea in random.sample(list(ideas), k=min(len(ideas), 5)):
-            # skip eg. "4 months ago"
-            if 'ago' in str(idea):
-                continue
-
-            chat.inject_idea(channel, ideas[idea])
-            say(f"💭 *{idea}*: _{ideas[idea]}_")
-
-        the_nouns = chat.get_nouns(chat.get_status(channel))
-        for noun in random.sample(the_nouns, k=min(3, len(the_nouns))):
-            opinion = chat.get_opinions(channel, noun.lower(), condense=True)
-            if not opinion:
-                opinion = [chat.judge(channel, noun.lower())]
-            if opinion:
-                chat.inject_idea(channel, opinion[0])
-                say(f"🤔 *{noun}*: _{opinion[0]}_")
-
-        say(f"_{persyn_config.id.name} blinks and looks around._")
-        chat.summarize_later(channel, reminders, when=1)
 
     @app.message(re.compile(r"^opinions (.*)$", re.I))
     def opine_all(say, context):
