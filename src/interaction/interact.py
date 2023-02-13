@@ -298,7 +298,7 @@ class Interact():
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
-        Returns the best reply, and any goals achieved.
+        Returns the best available reply.
         '''
         self.feels['goals'] = self.recall.list_goals(service, channel)
 
@@ -326,14 +326,14 @@ class Interact():
         # Reflect on this conversation
         visited = self.gather_memories(service, channel, entities)
 
-        # Facts and opinions (interleaved)
+        # Facts and opinions
         self.gather_facts(service, channel, entities)
 
         # Goals
         self.check_goals(service, channel, convo)
 
         # Our mind might have been wandering, so remember the last thing that was said.
-        if last_sentence:
+        if last_sentence and convo[-1] != last_sentence:
             convo.append(last_sentence)
 
         summaries = []
