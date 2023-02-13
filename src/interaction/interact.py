@@ -277,7 +277,7 @@ class Interact():
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
-        self.feels['goals'] = self.recall.get_goals(service, channel)
+        self.feels['goals'] = self.recall.list_goals(service, channel)
 
         if self.feels['goals']:
             req = {
@@ -286,12 +286,13 @@ class Interact():
                 "convo": '\n'.join(convo),
                 "goals": self.feels['goals']
             }
+            log.info(req)
 
             try:
-                reply = requests.post(f"{self.config.interact.url}/goal_achieved/", params=req, timeout=10)
+                reply = requests.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-                log.critical(f"🤖 Could not post /goal_achieved/ to interact: {err}")
+                log.critical(f"🤖 Could not post /check_goals/ to interact: {err}")
 
     def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
         '''
@@ -299,7 +300,7 @@ class Interact():
 
         Returns the best reply, and any goals achieved.
         '''
-        self.feels['goals'] = self.recall.get_goals(service, channel)
+        self.feels['goals'] = self.recall.list_goals(service, channel)
 
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
@@ -442,6 +443,10 @@ class Interact():
         ''' Stub for recall '''
         return self.recall.add_goal(service, channel, goal)
 
-    def get_goals(self, service, channel):
+    def get_goals(self, service, channel, goal=None, achieved=False, size=10):
         ''' Stub for recall '''
-        return self.recall.get_goals(service, channel)
+        return self.recall.get_goals(service, channel, goal, achieved, size)
+
+    def list_goals(self, service, channel, achieved=False, size=10):
+        ''' Stub for recall '''
+        return self.recall.list_goals(service, channel, achieved, size)

@@ -172,7 +172,7 @@ def main():
         ''' What are we doing again? '''
         channel = context['channel_id']
 
-        current_goals = chat.get_goals(channel)
+        current_goals = chat.list_goals(channel)
         if current_goals:
             for goal in current_goals:
                 say(f":goal_net: {goal}")

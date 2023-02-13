@@ -23,7 +23,7 @@ import autobus
 from interaction.interact import Interact
 
 # Message classes
-from interaction.messages import Opine, Wikipedia
+from interaction.messages import Opine, Wikipedia, CheckGoals
 
 # Color logging
 from utils.color_logging import log
@@ -168,20 +168,53 @@ def add_goal(
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Add a short-term goal in a given context '''
-    interact.add_goal(service, channel, goal)
+    ''' Add a goal in a given context '''
+    if goal.strip():
+        interact.add_goal(service, channel, goal.strip())
     return {
-        "goals": interact.get_goals(service, channel)
+        "goals": interact.list_goals(service, channel, achieved=False)
     }
 
 @app.post("/get_goals/")
 def get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Fetch the current short-term goals for a given context '''
+):
+    ''' Fetch the current goals for a given context '''
     return {
-        "goals": interact.get_goals(service, channel)
+        "goals": interact.get_goals(service, channel, achieved=False)
+    }
+
+@app.post("/list_goals/")
+def list_goals(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+):
+    ''' Fetch the current goals for a given context '''
+    return {
+        "goals": interact.list_goals(service, channel, achieved=False)
+    }
+
+@app.post("/check_goals/")
+async def check_goals(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    convo: str = Query(..., max_length=65535),
+    goals: List[str] = Query(...)
+):
+    ''' Ask the autobus check whether goals have been achieved '''
+    event = CheckGoals(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo=convo,
+        goals=goals
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
     }
 
 @app.post("/opine/")
@@ -191,7 +224,6 @@ async def opine(
     entities: List[str] = Query(...)
 ):
     ''' Ask the autobus to gather opinions about entities '''
-
     event = Opine(
         service=service,
         channel=channel,

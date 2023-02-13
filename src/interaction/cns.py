@@ -209,7 +209,7 @@ async def wikipedia_summary(event):
         else:
             wiki = None
             try:
-                if not wikipedia.page(entity, auto_suggest=False):
+                if wikipedia.page(entity, auto_suggest=False).original_title.lower() != entity.lower():
                     log.warning(f"❎ no exact match found for {entity}")
                     continue
 
@@ -235,14 +235,18 @@ async def wikipedia_summary(event):
 
 async def add_goal(event):
     ''' Add a new goal '''
-    # don't repeat yourself
-    goals = recall.get_goals(event.service, event.channel) or ['']
+    if not event.goal.strip():
+        return
+
+    # Don't repeat yourself
+    goals = recall.list_goals(event.service, event.channel, achieved=False) or ['']
     for goal in goals:
-        if ratio(goal, event.goal) < 0.6: # and random.random() < 0.5:
-            log.info("🏅 New goal:", event.goal)
-            recall.add_goal(event.service, event.channel, event.goal)
-        else:
+        if ratio(goal, event.goal) > 0.6:
             log.warning(f'🏅 We already have a goal like "{event.goal}", skipping.')
+            return
+
+    log.info("🥇 New goal:", event.goal)
+    recall.add_goal(event.service, event.channel, event.goal)
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
@@ -267,7 +271,7 @@ async def goals_achieved(event):
         if 'true' in goal_achieved.lower():
             log.warning(f"🏆 Goal achieved: {goal}")
             services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, f"🏆 _achievement unlocked: {goal}_")
-            recall.remove_goal(event.service, event.channel, goal)
+            recall.achieve_goal(event.service, event.channel, goal)
         else:
             log.warning(f"🚫 Goal not yet achieved: {goal}")
 
