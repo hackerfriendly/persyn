@@ -333,7 +333,7 @@ class Interact():
         self.check_goals(service, channel, convo)
 
         # Our mind might have been wandering, so remember the last thing that was said.
-        if last_sentence and convo[-1] != last_sentence:
+        if last_sentence:
             convo.append(last_sentence)
 
         summaries = []
