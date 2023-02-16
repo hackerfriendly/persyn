@@ -368,12 +368,14 @@ class Interact():
 
     def default_prompt_prefix(self):
         ''' The default prompt prefix '''
-        return '\n'.join([
-            getattr(self.config.interact, "character", ""),
+        ret = [
             f"It is {natural_time()} on {today()}.",
+            getattr(self.config.interact, "character", ""),
             f"{self.config.id.name} is feeling {self.feels['current']}.",
-            f"{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}" if self.feels['goals'] else ''
-        ])
+        ]
+        if self.feels['goals']:
+            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(self.feels['goals'])}")
+        return '\n'.join(ret)
 
     def generate_prompt(self, summaries, convo, lts=None):
         ''' Generate the model prompt '''
