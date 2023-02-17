@@ -375,9 +375,23 @@ class Interact():
 
         # Is this just too much to think about?
         if len(prompt) > self.completion.max_prompt_length:
+            # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
-            self.summarize_convo(service, channel, save=True, max_tokens=100)
-            summaries = self.recall.summaries(service, channel, size=3)
+            req = {
+                "service": service,
+                "channel": channel,
+                "save": True,
+                "max_tokens": 100
+            }
+            try:
+                reply = requests.post(f"{self.config.interact_url}/summary/", params=req, timeout=30)
+                reply.raise_for_status()
+            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+                log.critical(f"🤖 Could not post /summary/ to interact: {err}")
+                return " :writing_hand: :interrobang: "
+
+            # This is a hack, but fairly effective. Instead of waiting for summaries,
+            # just use the original summaries (if any) and the last few lines of convo.
             prompt = self.generate_prompt(summaries, convo[-3:], service, channel, lts)
 
         reply = self.choose_response(prompt, convo, service, channel, self.goals)
