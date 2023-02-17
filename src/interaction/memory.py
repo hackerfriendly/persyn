@@ -29,8 +29,12 @@ class Recall():
         self.stm = ShortTermMemory(persyn_config, conversation_interval)
         self.ltm = LongTermMemory(persyn_config, version)
 
-    def save(self, service, channel, msg, speaker_name, speaker_id, verb=None):
-        ''' Save to stm and ltm. Clears stm if it expired. Returns the current convo_id. '''
+    def save(self, service, channel, msg, speaker_name, speaker_id, verb=None, convo_id=None):
+        '''
+        Save to stm and ltm. Clears stm if it expired. Returns the current convo_id.
+
+        Specify a different convo_id to override the value in ltm.
+        '''
         if self.stm.expired(service, channel):
             self.stm.clear(service, channel)
 
@@ -43,7 +47,7 @@ class Recall():
                 msg,
                 speaker_name,
                 speaker_id,
-                self.stm.convo_id(service, channel),
+                convo_id or self.stm.convo_id(service, channel),
                 verb
             )
         )
@@ -110,7 +114,7 @@ class Recall():
             ]
         return []
 
-    def convo(self, service, channel):
+    def convo(self, service, channel, feels=False):
         '''
         Return the entire convo from stm (if any).
 
@@ -124,10 +128,22 @@ class Recall():
         for line in convo:
             if 'verb' not in line or line['verb'] in ['dialog', None]:
                 ret.append(f"{line['speaker']}: {line['msg']}")
-            else:
+            elif feels or line['verb'] != ['feels']:
                 ret.append(f"{line['speaker']} {line['verb']}: {line['msg']}")
 
         return ret
+
+    def feels(self, convo_id):
+        '''
+        Return the last known feels for this channel.
+        '''
+        convo = self.ltm.get_convo_by_id(convo_id)
+        log.debug("📢", convo)
+        for doc in convo[::-1]:
+            if doc['_source']['verb'] == 'feels':
+                return doc['_source']['msg']
+
+        return "nothing in particular"
 
     def summaries(self, service, channel, size=3):
         ''' Return the summary text from ltm (if any) '''

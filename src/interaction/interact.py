@@ -32,8 +32,8 @@ class Interact():
     def __init__(self, persyn_config):
         self.config = persyn_config
 
-        # How are we feeling today? TODO: This needs to be per-channel, particularly the goals.
-        self.feels = {'current': "nothing in particular", 'goals': []}
+        # What are we doing with our life?
+        self.goals = []
 
         # Pick a language model for completion
         self.completion = LanguageModel(config=persyn_config)
@@ -59,7 +59,16 @@ class Interact():
         # Then create the Recall object using the Elasticsearch credentials.
         self.recall = Recall(persyn_config)
 
-    def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0, dialog_only=True):
+    def summarize_convo(
+        self,
+        service,
+        channel,
+        save=True,
+        max_tokens=200,
+        include_keywords=False,
+        context_lines=0,
+        dialog_only=True
+        ):
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
@@ -115,7 +124,7 @@ class Interact():
 
         return summary
 
-    def choose_response(self, prompt, convo, goals):
+    def choose_response(self, prompt, convo, service, channel, goals):
         ''' Choose the best completion response from a list of possibilities '''
         if not convo:
             convo = []
@@ -139,7 +148,7 @@ class Interact():
         if not scored:
             log.warning("😳 No surviving replies, one last try.")
             scored = self.completion.get_replies(
-                prompt=self.generate_prompt([], convo[:-1]),
+                prompt=self.generate_prompt([], convo[:-1], service, channel),
                 convo=convo,
                 goals=goals
             )
@@ -277,14 +286,14 @@ class Interact():
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
-        self.feels['goals'] = self.recall.list_goals(service, channel)
+        self.goals = self.recall.list_goals(service, channel)
 
-        if self.feels['goals']:
+        if self.goals:
             req = {
                 "service": service,
                 "channel": channel,
                 "convo": '\n'.join(convo),
-                "goals": self.feels['goals']
+                "goals": self.goals
             }
             log.info(req)
 
@@ -294,13 +303,29 @@ class Interact():
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /check_goals/ to interact: {err}")
 
+    def get_feels(self, service, channel, convo_id, room):
+        ''' How are we feeling? Let's ask the autobus. '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+            "room": room
+        }
+        log.info(req)
+
+        try:
+            reply = requests.post(f"{self.config.interact.url}/vibe_check/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
+
     def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
         Returns the best available reply.
         '''
-        self.feels['goals'] = self.recall.list_goals(service, channel)
+        self.goals = self.recall.list_goals(service, channel)
 
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
@@ -329,8 +354,9 @@ class Interact():
         # Facts and opinions
         self.gather_facts(service, channel, entities)
 
-        # Goals
-        self.check_goals(service, channel, convo)
+        # Goals. Don't give out _too_ many trophies.
+        if random.random() < 0.5:
+            self.check_goals(service, channel, convo)
 
         # Our mind might have been wandering, so remember the last thing that was said.
         if last_sentence:
@@ -343,16 +369,16 @@ class Interact():
                 visited.append(summary['_id'])
 
         lts = self.recall.lts(service, channel)
-        prompt = self.generate_prompt(summaries, convo, lts)
+        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
         if len(prompt) > self.completion.max_prompt_length:
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             self.summarize_convo(service, channel, save=True, max_tokens=100)
             summaries = self.recall.summaries(service, channel, size=3)
-            prompt = self.generate_prompt(summaries, convo[-3:], lts)
+            prompt = self.generate_prompt(summaries, convo[-3:], service, channel, lts)
 
-        reply = self.choose_response(prompt, convo, self.feels['goals'])
+        reply = self.choose_response(prompt, convo, service, channel, self.goals)
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -360,31 +386,31 @@ class Interact():
                 log.warning(f"🤮 Custom filter failed: {err}")
 
         self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
-        self.feels['current'] = self.completion.get_feels(f'{prompt} {reply}')
 
-        log.warning("😄 Feeling:", self.feels['current'])
+        # Sentiment analysis via the autobus
+        self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
 
         return reply
 
-    def default_prompt_prefix(self):
+    def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
         ret = [
             f"It is {natural_time()} on {today()}.",
             getattr(self.config.interact, "character", ""),
-            f"{self.config.id.name} is feeling {self.feels['current']}.",
+            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.stm.convo_id(service, channel))}.",
         ]
-        if self.feels['goals']:
-            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(self.feels['goals'])}")
+        if self.goals:
+            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(self.goals)}")
         return '\n'.join(ret)
 
-    def generate_prompt(self, summaries, convo, lts=None):
+    def generate_prompt(self, summaries, convo, service, channel, lts=None):
         ''' Generate the model prompt '''
         newline = '\n'
         timediff = ''
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
-        return f"""{self.default_prompt_prefix()}
+        return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
 {newline.join(convo)}
 {timediff}
@@ -397,7 +423,7 @@ class Interact():
         summaries = self.recall.summaries(service, channel, size=2)
         convo = self.recall.convo(service, channel)
         timediff = f"It has been {ago(self.recall.lts(service, channel))} since they last spoke."
-        return f"""{self.default_prompt_prefix()}
+        return f"""{self.default_prompt_prefix(service, channel)}
 {paragraph.join(summaries)}
 
 {newline.join(convo)}

@@ -8,8 +8,6 @@ The central nervous system. Listen for events on the event bus and inject result
 import os
 import argparse
 
-from random import random
-
 import autobus
 
 from spacy.lang.en.stop_words import STOP_WORDS
@@ -34,7 +32,7 @@ from interaction.memory import Recall
 from interaction.completion import LanguageModel
 
 # Message classes
-from interaction.messages import SendChat, Idea, Summarize, Elaborate, Opine, Wikipedia, CheckGoals, AddGoal
+from interaction.messages import *  # pylint: disable=wildcard-import
 
 # Color logging
 from utils.color_logging import log
@@ -248,6 +246,20 @@ async def add_goal(event):
     log.info("🥇 New goal:", event.goal)
     recall.add_goal(event.service, event.channel, event.goal)
 
+async def check_feels(event):
+    ''' Run sentiment analysis on ourselves. '''
+    feels = completion.get_feels(event.room)
+    recall.save(
+        event.service,
+        event.channel,
+        feels,
+        event.bot_name,
+        event.bot_id,
+        verb='feels',
+        convo_id=event.convo_id
+    )
+    log.warning("😄 Feeling:", feels)
+
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
     chat = Chat(
@@ -339,6 +351,11 @@ async def check_goals_event(event):
 async def goals_event(event):
     ''' Dispatch AddGoal event. '''
     await add_goal(event)
+
+@autobus.subscribe(VibeCheck)
+async def feels_event(event):
+    ''' Dispatch VibeCheck event. '''
+    await check_feels(event)
 
 
 def main():

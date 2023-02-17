@@ -23,7 +23,7 @@ import autobus
 from interaction.interact import Interact
 
 # Message classes
-from interaction.messages import Opine, Wikipedia, CheckGoals
+from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck
 
 # Color logging
 from utils.color_logging import log
@@ -257,6 +257,29 @@ async def wiki(
     return {
         "success": True
     }
+
+@app.post("/vibe_check/")
+async def vibe_check(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    convo_id: str = Query(..., min_length=1, max_length=255),
+    room: str = Query(..., max_length=65535),
+):
+    ''' Ask the autobus check whether goals have been achieved '''
+    event = VibeCheck(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=convo_id,
+        room=room
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
 
 async def main():
     ''' Main event '''
