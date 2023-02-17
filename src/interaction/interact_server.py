@@ -11,7 +11,7 @@ import asyncio
 
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Form
 from fastapi.responses import RedirectResponse
 
 import uvicorn
@@ -263,9 +263,9 @@ async def vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: str = Query(..., min_length=1, max_length=255),
-    room: str = Query(..., max_length=65535),
+    room: str = Form(..., max_length=65535),
 ):
-    ''' Ask the autobus check whether goals have been achieved '''
+    ''' Ask the autobus to vibe check the room '''
     event = VibeCheck(
         service=service,
         channel=channel,

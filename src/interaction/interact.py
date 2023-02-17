@@ -309,12 +309,14 @@ class Interact():
             "service": service,
             "channel": channel,
             "convo_id": convo_id,
+        }
+        data = {
             "room": room
         }
         log.info(req)
 
         try:
-            reply = requests.post(f"{self.config.interact.url}/vibe_check/", params=req, timeout=10)
+            reply = requests.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
