@@ -9,13 +9,7 @@ import random
 import re # used by custom filters
 import urllib3
 
-from spacy.lang.en.stop_words import STOP_WORDS
-
-# just-in-time Wikipedia
-import wikipedia
-from wikipedia.exceptions import WikipediaException
-
-from Levenshtein import ratio
+import requests
 
 # Long and short term memory
 from interaction.memory import Recall
@@ -38,11 +32,8 @@ class Interact():
     def __init__(self, persyn_config):
         self.config = persyn_config
 
-        # local Wikipedia cache
-        self.wikicache = {}
-
-        # How are we feeling today? TODO: This needs to be per-channel, particularly the goals.
-        self.feels = {'current': "nothing in particular", 'goals': []}
+        # What are we doing with our life?
+        self.goals = []
 
         # Pick a language model for completion
         self.completion = LanguageModel(config=persyn_config)
@@ -68,7 +59,16 @@ class Interact():
         # Then create the Recall object using the Elasticsearch credentials.
         self.recall = Recall(persyn_config)
 
-    def summarize_convo(self, service, channel, save=True, max_tokens=200, include_keywords=False, context_lines=0, dialog_only=True):
+    def summarize_convo(
+        self,
+        service,
+        channel,
+        save=True,
+        max_tokens=200,
+        include_keywords=False,
+        context_lines=0,
+        dialog_only=True
+        ):
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
@@ -124,7 +124,7 @@ class Interact():
 
         return summary
 
-    def choose_response(self, prompt, convo, goals):
+    def choose_response(self, prompt, convo, service, channel, goals):
         ''' Choose the best completion response from a list of possibilities '''
         if not convo:
             convo = []
@@ -140,14 +140,15 @@ class Interact():
             scored = self.completion.get_replies(
                 prompt=prompt,
                 convo=convo,
-                goals=goals
+                goals=goals,
+                n=2
             )
 
-        # Uh-oh. Just keep it brief.
+        # Uh-oh. Just ignore whatever was last said.
         if not scored:
             log.warning("😳 No surviving replies, one last try.")
             scored = self.completion.get_replies(
-                prompt=self.generate_prompt([], convo[-4:]),
+                prompt=self.generate_prompt([], convo[:-1], service, channel),
                 convo=convo,
                 goals=goals
             )
@@ -258,112 +259,75 @@ class Interact():
         return visited
 
     def gather_facts(self, service, channel, entities):
-        ''' Gather facts (from Wikipedia) and opinions (from memory) '''
+        '''
+        Gather facts (from Wikipedia) and opinions (from memory).
+
+        This happens asynchronously via the event bus, so facts and opinions
+        might not be immediately available for conversation.
+        '''
         if not entities:
             return
 
-        for entity in random.sample(entities, k=min(3, len(entities))):
-            if entity == '' or entity in STOP_WORDS:
-                continue
+        the_sample = random.sample(entities, k=min(3, len(entities)))
 
-            opinions = self.recall.opine(service, channel, entity)
-            if opinions:
-                log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
-                if len(opinions) == 1:
-                    opinion = opinions[0]
-                else:
-                    opinion = self.completion.nlp(self.completion.get_summary(
-                        text='\n'.join(opinions),
-                        summarizer=f"{self.config.id.name}'s opinion about {entity} can be briefly summarized as:",
-                        max_tokens=75
-                    )).text
+        req = {
+            "service": service,
+            "channel": channel,
+            "entities": the_sample
+        }
 
-                if opinion not in self.recall.stm.get_bias(service, channel):
-                    self.recall.stm.add_bias(service, channel, opinion)
-                    self.inject_idea(service, channel, opinion, f"thinks about {entity}")
-
-            log.warning(f'❇️  look up "{entity}" on Wikipedia')
-
-            if entity in self.wikicache:
-                log.warning(f'🤑 wiki cache hit: "{entity}"')
-            else:
-                wiki = None
-                try:
-                    if wikipedia.page(entity).original_title.lower() != entity.lower():
-                        log.warning("❎ no exact match found")
-                        continue
-
-                    log.warning("✅ found it.")
-                    wiki = wikipedia.summary(entity, sentences=3)
-
-                    summary = self.completion.nlp(self.completion.get_summary(
-                        text=f"This Wikipedia article:\n{wiki}",
-                        summarizer="Can be briefly summarized as: ",
-                        max_tokens=75
-                    ))
-                    # 2 sentences max please.
-                    self.wikicache[entity] = ' '.join([s.text for s in summary.sents][:2])
-
-                except WikipediaException:
-                    log.warning("❎ no unambigous wikipedia entry found")
-                    self.wikicache[entity] = None
-                    continue
-
-                if entity in self.wikicache and self.wikicache[entity] is not None:
-                    self.inject_idea(service, channel, self.wikicache[entity])
+        for endpoint in ('opine', 'wikipedia'):
+            try:
+                reply = requests.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
+                reply.raise_for_status()
+            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+                log.critical(f"🤖 Could not post /{endpoint}/ to interact: {err}")
+                return
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
-        achieved = []
+        self.goals = self.recall.list_goals(service, channel)
 
-        if self.feels['goals']:
-            goal = random.choice(self.feels['goals'])
-            goal_achieved = self.completion.get_summary(
-                '\n'.join(convo),
-                summarizer=f"Q: True or False: {self.config.id.name} achieved the goal of {goal}.\nA:",
-                max_tokens=10
-            )
+        if self.goals:
+            req = {
+                "service": service,
+                "channel": channel,
+                "convo": '\n'.join(convo),
+                "goals": self.goals
+            }
+            log.info(req)
 
-            log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
-            if 'true' in goal_achieved.lower():
-                log.warning(f"🏆 Goal achieved: {goal}")
-                achieved.append(goal)
-                self.feels['goals'].remove(goal)
-            else:
-                log.warning(f"🚫 Goal not yet achieved: {goal}")
+            try:
+                reply = requests.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
+                reply.raise_for_status()
+            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+                log.critical(f"🤖 Could not post /check_goals/ to interact: {err}")
 
-        summary = self.completion.nlp(self.completion.get_summary(
-            text='\n'.join(convo),
-            summarizer=f"{self.config.id.name}'s goal is",
-            max_tokens=100
-        ))
+    def get_feels(self, service, channel, convo_id, room):
+        ''' How are we feeling? Let's ask the autobus. '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+        }
+        data = {
+            "room": room
+        }
+        log.info(req)
 
-        # 1 sentence max please.
-        the_goal = ' '.join([s.text for s in summary.sents][:1])
-
-        # some goals are too easy
-        for taboo in ['remember', 'learn']:
-            if taboo in the_goal:
-                return achieved
-
-        # don't repeat yourself
-        for goal in self.recall.get_goals(service, channel):
-            if ratio(goal, the_goal) > 0.6:
-                return achieved
-
-        # we've been handing out too many trophies
-        if random.random() < 0.5:
-            self.recall.add_goal(service, channel, the_goal)
-
-        return achieved
+        try:
+            reply = requests.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
 
     def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
-        Returns the best reply, and any goals achieved.
+        Returns the best available reply.
         '''
-        self.feels['goals'] = self.recall.get_goals(service, channel)
+        self.goals = self.recall.list_goals(service, channel)
 
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
@@ -389,11 +353,12 @@ class Interact():
         # Reflect on this conversation
         visited = self.gather_memories(service, channel, entities)
 
-        # Facts and opinions (interleaved)
+        # Facts and opinions
         self.gather_facts(service, channel, entities)
 
-        # Goals
-        achieved = self.check_goals(service, channel, convo)
+        # Goals. Don't give out _too_ many trophies.
+        if random.random() < 0.5:
+            self.check_goals(service, channel, convo)
 
         # Our mind might have been wandering, so remember the last thing that was said.
         if last_sentence:
@@ -406,16 +371,30 @@ class Interact():
                 visited.append(summary['_id'])
 
         lts = self.recall.lts(service, channel)
-        prompt = self.generate_prompt(summaries, convo, lts)
+        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
         if len(prompt) > self.completion.max_prompt_length:
+            # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
-            self.summarize_convo(service, channel, save=True, max_tokens=100)
-            summaries = self.recall.summaries(service, channel, size=3)
-            prompt = self.generate_prompt(summaries, convo[-3:], lts)
+            req = {
+                "service": service,
+                "channel": channel,
+                "save": True,
+                "max_tokens": 100
+            }
+            try:
+                reply = requests.post(f"{self.config.interact_url}/summary/", params=req, timeout=30)
+                reply.raise_for_status()
+            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+                log.critical(f"🤖 Could not post /summary/ to interact: {err}")
+                return " :writing_hand: :interrobang: "
 
-        reply = self.choose_response(prompt, convo, self.feels['goals'])
+            # This is a hack, but fairly effective. Instead of waiting for summaries,
+            # just use the original summaries (if any) and the last few lines of convo.
+            prompt = self.generate_prompt(summaries, convo[-3:], service, channel, lts)
+
+        reply = self.choose_response(prompt, convo, service, channel, self.goals)
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -424,29 +403,30 @@ class Interact():
 
         self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
 
-        self.feels['current'] = self.completion.get_feels(f'{prompt} {reply}')
+        # Sentiment analysis via the autobus
+        self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
 
-        log.warning("😄 Feeling:", self.feels['current'])
+        return reply
 
-        return (reply, achieved)
-
-    def default_prompt_prefix(self):
+    def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
-        return '\n'.join([
-            getattr(self.config.interact, "character", ""),
+        ret = [
             f"It is {natural_time()} on {today()}.",
-            f"{self.config.id.name} is feeling {self.feels['current']}.",
-            f"{self.config.id.name}'s goals include {', '.join(self.feels['goals'])}" if self.feels['goals'] else ''
-        ])
+            getattr(self.config.interact, "character", ""),
+            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.stm.convo_id(service, channel))}.",
+        ]
+        if self.goals:
+            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(self.goals)}")
+        return '\n'.join(ret)
 
-    def generate_prompt(self, summaries, convo, lts=None):
+    def generate_prompt(self, summaries, convo, service, channel, lts=None):
         ''' Generate the model prompt '''
         newline = '\n'
         timediff = ''
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
-        return f"""{self.default_prompt_prefix()}
+        return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
 {newline.join(convo)}
 {timediff}
@@ -459,7 +439,7 @@ class Interact():
         summaries = self.recall.summaries(service, channel, size=2)
         convo = self.recall.convo(service, channel)
         timediff = f"It has been {ago(self.recall.lts(service, channel))} since they last spoke."
-        return f"""{self.default_prompt_prefix()}
+        return f"""{self.default_prompt_prefix(service, channel)}
 {paragraph.join(summaries)}
 
 {newline.join(convo)}
@@ -487,47 +467,6 @@ class Interact():
         nlp = self.completion.nlp(text)
         return list({n.text.strip() for n in nlp.ents if n.text.strip() != self.config.id.name})
 
-    def daydream(self, service, channel):
-        ''' Chew on recent conversation '''
-        paragraph = '\n\n'
-        newline = '\n'
-        summaries = self.recall.summaries(service, channel, size=5)
-        convo = self.recall.convo(service, channel)
-
-        reply = {}
-        entities = self.extract_entities(paragraph.join(summaries) + newline.join(convo))
-
-        for entity in random.sample(entities, k=min(3, len(entities))):
-            if entity == '' or entity in STOP_WORDS:
-                continue
-
-            if entity in self.wikicache:
-                log.warning(f"🤑 wiki cache hit: {entity}")
-                reply[entity] = self.wikicache[entity]
-            else:
-                try:
-                    hits = wikipedia.search(entity)
-                    if hits:
-                        try:
-                            wiki = wikipedia.summary(hits[0:1], sentences=3)
-                            summary = self.completion.nlp(self.completion.get_summary(
-                                text=f"This Wikipedia article:\n{wiki}",
-                                summarizer="Can be summarized as: ",
-                                max_tokens=100
-                            ))
-                            # 2 sentences max please.
-                            reply[entity] = ' '.join([s.text for s in summary.sents][:2])
-                            self.wikicache[entity] = reply[entity]
-                        except WikipediaException:
-                            continue
-
-                except WikipediaException:
-                    continue
-
-        log.warning("💭 daydream entities:")
-        log.warning(reply)
-        return reply
-
     def inject_idea(self, service, channel, idea, verb="recalls"):
         '''
         Directly inject an idea into recall memory.
@@ -548,6 +487,10 @@ class Interact():
         ''' Stub for recall '''
         return self.recall.add_goal(service, channel, goal)
 
-    def get_goals(self, service, channel):
+    def get_goals(self, service, channel, goal=None, achieved=False, size=10):
         ''' Stub for recall '''
-        return self.recall.get_goals(service, channel)
+        return self.recall.get_goals(service, channel, goal, achieved, size)
+
+    def list_goals(self, service, channel, achieved=False, size=10):
+        ''' Stub for recall '''
+        return self.recall.list_goals(service, channel, achieved, size)

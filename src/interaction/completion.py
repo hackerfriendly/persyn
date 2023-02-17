@@ -65,12 +65,12 @@ class LanguageModel():
         else:
             raise RuntimeError(f'Unknown engine: {self.engine}')
 
-    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
+    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
         '''
-        return self.model.get_replies(prompt, convo, goals, stop, temperature, max_tokens)
+        return self.model.get_replies(prompt, convo, goals, stop, temperature, max_tokens, n)
 
     def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50):
         '''

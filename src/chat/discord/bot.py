@@ -181,11 +181,8 @@ async def schedule_reply(ctx):
     log.warning("⏰ schedule_reply")
 
     # TODO: implement async get_reply in chat/common.py. Consider converting _everything_ to async.
-    (the_reply, goals_achieved) = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
+    the_reply = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
     await ctx.channel.send(the_reply)
-
-    for goal in goals_achieved:
-        await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
 
     # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
     if not channel.startswith('dm|'):
@@ -221,12 +218,10 @@ async def handle_attachments(ctx):
             if not msg.strip():
                 msg = "..."
 
-            reply, goals_achieved = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
+            reply = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
 
             await ctx.channel.send(reply)
 
-            for goal in goals_achieved:
-                await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
         else:
             await ctx.channel.send(
                 random.choice([
@@ -269,7 +264,6 @@ async def dispatch(ctx):
   `status`: Say exactly what is on {persyn_config.id.name}'s mind.
   `nouns`: Some things worth thinking about.
   `reflect`: {persyn_config.id.name}'s opinion of those things.
-  `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
   `goals`: See {persyn_config.id.name}'s current goals
 
   *Image generation:*

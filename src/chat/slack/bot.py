@@ -159,7 +159,6 @@ def main():
     `status`: Say exactly what is on {persyn_config.id.name}'s mind.
     `nouns`: Some things worth thinking about.
     `reflect`: {persyn_config.id.name}'s opinion of those things.
-    `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
     `goals`: See {persyn_config.id.name}'s current goals
 
     *Image generation:*
@@ -173,12 +172,12 @@ def main():
         ''' What are we doing again? '''
         channel = context['channel_id']
 
-        current_goals = chat.get_goals(channel)
+        current_goals = chat.list_goals(channel)
         if current_goals:
             for goal in current_goals:
                 say(f":goal_net: {goal}")
         else:
-            say(":shrug:")
+            say("No goals. :shrug:")
 
     @app.message(re.compile(r"^:art:$"))
     def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
@@ -266,34 +265,6 @@ def main():
         channel = context['channel_id']
         say("> " + ", ".join(chat.get_entities(chat.get_status(channel))))
 
-    @app.message(re.compile(r"^daydream$", re.I))
-    def daydream(say, context):
-        ''' Let your mind wander '''
-        channel = context['channel_id']
-        say(f"_{persyn_config.id.name}'s mind starts to wander..._")
-
-        ideas = chat.get_daydream(channel)
-
-        for idea in random.sample(list(ideas), k=min(len(ideas), 5)):
-            # skip eg. "4 months ago"
-            if 'ago' in str(idea):
-                continue
-
-            chat.inject_idea(channel, ideas[idea])
-            say(f"💭 *{idea}*: _{ideas[idea]}_")
-
-        the_nouns = chat.get_nouns(chat.get_status(channel))
-        for noun in random.sample(the_nouns, k=min(3, len(the_nouns))):
-            opinion = chat.get_opinions(channel, noun.lower(), condense=True)
-            if not opinion:
-                opinion = [chat.judge(channel, noun.lower())]
-            if opinion:
-                chat.inject_idea(channel, opinion[0])
-                say(f"🤔 *{noun}*: _{opinion[0]}_")
-
-        say(f"_{persyn_config.id.name} blinks and looks around._")
-        chat.summarize_later(channel, reminders, when=1)
-
     @app.message(re.compile(r"^opinions (.*)$", re.I))
     def opine_all(say, context):
         ''' Fetch our opinion on a topic '''
@@ -361,16 +332,13 @@ def main():
             if random.random() < 0.95:
                 return
 
-        (the_reply, goals_achieved) = chat.get_reply(channel, msg, speaker_name, speaker_id)
+        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
         say(the_reply)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
         reminders.cancel(channel, name='summarizer')
-
-        for goal in goals_achieved:
-            say(f"🏆 _achievement unlocked: {goal}_")
 
         chat.summarize_later(channel, reminders)
 
@@ -401,12 +369,9 @@ def main():
         speaker_name = get_display_name(speaker_id)
         msg = substitute_names(body['event']['text'])
 
-        reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
+        reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
         say(reply)
-
-        for goal in goals_achieved:
-            say(f"🏆 _achievement unlocked: {goal}_")
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -515,12 +480,9 @@ def main():
                 if not msg.strip():
                     msg = "..."
 
-                reply, goals_achieved = chat.get_reply(channel, msg, speaker_name, speaker_id)
-
+                reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
                 say(reply)
 
-                for goal in goals_achieved:
-                    say(f"🏆 _achievement unlocked: {goal}_")
             else:
                 say(
                     random.choice([

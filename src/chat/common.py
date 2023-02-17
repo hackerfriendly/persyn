@@ -102,11 +102,8 @@ class Chat():
 
         resp = response.json()
         reply = resp['reply']
-        goals_achieved = resp['goals_achieved']
 
         log.warning(f"[{channel}] {self.bot_name}:", reply)
-        if goals_achieved:
-            log.warning(f"[{channel}] {self.bot_name}:", f"🏆 {goals_achieved}")
 
         if any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
@@ -115,7 +112,7 @@ class Chat():
                 engine="stable-diffusion"
             )
 
-        return (reply, goals_achieved)
+        return reply
 
     def summarize_later(self, channel, reminders, when=None):
         '''
@@ -227,25 +224,6 @@ class Chat():
         return reply.json()['entities']
         # return [e for e in reply.json()['entities'] if e not in speakers()]
 
-    def get_daydream(self, channel):
-        ''' Ask interact to daydream about this channel. '''
-        if not self.interact_url:
-            log.error("💭 get_daydream() called with no URL defined, skipping.")
-            return None
-
-        req = {
-            "service": self.service,
-            "channel": channel,
-        }
-        try:
-            reply = requests.post(f"{self.interact_url}/daydream/", params=req, timeout=10)
-            reply.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /daydream/ to interact: {err}")
-            return []
-
-        return reply.json()['daydream']
-
     def get_status(self, channel):
         ''' Ask interact for status. '''
         if not self.interact_url:
@@ -291,10 +269,10 @@ class Chat():
         return []
         # return [e for e in reply.json()['nouns'] if e not in speakers()]
 
-    def get_goals(self, channel):
+    def list_goals(self, channel):
         ''' Return the goals for this channel, if any. '''
         if not self.interact_url:
-            log.error("🏆 get_goals() called with no URL defined, skipping.")
+            log.error("🏆 list_goals() called with no URL defined, skipping.")
             return []
 
         req = {
@@ -302,10 +280,10 @@ class Chat():
             "channel": channel
         }
         try:
-            reply = requests.post(f"{self.interact_url}/get_goals/", params=req, timeout=20)
+            reply = requests.post(f"{self.interact_url}/list_goals/", params=req, timeout=20)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /get_goals/ to interact: {err}")
+            log.critical(f"🤖 Could not post /list_goals/ to interact: {err}")
             return []
 
         ret = reply.json()

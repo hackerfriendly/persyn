@@ -51,7 +51,7 @@ dependencies = [
 [project.scripts]
 launch_bot = "launch_bot:main"
 kill_bot = "kill_bot:main"
-interact = "interaction.interact_server:main"
+interact = "interaction.interact_server:launch"
 slack = "chat.slack.bot:main"
 discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
@@ -63,6 +63,8 @@ inject_idea = "chat.stdio.inject_idea:main"
 summarize = "chat.stdio.summarize:main"
 send_chat = "chat.stdio.send_chat:main"
 elaborate = "chat.stdio.elaborate:main"
+opine = "chat.stdio.opine:main"
+add_goal = "chat.stdio.add_goal:main"
 
 [project.optional-dependencies]
 dev = [
