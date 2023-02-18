@@ -228,7 +228,7 @@ async def wikipedia_summary(event):
                 continue
 
         if entity in wikicache and wikicache[entity] is not None:
-            chat.inject_idea(event.service, event.channel, wikicache[entity])
+            chat.inject_idea(event.channel, wikicache[entity], verb="recalls")
 
 
 async def add_goal(event):
