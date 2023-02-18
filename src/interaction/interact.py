@@ -384,7 +384,7 @@ class Interact():
                 "max_tokens": 100
             }
             try:
-                reply = requests.post(f"{self.config.interact_url}/summary/", params=req, timeout=30)
+                reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=30)
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
