@@ -819,7 +819,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             refresh='true' if refresh else 'false'
         )["_id"]
 
-        log.debug("doc:", _id)
+        log.debug("🗞️ doc:", _id)
 
         return _id
 

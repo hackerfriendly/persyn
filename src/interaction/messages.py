@@ -6,8 +6,6 @@ CNS autobus messages
 from typing import Optional, List
 import autobus
 
-__all__ = ['SendChat', 'Idea', 'Summarize', 'Elaborate', 'Opine', 'Wikipedia', 'CheckGoals', 'AddGoal', 'VibeCheck']
-
 class SendChat(autobus.Event):
     ''' Post text or images '''
     service: str
@@ -91,3 +89,22 @@ class VibeCheck(autobus.Event):
     bot_id: str
     convo_id: str
     room: str
+
+
+class News(autobus.Event):
+    ''' What's happening in the big world? '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    url: str
+    title: str
+
+
+class Web(autobus.Event):
+    ''' Be sure to surf responsibly. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    url: str

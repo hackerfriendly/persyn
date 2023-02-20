@@ -23,7 +23,7 @@ import autobus
 from interaction.interact import Interact
 
 # Message classes
-from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck
+from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck, News
 
 # Color logging
 from utils.color_logging import log
@@ -119,9 +119,9 @@ def handle_entities(
 def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    idea: str = Query(..., min_length=1, max_length=16384),
-    verb: Optional[str] = Query('recalls', min_length=1, max_length=16384),
-    ):
+    idea: str = Form(..., min_length=1, max_length=65535),
+    verb: Optional[str] = Query('recalls', min_length=1, max_length=255),
+):
     ''' Inject an idea into the stream of consciousness '''
     interact.inject_idea(service, channel, idea, verb)
 
@@ -273,6 +273,50 @@ async def vibe_check(
         bot_id=persyn_config.id.guid,
         convo_id=convo_id,
         room=room
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+
+@app.post("/read_news/")
+async def read_news(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    url: str = Query(..., min_length=9, max_length=4096),
+    title: str = Query(..., max_length=65535),
+):
+    ''' Doomscrolling on the autobus '''
+    event = News(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        url=url,
+        title=title
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+
+@app.post("/read_url/")
+async def read_url(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    url: str = Query(..., min_length=9, max_length=4096),
+):
+    ''' Let's surf the interwebs... on the autobus! '''
+    event = Web(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        url=url,
     )
     autobus.publish(event)
 
