@@ -406,6 +406,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Extract a full conversation by its convo_id.
         Returns a list convo objects.
         '''
+        if not convo_id:
+            return []
+
         ret = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
             query={
