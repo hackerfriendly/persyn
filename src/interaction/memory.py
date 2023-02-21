@@ -278,7 +278,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "entity": f"{self.index_prefix}-entities-{self.version}",
             "relationship": f"{self.index_prefix}-relationships-{self.version}",
             "opinion": f"{self.index_prefix}-opinions-{self.version}",
-            "goal": f"{self.index_prefix}-goals-{self.version}"
+            "goal": f"{self.index_prefix}-goals-{self.version}",
+            "news": f"{self.index_prefix}-news-{self.version}",
         }
 
         for item in self.index.items():
@@ -405,6 +406,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Extract a full conversation by its convo_id.
         Returns a list convo objects.
         '''
+        if not convo_id:
+            return []
+
         ret = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
             query={
@@ -798,4 +802,52 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ret = []
         for goal in self.get_goals(service, channel, goal=None, achieved=achieved, size=size):
             ret.append(goal['_source']['goal'])
+        return ret
+
+    def add_news(self, service, channel, url, title, refresh=True):
+        '''
+        Add a news url that we've read. Returns the doc _id.
+        '''
+        cur_ts = get_cur_ts()
+        doc = {
+            "service": service,
+            "channel": channel,
+            "@timestamp": cur_ts,
+            "url": url,
+            "title": title
+        }
+        _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['news'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )["_id"]
+
+        log.debug("🗞️ doc:", _id)
+
+        return _id
+
+    def have_read(self, service, channel, url):
+        '''
+        Return True if we have read this article, otherwise False.
+        '''
+        ret = []
+
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                    {"match": {"url.keyword": url}}
+                ]
+            }
+        }
+
+        ret = bool(self.es.search(  # pylint: disable=unexpected-keyword-arg
+            index=self.index['news'],
+            query=query,
+            sort=[{"@timestamp": {"order": "desc"}}],
+            size=1
+        )['hits']['hits'])
+
+        log.debug(f"🗞️ {url}: {ret}")
         return ret

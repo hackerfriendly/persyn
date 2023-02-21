@@ -295,7 +295,6 @@ class Interact():
                 "convo": '\n'.join(convo),
                 "goals": self.goals
             }
-            log.info(req)
 
             try:
                 reply = requests.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
@@ -313,7 +312,6 @@ class Interact():
         data = {
             "room": room
         }
-        log.info(req)
 
         try:
             reply = requests.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
@@ -494,3 +492,17 @@ class Interact():
     def list_goals(self, service, channel, achieved=False, size=10):
         ''' Stub for recall '''
         return self.recall.list_goals(service, channel, achieved, size)
+
+    def read_news(self, service, channel, url, title):
+        ''' Let's check the news while we ride the autobus. '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "url": url,
+            "title": title
+        }
+        try:
+            reply = requests.post(f"{self.config.interact.url}/read_news/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /read_news/ to interact: {err}")

@@ -9,12 +9,15 @@ import os
 import argparse
 
 import autobus
+import requests
 
 from spacy.lang.en.stop_words import STOP_WORDS
 
 # just-in-time Wikipedia
 import wikipedia
 from wikipedia.exceptions import WikipediaException
+
+from bs4 import BeautifulSoup
 
 from Levenshtein import ratio
 
@@ -311,6 +314,93 @@ async def goals_achieved(event):
     )
     await add_goal(new_goal)
 
+def text_from_url(url, selector='body'):
+    ''' Return just the text from url. You probably want a better selector than <body>. '''
+    try:
+        article = requests.get(url, timeout=30)
+    except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+        log.error(f"🗞️ Could not fetch article {url}", err)
+        return ''
+
+    soup = BeautifulSoup(article.text, 'html')
+    story = []
+    for line in soup.select_one(selector).text.split('\n'):
+        if not line:
+            continue
+        story.append(line)
+
+    return '\n'.join(story)
+
+async def read_web(event):
+    ''' Read a web page '''
+    # TODO: Move these definitions to the config
+    if 'www.goodnewsnetwork.org' in event.url:
+        selector = '.td-post-content'
+    else:
+        selector = 'body'
+
+    chat = Chat(
+        bot_name=event.bot_name,
+        bot_id=event.bot_id,
+        service=event.service,
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
+
+    if recall.ltm.have_read(event.service, event.channel, event.url):
+        log.info("🕸️ Already read:", event.url)
+        return
+
+    recall.ltm.add_news(event.service, event.channel, event.url, "web page")
+
+    body = text_from_url(event.url, selector)
+
+    if not body:
+        log.error("🗞️ Got empty body from", event.url)
+        return
+
+    log.info("📰 Reading", event.url)
+
+    summary = completion.get_summary(
+        text=body,
+        summarizer="To briefly summarize this article:",
+        max_tokens=300
+    )
+
+    chat.inject_idea(
+        channel=event.channel,
+        idea=summary,
+        verb="saw on the web"
+    )
+
+async def read_news(event):
+    ''' Check our RSS feed. Read the first unread article. '''
+    log.info("🗞️  Reading news feed:", event.url)
+    try:
+        page = requests.get(event.url, timeout=30)
+    except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+        log.error(f"🗞️  Could not fetch RSS feed {event.url}", err)
+        return
+
+    feed = BeautifulSoup(page.text, "xml")
+    for item in feed.find_all('item'):
+        item_url = item.find('link').text
+        if recall.ltm.have_read(event.service, event.channel, item_url):
+            log.info("🗞️  Already read:", item_url)
+            continue
+
+        item_event = Web(
+            service=event.service,
+            channel=event.channel,
+            bot_name=event.bot_name,
+            bot_id=event.bot_id,
+            url=item_url
+        )
+        await read_web(item_event)
+        # only one at a time
+        return
 
 @autobus.subscribe(SendChat)
 async def chat_event(event):
@@ -357,6 +447,15 @@ async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
     await check_feels(event)
 
+@autobus.subscribe(News)
+async def news_event(event):
+    ''' Dispatch News event. '''
+    await read_news(event)
+
+@autobus.subscribe(Web)
+async def web_event(event):
+    ''' Dispatch Web event. '''
+    await read_web(event)
 
 def main():
     ''' Main event '''

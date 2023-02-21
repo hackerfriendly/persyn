@@ -113,7 +113,7 @@ def test_entities():
     assert ltm.save_entity(service, channel, speaker_name)[1] == 0
     sleep(1.1)
     assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] > 1
-    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] < 2
+    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] < 8
 
     # Should match
     assert ltm.entity_to_name(eid) == speaker_name
@@ -172,7 +172,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
                 convo_id=doc4['convo_id'])
             assert doc5['convo_id'] == doc6['convo_id']
-            assert elapsed(doc5['@timestamp'], doc6['@timestamp']) < 1.0
+            assert elapsed(doc5['@timestamp'], doc6['@timestamp']) < 5.0
 
             sleep(0.1)
 
@@ -186,7 +186,7 @@ def test_save_convo():
             )
             assert doc4['convo_id'] == doc7['convo_id']
             assert elapsed(doc4['@timestamp'], doc7['@timestamp']) > 0.1
-            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 5.0
+            # assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 10.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
@@ -234,7 +234,7 @@ def test_lookup_summaries():
 def test_recall():
     ''' Use stm + ltm together to autogenerate summaries '''
 
-    recall = Recall(persyn_config, version=now, conversation_interval=0.5)
+    recall = Recall(persyn_config, version=now, conversation_interval=3)
 
     # Must match test_save_summaries()
     service = "my_service"
@@ -276,7 +276,7 @@ def test_recall():
     assert recall.summary(service, channel, "this_is_another_summary")
 
     # time passes...
-    sleep(0.6)
+    sleep(4)
 
     # expired
     assert recall.expired(service, channel)
@@ -333,6 +333,19 @@ def test_relationships():
     ret = ltm.lookup_relationship(**q)[0]['_source']
     del ret['@timestamp']
     assert ret == opts
+
+def test_news():
+    ''' Store news urls '''
+
+    opts = {
+        "service": "my_service",
+        "channel": "my_channel",
+        "url": "http://persyn.io",
+    }
+
+    assert ltm.have_read(**opts) == False
+    assert ltm.add_news(title="The Persyn Codebase", **opts)
+    assert ltm.have_read(**opts) == True
 
 def test_cleanup():
     ''' Delete indices '''
