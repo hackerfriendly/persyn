@@ -66,6 +66,7 @@ elaborate = "chat.stdio.elaborate:main"
 opine = "chat.stdio.opine:main"
 add_goal = "chat.stdio.add_goal:main"
 read_url = "chat.stdio.read_url:main"
+read_rss = "chat.stdio.read_rss:main"
 
 [project.optional-dependencies]
 dev = [

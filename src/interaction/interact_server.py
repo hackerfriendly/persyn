@@ -286,7 +286,6 @@ async def read_news(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     url: str = Query(..., min_length=9, max_length=4096),
-    title: str = Query(..., max_length=65535),
 ):
     ''' Doomscrolling on the autobus '''
     event = News(
@@ -294,8 +293,7 @@ async def read_news(
         channel=channel,
         bot_name=persyn_config.id.name,
         bot_id=persyn_config.id.guid,
-        url=url,
-        title=title
+        url=url
     )
     autobus.publish(event)
 

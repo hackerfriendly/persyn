@@ -98,7 +98,6 @@ class News(autobus.Event):
     bot_name: str
     bot_id: str
     url: str
-    title: str
 
 
 class Web(autobus.Event):

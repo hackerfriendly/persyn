@@ -359,73 +359,48 @@ async def read_web(event):
 
     if not body:
         log.error("🗞️ Got empty body from", event.url)
+        return
 
     log.info("📰 Reading", event.url)
+
+    summary = completion.get_summary(
+        text=body,
+        summarizer="To briefly summarize this article:",
+        max_tokens=300
+    )
+
     chat.inject_idea(
         channel=event.channel,
-        idea=body,
+        idea=summary,
         verb="saw on the web"
     )
 
-
 async def read_news(event):
-    ''' Check our RSS feed '''
+    ''' Check our RSS feed. Read the first unread article. '''
+    log.info("🗞️  Reading news feed:", event.url)
     try:
-        feed = requests.get(event.url, timeout=30)
+        page = requests.get(event.url, timeout=30)
     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-        log.error(f"🗞️ Could not fetch RSS feed {event.url}", err)
+        log.error(f"🗞️  Could not fetch RSS feed {event.url}", err)
         return
 
-    # TODO: Move these definitions to the config
-    if 'www.goodnewsnetwork.org' in event.url:
-        selector = '.td-post-content'
-    else:
-        selector = 'body'
-
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
-
-    feed = BeautifulSoup(feed.text, "xml")
+    feed = BeautifulSoup(page.text, "xml")
     for item in feed.find_all('item'):
         item_url = item.find('link').text
-        if item.find('title'):
-            item_title = item.find('title').text
-        else:
-            item_title = "untitled"
-
         if recall.ltm.have_read(event.service, event.channel, item_url):
-            log.info("🗞️ Already read:", item_url)
+            log.info("🗞️  Already read:", item_url)
             continue
 
-        recall.ltm.add_news(event.service, event.channel, item_url, item_title)
-
-        story = []
-        if feed.find('title'):
-            story.append(f"Published by {feed.find('title').text}")
-        if item.find('dc:creator'):
-            story.append(f"Written by {item.find('dc:creator').text}")
-        if item.find('pubDate'):
-            story.append(item.find('pubDate').text)
-
-        body = text_from_url(item_url, selector)
-
-        if not body:
-            log.error("🗞️ Got empty body from", item_url)
-
-        log.info("📰 Reading", item_url)
-        chat.inject_idea(
+        item_event = Web(
+            service=event.service,
             channel=event.channel,
-            idea='\n'.join(story) + body,
-            verb="reads the news"
+            bot_name=event.bot_name,
+            bot_id=event.bot_id,
+            url=item_url
         )
-
+        await read_web(item_event)
+        # only one at a time
+        return
 
 @autobus.subscribe(SendChat)
 async def chat_event(event):
