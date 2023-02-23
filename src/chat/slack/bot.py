@@ -185,7 +185,7 @@ def main():
         channel = context['channel_id']
         chat.take_a_photo(
             channel,
-            chat.get_summary(channel, max_tokens=30),
+            chat.get_summary(channel, max_tokens=60),
             engine="stable-diffusion",
             width=704,
             height=704,

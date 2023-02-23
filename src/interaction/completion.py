@@ -48,6 +48,7 @@ class LanguageModel():
                 self.nlp
             )
             self.max_prompt_length = self.model.max_prompt_length
+            self.toklen = self.model.toklen
 
         elif self.engine == 'nlpcloud':
             model_name = getattr(config.completion, 'model', 'finetuned-gpt-neox-20b')
@@ -61,6 +62,7 @@ class LanguageModel():
                 self.nlp
             )
             self.max_prompt_length = self.model.max_prompt_length
+            self.toklen = self.model.toklen
 
         else:
             raise RuntimeError(f'Unknown engine: {self.engine}')

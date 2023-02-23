@@ -50,6 +50,10 @@ class NLPCLOUD():
 
         self.client = nlpcloud.Client(model_name, api_key, gpu=True, lang="en")
 
+    def toklen(text):
+        ''' TODO: This should return tokens '''
+        return len(text)
+
     def request_generation(self, **kwargs):
         '''
         Make a request, with retries on rate limit

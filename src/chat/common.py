@@ -49,7 +49,7 @@ class Chat():
             "context_lines": context_lines
         }
         try:
-            reply = requests.post(f"{self.interact_url}/summary/", params=req, timeout=30)
+            reply = requests.post(f"{self.interact_url}/summary/", params=req, timeout=60)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /summary/ to interact: {err}")
@@ -108,7 +108,7 @@ class Chat():
         if any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
                 channel,
-                self.get_summary(channel, max_tokens=30),
+                self.get_summary(channel, max_tokens=60),
                 engine="stable-diffusion"
             )
 

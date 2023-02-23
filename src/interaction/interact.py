@@ -372,7 +372,7 @@ class Interact():
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
-        if len(prompt) > self.completion.max_prompt_length:
+        if self.completion.toklen(prompt) > self.completion.max_prompt_length:
             # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             req = {
@@ -382,7 +382,7 @@ class Interact():
                 "max_tokens": 100
             }
             try:
-                reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=30)
+                reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=60)
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
@@ -450,10 +450,10 @@ class Interact():
 
     def extract_nouns(self, text):
         ''' return a list of all nouns (except pronouns) in text '''
-        nlp = self.completion.nlp(text)
+        doc = self.completion.nlp(text)
         nouns = {
             n.text.strip()
-            for n in nlp.noun_chunks
+            for n in doc.noun_chunks
             if n.text.strip() != self.config.id.name
             for t in n
             if t.pos_ != 'PRON'
@@ -462,20 +462,24 @@ class Interact():
 
     def extract_entities(self, text):
         ''' return a list of all entities in text '''
-        nlp = self.completion.nlp(text)
-        return list({n.text.strip() for n in nlp.ents if n.text.strip() != self.config.id.name})
+        doc = self.completion.nlp(text)
+        return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})
 
     def inject_idea(self, service, channel, idea, verb="recalls"):
         '''
         Directly inject an idea into recall memory.
         '''
+        if idea in '\n'.join(self.recall.convo(service, channel)):
+            log.warning("🤌 Already had this idea, skipping:", idea)
+            return
+
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
 
         self.recall.save(service, channel, idea, self.config.id.name, self.config.id.guid, verb)
 
         log.warning(f"🤔 {verb}:", idea)
-        return "🤔"
+        return
 
     def opine(self, service, channel, entity, speaker_id=None, size=10):
         ''' Stub for recall '''

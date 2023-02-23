@@ -9,6 +9,7 @@ from time import sleep
 
 import openai
 import spacy
+import tiktoken
 
 from ftfy import fix_text
 
@@ -39,6 +40,10 @@ class GPT():
         self.stats = Counter()
         self.nlp = nlp or spacy.load("en_core_web_sm")
         self.sentiment = sentiment or Sentiment()
+        try:
+            self.enc = tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            self.enc = tiktoken.get_encoding('r50k_base')
 
         if model_name.startswith('text-davinci-'):
             self.max_prompt_length = 4000 # tokens
@@ -48,13 +53,18 @@ class GPT():
         openai.api_key = api_key
         openai.api_base = api_base
 
+    def toklen(self, text):
+        ''' Return the number of tokens in text '''
+        return len(self.enc.encode(text))
+
     def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5, retry_on_error=True):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
         '''
-        if len(prompt) > self.max_prompt_length:
+        if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_replies: text too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length])
 
         if goals is None:
             goals = []
@@ -62,7 +72,7 @@ class GPT():
         try:
             response = openai.Completion.create(
                 engine=self.model_name,
-                prompt=prompt[:self.max_prompt_length],
+                prompt=prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 n=n,
@@ -85,7 +95,7 @@ class GPT():
             return None
 
         log.info(f"🧠 Prompt: {prompt}")
-        # log.warning(response)
+        log.debug(response)
 
         # Choose a response based on the most positive sentiment.
         scored = self.score_choices(response.choices, convo, goals)
@@ -107,7 +117,7 @@ class GPT():
 
         prompt = f'''{context}\n\nHow does {self.bot_name} feel about {entity}?'''
 
-        if len(prompt) > self.max_prompt_length:
+        if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
         try:
@@ -146,7 +156,7 @@ class GPT():
 
         prompt = f'''{context}\nThree words that describe {self.bot_name}'s sentiment in the text are:'''
 
-        if len(prompt) > self.max_prompt_length:
+        if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
         try:
@@ -266,6 +276,8 @@ class GPT():
         nouns_in_goals = {word.lemma_ for word in self.nlp(' '.join(goals)) if word.pos_ == "NOUN"}
 
         for choice in choices:
+            if not choice['text']:
+                continue
             text = self.validate_choice(self.truncate(choice['text']), convo)
 
             if not text:
@@ -350,7 +362,7 @@ class GPT():
             return ""
 
         prompt=f"{text}\n\n{summarizer}\n"
-        if len(prompt) > self.max_prompt_length:
+        if self.toklen(prompt) > self.max_prompt_length:
             # TODO: be smarter here. Rather than truncate, summarize in chunks.
             log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length}")
             textlen = self.max_prompt_length - len(summarizer) - 3
