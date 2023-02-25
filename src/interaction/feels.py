@@ -326,7 +326,7 @@ def get_flair_score(prompt):
 
     return sent.labels[0].score
 
-class Sentiment(object):
+class Sentiment():
     def __init__(self, engine="flair", model=None):
         self.engine = engine
         # `model` doesn't do anything for Flair right now because we're not
@@ -341,8 +341,7 @@ class Sentiment(object):
         if self.engine == "spacy":
             doc = self.nlp(prompt)
             return doc._.blob.polarity
-        else:
-            return get_flair_score(prompt)
+        return get_flair_score(prompt)
 
     def get_profanity_score(self, prompt):
         return get_profanity_score(prompt)

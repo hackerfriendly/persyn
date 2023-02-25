@@ -134,7 +134,7 @@ def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None, hq=Fals
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
     if hq:
-        chat.take_a_photo(channel, prompt, engine=engine, style=style, width=768, height=768, guidance=15)
+        chat.take_a_photo(channel, prompt, engine=engine, style=style, width=704, height=704, guidance=15)
     else:
         chat.take_a_photo(channel, prompt, engine=engine, style=style)
     say_something_later(ctx, when=3, what=":camera_with_flash:")
@@ -181,13 +181,12 @@ async def schedule_reply(ctx):
     log.warning("⏰ schedule_reply")
 
     # TODO: implement async get_reply in chat/common.py. Consider converting _everything_ to async.
-    (the_reply, goals_achieved) = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
+    the_reply = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
     await ctx.channel.send(the_reply)
 
-    for goal in goals_achieved:
-        await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
-
-    chat.summarize_later(channel, reminders)
+    # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
+    if not channel.startswith('dm|'):
+        chat.summarize_later(channel, reminders)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
@@ -219,12 +218,10 @@ async def handle_attachments(ctx):
             if not msg.strip():
                 msg = "..."
 
-            reply, goals_achieved = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
+            reply = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
 
             await ctx.channel.send(reply)
 
-            for goal in goals_achieved:
-                await ctx.channel.send(f"🏆 _achievement unlocked: {goal}_")
         else:
             await ctx.channel.send(
                 random.choice([
@@ -267,7 +264,6 @@ async def dispatch(ctx):
   `status`: Say exactly what is on {persyn_config.id.name}'s mind.
   `nouns`: Some things worth thinking about.
   `reflect`: {persyn_config.id.name}'s opinion of those things.
-  `daydream`: Let {persyn_config.id.name}'s mind wander on the convo.
   `goals`: See {persyn_config.id.name}'s current goals
 
   *Image generation:*
@@ -331,7 +327,15 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(persyn_config, service='discord')
+    chat = Chat(
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        service='discord',
+        interact_url=persyn_config.interact.url,
+        dreams_url=persyn_config.dreams.url,
+        captions_url=persyn_config.dreams.captions.url,
+        parrot_url=persyn_config.dreams.parrot.url
+    )
 
     # Discord client
     app.run(persyn_config.chat.discord.token)

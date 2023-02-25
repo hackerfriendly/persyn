@@ -7,15 +7,23 @@ A REST API for the limbic system.
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import os
 import argparse
+import asyncio
+
+from typing import Optional, List
+
+from fastapi import FastAPI, HTTPException, Query, Form
+from fastapi.responses import RedirectResponse
 
 import uvicorn
 
-from typing import Optional
+# The event bus
+import autobus
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import RedirectResponse
-
+# Interaction routines
 from interaction.interact import Interact
+
+# Message classes
+from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck, News
 
 # Color logging
 from utils.color_logging import log
@@ -27,6 +35,7 @@ from utils.config import load_config
 app = FastAPI()
 
 # Initialize interact in main()
+persyn_config = None
 interact = None
 
 @app.get("/", status_code=302)
@@ -50,10 +59,8 @@ def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
-    (reply, achieved) = interact.get_reply(service, channel, msg, speaker_name, speaker_id)
     return {
-        "reply": reply,
-        "goals_achieved": achieved
+        "reply": interact.get_reply(service, channel, msg, speaker_name, speaker_id)
     }
 
 @app.post("/summary/")
@@ -108,23 +115,13 @@ def handle_entities(
         "entities": interact.extract_entities(text)
     }
 
-@app.post("/daydream/")
-def handle_daydream(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
-    return {
-        "daydream": interact.daydream(service, channel)
-    }
-
 @app.post("/inject/")
 def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    idea: str = Query(..., min_length=1, max_length=16384),
-    verb: Optional[str] = Query('recalls', min_length=1, max_length=16384),
-    ):
+    idea: str = Form(..., min_length=1, max_length=65535),
+    verb: Optional[str] = Query('recalls', min_length=1, max_length=255),
+):
     ''' Inject an idea into the stream of consciousness '''
     interact.inject_idea(service, channel, idea, verb)
 
@@ -171,23 +168,162 @@ def add_goal(
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Add a short-term goal in a given context '''
-    interact.add_goal(service, channel, goal)
+    ''' Add a goal in a given context '''
+    if goal.strip():
+        interact.add_goal(service, channel, goal.strip())
     return {
-        "goals": interact.get_goals(service, channel)
+        "goals": interact.list_goals(service, channel, achieved=False)
     }
 
 @app.post("/get_goals/")
 def get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Fetch the current short-term goals for a given context '''
+):
+    ''' Fetch the current goals for a given context '''
     return {
-        "goals": interact.get_goals(service, channel)
+        "goals": interact.get_goals(service, channel, achieved=False)
     }
 
-def main():
+@app.post("/list_goals/")
+def list_goals(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+):
+    ''' Fetch the current goals for a given context '''
+    return {
+        "goals": interact.list_goals(service, channel, achieved=False)
+    }
+
+@app.post("/check_goals/")
+async def check_goals(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    convo: str = Query(..., max_length=65535),
+    goals: List[str] = Query(...)
+):
+    ''' Ask the autobus check whether goals have been achieved '''
+    event = CheckGoals(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo=convo,
+        goals=goals
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+@app.post("/opine/")
+async def opine(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    entities: List[str] = Query(...)
+):
+    ''' Ask the autobus to gather opinions about entities '''
+    event = Opine(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        entities=entities
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+@app.post("/wikipedia/")
+async def wiki(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    entities: List[str] = Query(..., min_length=1, max_length=255)
+):
+    ''' Summarize some Wikipedia pages '''
+
+    event = Wikipedia(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        entities=entities
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+@app.post("/vibe_check/")
+async def vibe_check(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    convo_id: str = Query(..., min_length=1, max_length=255),
+    room: str = Form(..., max_length=65535),
+):
+    ''' Ask the autobus to vibe check the room '''
+    event = VibeCheck(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=convo_id,
+        room=room
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+
+@app.post("/read_news/")
+async def read_news(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    url: str = Query(..., min_length=9, max_length=4096),
+):
+    ''' Doomscrolling on the autobus '''
+    event = News(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        url=url
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+
+@app.post("/read_url/")
+async def read_url(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    url: str = Query(..., min_length=9, max_length=4096),
+):
+    ''' Let's surf the interwebs... on the autobus! '''
+    event = Web(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        url=url,
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+
+async def main():
     ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Persyn interact_server. Run one server for each bot.'''
@@ -203,19 +339,31 @@ def main():
 
     args = parser.parse_args()
 
+    global persyn_config
     persyn_config = load_config(args.config_file)
     global interact
     interact = Interact(persyn_config)
 
     log.info(f"💃 {persyn_config.id.name}'s interact server starting up")
 
-    uvicorn.run(
+    uvicorn_config = uvicorn.Config(
         'interaction.interact_server:app',
         host=persyn_config.interact.hostname,
         port=persyn_config.interact.port,
         workers=persyn_config.interact.workers,
         reload=False,
     )
+    uvicorn_server = uvicorn.Server(uvicorn_config)
+
+    try:
+        await autobus.start(url=persyn_config.cns.redis, namespace=persyn_config.id.guid)
+        await uvicorn_server.serve()
+    finally:
+        await autobus.stop()
+
+def launch():
+    ''' asyncio wrapper to allow launching from pyproject.toml scripts '''
+    asyncio.run(main())
 
 if __name__ == '__main__':
-    main()
+    launch()

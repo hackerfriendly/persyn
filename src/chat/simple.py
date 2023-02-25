@@ -6,7 +6,7 @@ Simple posting to chat services using webhooks.
 These are needed since Slack and Discord both use complex callback schemes for their
 standard libraries.
 
-Used mostly by interact/cns.py but can be called from anywhere.
+Used mostly by interact/autobus.py but can be called from anywhere.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import json
@@ -50,11 +50,15 @@ def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     try:
         reply = requests.post('https://slack.com/api/chat.postMessage', data=req, timeout=30)
         reply.raise_for_status()
-        log.info(f"⚡️ Posted image to Slack as {bot_name}")
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Slack: {err}")
 
-    chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
+    if images:
+        log.info(f"⚡️ Posted image to Slack as {bot_name}")
+        chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
+    else:
+        log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
+        chat.inject_idea(channel, msg, verb='dialog')
 
 def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     ''' Post an image to Discord '''
@@ -85,8 +89,12 @@ def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     try:
         reply = requests.post(persyn_config.chat.discord.webhook, json=req, timeout=30)
         reply.raise_for_status()
-        log.info(f"⚡️ Posted image to Discord as {bot_name}")
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Discord: {err}")
 
-    chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
+    if images:
+        log.info(f"⚡️ Posted image to Discord as {bot_name}")
+        chat.inject_idea(channel, f"{persyn_config.id.name} posted a photo of {chat.get_caption(url)}")
+    else:
+        log.info(f"⚡️ Posted dialog to Discord as {bot_name}")
+        chat.inject_idea(channel, msg, verb='dialog')

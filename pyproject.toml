@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "persyn"
-version = "0.0.2"
+version = "0.0.3"
 authors = [
   { name="Rob Flickenger", email="rob@hackerfriendly.com" },
 ]
@@ -44,19 +44,29 @@ dependencies = [
   "spacy",
   "spacytextblob",
   "uvicorn",
-  "wikipedia"
+  "wikipedia",
+  "asyncio"
 ]
 
 [project.scripts]
 launch_bot = "launch_bot:main"
 kill_bot = "kill_bot:main"
-interact = "interaction.interact_server:main"
-cns = "interaction.cns:main"
+interact = "interaction.interact_server:launch"
 slack = "chat.slack.bot:main"
 discord = "chat.discord.bot:main"
 mastodon = "chat.mastodon.bot:main"
-dreams = "dreams.dreams:main"
+cns = "interaction.cns:main"
+dreams = "dreams.dreams:launch"
 stable_diffusion = "dreams.stable_diffusion:main"
+import_text = "chat.stdio.import_text:main"
+inject_idea = "chat.stdio.inject_idea:main"
+summarize = "chat.stdio.summarize:main"
+send_chat = "chat.stdio.send_chat:main"
+elaborate = "chat.stdio.elaborate:main"
+opine = "chat.stdio.opine:main"
+add_goal = "chat.stdio.add_goal:main"
+read_url = "chat.stdio.read_url:main"
+read_rss = "chat.stdio.read_rss:main"
 
 [project.optional-dependencies]
 dev = [
@@ -69,10 +79,10 @@ stable_diffusion = [
   "accelerate",
   "scipy",
   "safetensors",
-  "transformers==4.21.1",
+  "transformers",
   "diffusers",
-  "torch==1.12.1",
-  "torchvision==0.13.1"
+  "torch",
+  "torchvision"
 ]
 all = [
   "accelerate",
@@ -80,10 +90,10 @@ all = [
   "safetensors",
   "scipy",
   "timm",
-  "torch==1.12.1",
-  "torchvision==0.13.1",
+  "torch",
+  "torchvision",
   "tqdm",
-  "transformers==4.21.1"
+  "transformers"
 ]
 
 [project.urls]

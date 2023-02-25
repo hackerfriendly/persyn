@@ -4,7 +4,7 @@ mastodon/bot.py
 
 Chat with your persyn on Mastodon.
 """
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
 import os
 import random
@@ -86,7 +86,15 @@ class Mastodon():
             f"Logged into Mastodon as @{creds.username}@{self.cfg.chat.mastodon.instance} ({creds.display_name})"
         )
 
-        self.chat = Chat(self.cfg, service='mastodon')
+        self.chat = Chat(
+            bot_name=self.cfg.id.name,
+            bot_id=self.cfg.id.guid,
+            service='mastodon',
+            interact_url=self.cfg.interact.url,
+            dreams_url=self.cfg.dreams.url,
+            captions_url=self.cfg.dreams.captions.url,
+            parrot_url=self.cfg.dreams.parrot.url
+        )
 
         return True
 
@@ -112,8 +120,8 @@ class Mastodon():
             engine=engine,
             style=style,
             model=model,
-            width=768,
-            height=768,
+            width=704,
+            height=704,
             guidance=15
         )
         ents = self.chat.get_entities(prompt)
@@ -217,7 +225,7 @@ class Mastodon():
 
         else:
             if status:
-                (the_reply, goals_achieved) = self.chat.get_reply(
+                the_reply = self.chat.get_reply(
                     channel,
                     msg,
                     status.account.username,
@@ -228,11 +236,8 @@ class Mastodon():
                     to_status=status
                 )
             else:
-                (the_reply, goals_achieved) = self.chat.get_reply(channel, msg, self.cfg.id.name, self.cfg.id.guid)
+                the_reply = self.chat.get_reply(channel, msg, self.cfg.id.name, self.cfg.id.guid)
                 my_response = self.toot(the_reply)
-
-            for goal in goals_achieved:
-                log.info(f"🏆 _achievement unlocked: {goal}_")
 
             self.chat.summarize_later(channel, self.reminders)
 
@@ -292,77 +297,6 @@ class TheListener(StreamListener):
 
     def handle_heartbeat(self):
         log.debug("💓")
-
-
-# -=-=-=-=-=-=-
-
-#     if ctx.attachments:
-#         await handle_attachments(ctx)
-
-
-#     elif ctx.content == 'help':
-#         await ctx.channel.send(f"""*Commands:*
-#   `...`: Let {self.cfg.id.name} keep talking without interrupting
-#   `summary`: Explain it all to me very briefly.
-#   `status`: Say exactly what is on {self.cfg.id.name}'s mind.
-#   `nouns`: Some things worth thinking about.
-#   `reflect`: {self.cfg.id.name}'s opinion of those things.
-#   `daydream`: Let {self.cfg.id.name}'s mind wander on the convo.
-#   `goals`: See {self.cfg.id.name}'s current goals
-
-#   *Image generation:*
-#   :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion
-#   :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion
-#   :selfie: Take a selfie
-# """)
-
-#     elif ctx.content == 'status':
-#         status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel).split("\n")])).rstrip("> \n")
-#         if len(status) < 2000:
-#             await ctx.channel.send(status.strip())
-#         else:
-#             # 2000 character limit for messages
-#             reply = ""
-#             for line in status.split("\n"):
-#                 if len(reply) + len(line) < 1999:
-#                     reply = reply + line + "\n"
-#                 else:
-#                     await ctx.channel.send(reply)
-#                     reply = line + "\n"
-#             if reply:
-#                 await ctx.channel.send(reply)
-
-#     elif ctx.content == 'summary':
-#         await ctx.channel.send("💭 " + chat.get_summary(channel, save=False, include_keywords=False, photo=True))
-
-#     elif ctx.content == 'summary!':
-#         await ctx.channel.send("💭 " + chat.get_summary(channel, save=True, include_keywords=True, photo=False))
-
-#     elif ctx.content == 'nouns':
-#         await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(channel))))
-
-#     else:
-#         reminders.add(channel, 0, schedule_reply, f'reply-{uuid.uuid4()}', args=[ctx])
-
-# async def on_message(ctx):
-#     ''' Default message handler. '''
-#     channel = get_channel(ctx)
-
-#     # Don't talk to yourself.
-#     if it_me(ctx.author.id):
-#         return
-
-#     # Interrupt any rejoinder in progress
-#     reminders.cancel(channel)
-
-#     if ctx.author.bot:
-#         log.warning(f'🤖 BOT DETECTED: {ctx.author.name} ({ctx.author.id})')
-#         # 95% chance to just ignore them
-#         if random.random() < 0.95:
-#             return
-
-#     # Handle commands and schedule a reply (if any)
-#     await dispatch(ctx)
 
 def main():
     ''' Main event '''

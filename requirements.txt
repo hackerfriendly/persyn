@@ -33,3 +33,4 @@ tqdm
 transformers==4.21.1
 uvicorn
 wikipedia
+tiktoken

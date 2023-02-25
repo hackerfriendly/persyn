@@ -50,6 +50,10 @@ class NLPCLOUD():
 
         self.client = nlpcloud.Client(model_name, api_key, gpu=True, lang="en")
 
+    def toklen(text):
+        ''' TODO: This should return tokens '''
+        return len(text)
+
     def request_generation(self, **kwargs):
         '''
         Make a request, with retries on rate limit
@@ -61,7 +65,7 @@ class NLPCLOUD():
             sleep(3)
             return self.client.generation(**kwargs)
 
-    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
+    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
@@ -74,7 +78,7 @@ class NLPCLOUD():
             temperature=temperature,
             min_length=max_tokens,
             max_length=max_tokens,
-            num_return_sequences=8,
+            num_return_sequences=n,
             bad_words=self.forbidden,
             remove_input=True,
             remove_end_sequence=True,
@@ -183,7 +187,7 @@ class NLPCLOUD():
 
         return ' '.join(reply)
 
-    def parse_response(self, response): # pylint: disable=no-self-use
+    def parse_response(self, response):
         '''
         Split the completion response into a list of possibilities
         '''

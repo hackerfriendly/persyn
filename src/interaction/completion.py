@@ -48,6 +48,7 @@ class LanguageModel():
                 self.nlp
             )
             self.max_prompt_length = self.model.max_prompt_length
+            self.toklen = self.model.toklen
 
         elif self.engine == 'nlpcloud':
             model_name = getattr(config.completion, 'model', 'finetuned-gpt-neox-20b')
@@ -61,16 +62,17 @@ class LanguageModel():
                 self.nlp
             )
             self.max_prompt_length = self.model.max_prompt_length
+            self.toklen = self.model.toklen
 
         else:
             raise RuntimeError(f'Unknown engine: {self.engine}')
 
-    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150):
+    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5):
         '''
         Given a text prompt and recent conversation, send the prompt to GPT3
         and return a list of possible replies.
         '''
-        return self.model.get_replies(prompt, convo, goals, stop, temperature, max_tokens)
+        return self.model.get_replies(prompt, convo, goals, stop, temperature, max_tokens, n)
 
     def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50):
         '''

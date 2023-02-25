@@ -1,6 +1,7 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 # pylint: disable=invalid-name, no-name-in-module
 import uuid
+import logging
 
 import elasticsearch
 import shortuuid as su
@@ -16,6 +17,9 @@ from utils.color_logging import ColorLog
 
 log = ColorLog()
 
+# Silence Elasticsearch transport
+logging.getLogger('elastic_transport.transport').setLevel(logging.CRITICAL)
+
 class Recall():
     ''' Total Recall: stm + ltm. '''
     def __init__(self, persyn_config, version=None, conversation_interval=None):
@@ -25,8 +29,12 @@ class Recall():
         self.stm = ShortTermMemory(persyn_config, conversation_interval)
         self.ltm = LongTermMemory(persyn_config, version)
 
-    def save(self, service, channel, msg, speaker_name, speaker_id, verb=None):
-        ''' Save to stm and ltm. Clears stm if it expired. Returns the current convo_id. '''
+    def save(self, service, channel, msg, speaker_name, speaker_id, verb=None, convo_id=None):
+        '''
+        Save to stm and ltm. Clears stm if it expired. Returns the current convo_id.
+
+        Specify a different convo_id to override the value in ltm.
+        '''
         if self.stm.expired(service, channel):
             self.stm.clear(service, channel)
 
@@ -39,7 +47,7 @@ class Recall():
                 msg,
                 speaker_name,
                 speaker_id,
-                self.stm.convo_id(service, channel),
+                convo_id or self.stm.convo_id(service, channel),
                 verb
             )
         )
@@ -68,11 +76,19 @@ class Recall():
 
     def add_goal(self, service, channel, goal):
         ''' Add a goal to this channel. '''
-        return self.stm.add_goal(service, channel, goal)
+        return self.ltm.add_goal(service, channel, goal)
 
-    def get_goals(self, service, channel):
-        ''' Return the temparary goals for this channel, if any. '''
-        return self.stm.get_goals(service, channel)
+    def achieve_goal(self, service, channel, goal):
+        ''' Achieve a goal from this channel. '''
+        return self.ltm.achieve_goal(service, channel, goal)
+
+    def get_goals(self, service, channel, goal=None, achieved=None, size=10):
+        ''' Return the goals for this channel, if any. '''
+        return self.ltm.get_goals(service, channel, goal, achieved, size)
+
+    def list_goals(self, service, channel, achieved=False, size=10):
+        ''' Return a simple list of goals for this channel, if any. '''
+        return self.ltm.list_goals(service, channel, achieved, size)
 
     def lookup_summaries(self, service, channel, search, size=1):
         ''' Oh right. '''
@@ -98,7 +114,7 @@ class Recall():
             ]
         return []
 
-    def convo(self, service, channel):
+    def convo(self, service, channel, feels=False):
         '''
         Return the entire convo from stm (if any).
 
@@ -112,10 +128,22 @@ class Recall():
         for line in convo:
             if 'verb' not in line or line['verb'] in ['dialog', None]:
                 ret.append(f"{line['speaker']}: {line['msg']}")
-            else:
+            elif feels or line['verb'] != ['feels']:
                 ret.append(f"{line['speaker']} {line['verb']}: {line['msg']}")
 
         return ret
+
+    def feels(self, convo_id):
+        '''
+        Return the last known feels for this channel.
+        '''
+        convo = self.ltm.get_convo_by_id(convo_id)
+        log.debug("📢", convo)
+        for doc in convo[::-1]:
+            if doc['_source']['verb'] == 'feels':
+                return doc['_source']['msg']
+
+        return "nothing in particular"
 
     def summaries(self, service, channel, size=3):
         ''' Return the summary text from ltm (if any) '''
@@ -138,7 +166,6 @@ class ShortTermMemory():
         self.convo[service][channel]['convo'] = []
         self.convo[service][channel]['id'] = su.encode(uuid.uuid4())
         self.convo[service][channel]['opinions'] = []
-        self.convo[service][channel]['goals'] = []
 
     def exists(self, service, channel):
         ''' True if a channel already exists, else False '''
@@ -180,42 +207,23 @@ class ShortTermMemory():
 
         return self.convo_id(service, channel)
 
-    def add_bias(self, service, channel, line):
+    def add_bias(self, service, channel, opinion):
         '''
-        Append a short-term opinion to a channel. Returns the convo_id.
+        Append a short-term opinion to a channel if it's not already there. Returns the current opinions.
         '''
-        self.convo[service][channel]['opinions'].append(line)
-        return self.convo_id(service, channel)
+        if not self.exists(service, channel):
+            self.create(service, channel)
+        if opinion not in self.convo[service][channel]['opinions']:
+            self.convo[service][channel]['opinions'].append(opinion)
+        return self.convo[service][channel]['opinions']
 
     def get_bias(self, service, channel):
         '''
         Return all short-term opinions for a channel.
         '''
-        return self.convo[service][channel]['opinions']
-
-    def add_goal(self, service, channel, goal):
-        '''
-        Append a short-term goal to a channel. Returns the convo_id.
-        '''
         if not self.exists(service, channel):
             self.create(service, channel)
-
-        if goal not in self.convo[service][channel]['goals']:
-            self.convo[service][channel]['goals'].append(goal)
-
-        # five max
-        if len(self.convo[service][channel]['goals']) > 5:
-            self.convo[service][channel]['goals'] = self.convo[service][channel]['goals'][:5]
-
-        return self.convo[service][channel]['goals']
-
-    def get_goals(self, service, channel):
-        '''
-        Return all short-term goals for a channel.
-        '''
-        if not self.exists(service, channel):
-            return []
-        return self.convo[service][channel]['goals']
+        return self.convo[service][channel]['opinions']
 
     def fetch(self, service, channel):
         ''' Fetch the current convo, if any '''
@@ -270,7 +278,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "entity": f"{self.index_prefix}-entities-{self.version}",
             "relationship": f"{self.index_prefix}-relationships-{self.version}",
             "opinion": f"{self.index_prefix}-opinions-{self.version}",
-            "belief": f"{self.index_prefix}-beliefs-{self.version}"
+            "goal": f"{self.index_prefix}-goals-{self.version}",
+            "news": f"{self.index_prefix}-news-{self.version}",
         }
 
         for item in self.index.items():
@@ -287,8 +296,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                         speaker_id=self.bot_id,
                         entity_id=self.bot_entity_id
                     )
-                # if item[0] == "relationhip":
-                #     self.save_relationship(self.uuid_to_entity(bot_id), "has_name", self.bot_name)
 
     def get_last_timestamp(self, service, channel):
         '''
@@ -399,6 +406,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Extract a full conversation by its convo_id.
         Returns a list convo objects.
         '''
+        if not convo_id:
+            return []
+
         ret = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['convo'],
             query={
@@ -418,15 +428,29 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         # TODO: match speaker id HERE when cross-channel entity merging is working
         query = {
             "bool": {
-                "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
-                ]
+                "should": [
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": "import_service"}},
+                            ]
+                        }
+                    },
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": service}},
+                                {"match": {"channel.keyword": channel}}
+                            ],
+                        }
+                    }
+                ],
             }
         }
 
         if search:
-            query['bool']['must'].append({"match": {"summary": {"query": search}}})
+            for i in range(len(query['bool']['should'])):
+                query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['summary'],
@@ -446,18 +470,33 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Return a list of convo graphs matching the search term for this channel.
         '''
+
         # TODO: match speaker id HERE when cross-channel entity merging is working
         query = {
             "bool": {
-                "must": [
-                    {"match": {"service.keyword": service}},
-                    {"match": {"channel.keyword": channel}},
-                ]
+                "should": [
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": "import_service"}},
+                            ]
+                        }
+                    },
+                    {
+                        "bool": {
+                            "must": [
+                                {"match": {"service.keyword": service}},
+                                {"match": {"channel.keyword": channel}}
+                            ],
+                        }
+                    }
+                ],
             }
         }
 
         if search:
-            query['bool']['must'].append({"match": {"convo": {"query": search}}})
+            for i in range(len(query['bool']['should'])):
+                query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
 
         history = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['relationship'],
@@ -487,9 +526,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         }
         rep = self.save_relationship(**doc)
         if rep['result'] != 'created':
-            log.critical("∑ Could not save relationship:", rep)
-        else:
-            log.info("∑ relationship saved.")
+            log.critical("📉 Could not save relationship:", rep)
+        return rep['result']
 
     @staticmethod
     def entity_key(service, channel, name):
@@ -692,3 +730,124 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ranked = self.relationships.ranked_matches(G, hits, edge_bias=edge_bias)
         log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
         return ranked
+
+    def add_goal(self, service, channel, goal, refresh=True):
+        '''
+        Add a goal to a channel. Returns the top 10 unachieved goals.
+        '''
+        cur_ts = get_cur_ts()
+        doc = {
+            "service": service,
+            "channel": channel,
+            "@timestamp": cur_ts,
+            "goal": goal,
+            "achieved": False
+        }
+        _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['goal'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )["_id"]
+
+        log.debug("doc:", _id)
+
+        return self.get_goals(service, channel, achieved=False)
+
+    def achieve_goal(self, service, channel, goal):
+        '''
+        Set a goal to the achieved state. Returns the top ten unachieved goals.
+        '''
+        for doc in self.get_goals(service, channel, goal, achieved=False):
+            doc['_source']['achieved'] = True
+            doc['_source']['achieved_on'] = get_cur_ts()
+            self.es.update(index=self.index['goal'], id=doc['_id'], doc=doc['_source'], refresh=True)
+
+        return self.get_goals(service, channel, achieved=False)
+
+    def get_goals(self, service, channel, goal=None, achieved=None, size=10):
+        '''
+        Return goals for a channel. Returns the 10 most recent goals by default.
+        Set achieved to True or False to return only achieved or unachieved goals.
+        Specify a goal to return only that specific goal.
+        '''
+        ret = []
+
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                ]
+            }
+        }
+        if goal:
+            query["bool"]["must"].append({"match": {"goal": goal}})
+        if achieved is not None:
+            query["bool"]["must"].append({"match": {"achieved": achieved}})
+
+        ret = self.es.search(  # pylint: disable=unexpected-keyword-arg
+            index=self.index['goal'],
+            query=query,
+            sort=[{"@timestamp": {"order": "desc"}}],
+            size=size
+        )['hits']['hits']
+
+        log.debug(f"🥇 return: {ret}")
+        return ret
+
+    def list_goals(self, service, channel, achieved=False, size=10):
+        '''
+        Return a simple list of goals for a channel. Returns the 10 most recent goals by default.
+        '''
+        ret = []
+        for goal in self.get_goals(service, channel, goal=None, achieved=achieved, size=size):
+            ret.append(goal['_source']['goal'])
+        return ret
+
+    def add_news(self, service, channel, url, title, refresh=True):
+        '''
+        Add a news url that we've read. Returns the doc _id.
+        '''
+        cur_ts = get_cur_ts()
+        doc = {
+            "service": service,
+            "channel": channel,
+            "@timestamp": cur_ts,
+            "url": url,
+            "title": title
+        }
+        _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+            index=self.index['news'],
+            document=doc,
+            refresh='true' if refresh else 'false'
+        )["_id"]
+
+        log.debug("🗞️ doc:", _id)
+
+        return _id
+
+    def have_read(self, service, channel, url):
+        '''
+        Return True if we have read this article, otherwise False.
+        '''
+        ret = []
+
+        query = {
+            "bool": {
+                "must": [
+                    {"match": {"service.keyword": service}},
+                    {"match": {"channel.keyword": channel}},
+                    {"match": {"url.keyword": url}}
+                ]
+            }
+        }
+
+        ret = bool(self.es.search(  # pylint: disable=unexpected-keyword-arg
+            index=self.index['news'],
+            query=query,
+            sort=[{"@timestamp": {"order": "desc"}}],
+            size=1
+        )['hits']['hits'])
+
+        log.debug(f"🗞️ {url}: {ret}")
+        return ret

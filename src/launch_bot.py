@@ -23,19 +23,24 @@ def tmux_is_running(session, tmux):
         capture_output=True
     ).returncode == 0
 
-def run_tmux_cmd(session, cmd, tmux):
+def run_tmux_cmd(session, cmd, tmux, cuda=None, loc='split-pane'):
     ''' Start a new tmux session if needed, then add panes for each cmd '''
     running = tmux_is_running(session, tmux)
     tmux = ' '.join([
             tmux,
-            'split-pane' if running else 'new-session',
+            loc if running else 'new-session',
             '-t' if running else '-s',
             session,
             '-d'
          ]
     )
 
-    return run(f"""{tmux} 'while :; do {' '.join(cmd)} ; sleep 1; done'""",
+    cuda_env = ''
+    if cuda:
+        cuda_env = f'CUDA_VISIBLE_DEVICES={cuda}'
+
+    title = r"\e]2;" + cmd[0] + r"\a"
+    return run(f"""{tmux} "while :; do echo $'{title}'; {cuda_env} {' '.join(cmd)} ; sleep 1; done" """,
         shell=True,
         check=True,
         capture_output=True,
@@ -76,11 +81,14 @@ def main():
         raise SystemExit(f'Session {session_name} already exists. Attach with 👉 tmux{ccmode} attach -t {session_name}')
 
     log.info(f"🤖 Starting services for {cfg.id.name}")
-    if hasattr(cfg, 'interact') and hasattr(cfg.interact, 'workers'):
+    if hasattr(cfg, 'interact') and hasattr(cfg.interact, 'workers') and cfg.interact.workers > 0:
+        gpu = None
+        if hasattr(cfg.interact, 'gpu'):
+            gpu = cfg.interact.gpu
         log.info("🧠 Starting interact_server")
-        run_tmux_cmd(session_name, ['interact', args.config_file], args.tmux)
+        run_tmux_cmd(session_name, ['interact', args.config_file], args.tmux, gpu)
 
-    if hasattr(cfg, 'cns'):
+    if hasattr(cfg, 'cns') and hasattr(cfg.cns, 'workers') and cfg.cns.workers > 0:
         log.info("⚡️ Starting cns")
         run_tmux_cmd(session_name, ['cns', args.config_file], args.tmux)
 
@@ -98,13 +106,13 @@ def main():
             run_tmux_cmd(session_name, ['mastodon', args.config_file], args.tmux)
 
     if hasattr(cfg, 'dreams'):
-        if hasattr(cfg.dreams, 'workers'):
-            log.info("😴 Starting dreams server")
-            run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux)
+        if hasattr(cfg.dreams, 'workers') and cfg.dreams.workers > 0:
+            log.info("🐑 Starting dreams server")
+            run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux, loc='new-window')
 
-        if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers'):
+        if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers') and cfg.dreams.stable_diffusion.workers > 0:
             log.info("🎨 Starting stable_diffusion")
-            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux)
+            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux, loc='new-window')
 
         # if hasattr(cfg.dreams, 'captions') and hasattr(cfg.dreams.captions, 'workers'):
         #     log.info("🖼  Starting interrogator")

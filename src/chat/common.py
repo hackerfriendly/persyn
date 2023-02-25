@@ -15,25 +15,31 @@ from utils.color_logging import log
 # Artist names
 from utils.art import artists
 
+default_photo_triggers = [
+    'look', 'see', 'show', 'watch', 'vision',
+    'imagine', 'idea', 'memory', 'remember'
+]
+
 class Chat():
     ''' Container class for common chat functions '''
-    def __init__(self, config, service=None):
+    def __init__(self, **kwargs):
         ''' da setup '''
-        self.config = config
-        self.service = service
+        self.bot_name = kwargs['bot_name']
+        self.bot_id = kwargs['bot_id']
+        self.service = kwargs['service']
+        self.photo_triggers = kwargs.get('photo_triggers', default_photo_triggers)
 
-        if not hasattr(self.config.chat, 'photo_triggers'):
-            self.config.chat.photo_triggers = [
-                'look', 'see', 'show', 'watch', 'vision',
-                'imagine', 'idea', 'memory', 'remember'
-            ]
-
-    def can_dream(self):
-        ''' Return True if dreams are configured '''
-        return self.config.get("dreams")
+        self.interact_url = kwargs.get('interact_url', None)
+        self.dreams_url = kwargs.get('dreams_url', None)
+        self.captions_url = kwargs.get('captions_url', None)
+        self.parrot_url = kwargs.get('parrot_url', None)
 
     def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
         ''' Ask interact for a channel summary. '''
+        if not self.interact_url:
+            log.error("∑ get_summary() called with no URL defined, skipping.")
+            return None
+
         req = {
             "service": self.service,
             "channel": channel,
@@ -43,7 +49,7 @@ class Chat():
             "context_lines": context_lines
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=30)
+            reply = requests.post(f"{self.interact_url}/summary/", params=req, timeout=60)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /summary/ to interact: {err}")
@@ -54,14 +60,26 @@ class Chat():
 
         if summary:
             if photo:
-                # HQ summaries: slower, but worth the wait.
-                self.take_a_photo(channel, summary, engine="stable-diffusion", style=f"{random.choice(artists)}", width=768, height=768, guidance=15)
+                # HQ summaries: a little slower, but worth the wait.
+                self.take_a_photo(
+                    channel,
+                    summary,
+                    engine="stable-diffusion",
+                    style=f"{random.choice(artists)}",
+                    width=704,
+                    height=704,
+                    guidance=15
+                )
             return summary
 
         return " :spiral_note_pad: :interrobang: "
 
     def get_reply(self, channel, msg, speaker_name, speaker_id):
         ''' Ask interact for an appropriate response. '''
+        if not self.interact_url:
+            log.error("💬 get_reply() called with no URL defined, skipping.")
+            return None
+
         if not msg:
             msg = '...'
 
@@ -76,7 +94,7 @@ class Chat():
             "speaker_id": speaker_id
         }
         try:
-            response = requests.post(f"{self.config.interact.url}/reply/", params=req, timeout=120)
+            response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
@@ -84,20 +102,17 @@ class Chat():
 
         resp = response.json()
         reply = resp['reply']
-        goals_achieved = resp['goals_achieved']
 
-        log.warning(f"[{channel}] {self.config.id.name}:", reply)
-        if goals_achieved:
-            log.warning(f"[{channel}] {self.config.id.name}:", f"🏆 {goals_achieved}")
+        log.warning(f"[{channel}] {self.bot_name}:", reply)
 
-        if any(verb in reply for verb in self.config.chat.photo_triggers):
+        if any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
                 channel,
-                self.get_summary(channel, max_tokens=30),
+                self.get_summary(channel, max_tokens=60),
                 engine="stable-diffusion"
             )
 
-        return (reply, goals_achieved)
+        return reply
 
     def summarize_later(self, channel, reminders, when=None):
         '''
@@ -113,14 +128,20 @@ class Chat():
 
     def inject_idea(self, channel, idea, verb='notices'):
         ''' Directly inject an idea into the stream of consciousness. '''
+        if not self.interact_url:
+            log.error("💉 inject_idea() called with no URL defined, skipping.")
+            return None
+
         req = {
             "service": self.service,
             "channel": channel,
-            "idea": idea,
             "verb": verb
         }
+        data = {
+            "idea": idea
+        }
         try:
-            response = requests.post(f"{self.config.interact.url}/inject/", params=req, timeout=30)
+            response = requests.post(f"{self.interact_url}/inject/", params=req, data=data, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /inject/ to interact: {err}")
@@ -128,22 +149,31 @@ class Chat():
 
         return response.json()['status']
 
-    def take_a_photo(self, channel, prompt, engine=None, model=None, style=None, seed=None, steps=None, width=None, height=None, guidance=None):
-        ''' Pick an image engine and generate a photo '''
-        if not self.can_dream():
-            return False
+    def take_a_photo(
+        self,
+        channel,
+        prompt,
+        engine="stable-diffusion",
+        model=None,
+        style=None,
+        seed=None,
+        steps=None,
+        width=None,
+        height=None,
+        guidance=None):
 
-        if not engine:
-            engine = random.choice(self.config.dreams.all_engines)
+        ''' Pick an image engine and generate a photo '''
+        if not self.dreams_url:
+            return False
 
         req = {
             "engine": engine,
             "channel": channel,
             "service": self.service,
-            "queue": getattr(self.config.cns, "sqs_queue", None),
             "prompt": prompt,
             "model": model,
-            "bot_name": self.config.id.name,
+            "bot_name": self.bot_name,
+            "bot_id": self.bot_id,
             "style": style,
             "seed": seed,
             "steps": steps,
@@ -151,20 +181,24 @@ class Chat():
             "height": height,
             "guidance": guidance
         }
-        reply = requests.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
+        reply = requests.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
         if reply.ok:
-            log.warning(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
+            log.warning(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code}")
         else:
-            log.error(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
+            log.error(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
         return reply.ok
 
     def get_nouns(self, text):
         ''' Ask interact for all the nouns in text, excluding the speakers. '''
+        if not self.interact_url:
+            log.error("📓 get_nouns() called with no URL defined, skipping.")
+            return []
+
         req = {
             "text": text
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/nouns/", params=req, timeout=10)
+            reply = requests.post(f"{self.interact_url}/nouns/", params=req, timeout=10)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /nouns/ to interact: {err}")
@@ -175,11 +209,15 @@ class Chat():
 
     def get_entities(self, text):
         ''' Ask interact for all the entities in text, excluding the speakers. '''
+        if not self.interact_url:
+            log.error("👽 get_entities() called with no URL defined, skipping.")
+            return None
+
         req = {
             "text": text
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/entities/", params=req, timeout=10)
+            reply = requests.post(f"{self.interact_url}/entities/", params=req, timeout=10)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /entities/ to interact: {err}")
@@ -188,29 +226,18 @@ class Chat():
         return reply.json()['entities']
         # return [e for e in reply.json()['entities'] if e not in speakers()]
 
-    def get_daydream(self, channel):
-        ''' Ask interact to daydream about this channel. '''
-        req = {
-            "service": self.service,
-            "channel": channel,
-        }
-        try:
-            reply = requests.post(f"{self.config.interact.url}/daydream/", params=req, timeout=10)
-            reply.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /daydream/ to interact: {err}")
-            return []
-
-        return reply.json()['daydream']
-
     def get_status(self, channel):
         ''' Ask interact for status. '''
+        if not self.interact_url:
+            log.error("🗿 get_status() called with no URL defined, skipping.")
+            return None
+
         req = {
             "service": self.service,
             "channel": channel,
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/status/", params=req, timeout=10)
+            reply = requests.post(f"{self.interact_url}/status/", params=req, timeout=10)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /status/ to interact: {err}")
@@ -220,6 +247,10 @@ class Chat():
 
     def get_opinions(self, channel, topic, condense=True):
         ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
+        if not self.interact_url:
+            log.error("🧷 get_opinions() called with no URL defined, skipping.")
+            return []
+
         req = {
             "service": self.service,
             "channel": channel,
@@ -227,7 +258,7 @@ class Chat():
             "summarize": condense
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/opinion/", params=req, timeout=20)
+            reply = requests.post(f"{self.interact_url}/opinion/", params=req, timeout=20)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
@@ -240,17 +271,21 @@ class Chat():
         return []
         # return [e for e in reply.json()['nouns'] if e not in speakers()]
 
-    def get_goals(self, channel):
+    def list_goals(self, channel):
         ''' Return the goals for this channel, if any. '''
+        if not self.interact_url:
+            log.error("🏆 list_goals() called with no URL defined, skipping.")
+            return []
+
         req = {
             "service": self.service,
             "channel": channel
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/get_goals/", params=req, timeout=20)
+            reply = requests.post(f"{self.interact_url}/list_goals/", params=req, timeout=20)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /get_goals/ to interact: {err}")
+            log.critical(f"🤖 Could not post /list_goals/ to interact: {err}")
             return []
 
         ret = reply.json()
@@ -262,12 +297,16 @@ class Chat():
 
     def forget_it(self, channel):
         ''' There is no antimemetics division. '''
+        if not self.interact_url:
+            log.error("🤯 forget_it() called with no URL defined, skipping.")
+            return "⁉️"
+
         req = {
             "service": self.service,
             "channel": channel,
         }
         try:
-            response = requests.post(f"{self.config.interact.url}/amnesia/", params=req, timeout=10)
+            response = requests.post(f"{self.interact_url}/amnesia/", params=req, timeout=10)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not forget_it(): {err}")
@@ -277,11 +316,12 @@ class Chat():
 
     def prompt_parrot(self, prompt):
         ''' Fetch a prompt from the parrot '''
-        if not self.can_dream():
+        if not self.parrot_url:
+            log.error("🦜 Parrot called with no URL defined, skipping.")
             return False
         try:
             req = { "prompt": prompt }
-            response = requests.post(f"{self.config.dreams.parrot.url}/generate/", params=req, timeout=10)
+            response = requests.post(f"{self.parrot_url}/generate/", params=req, timeout=10)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
@@ -290,9 +330,13 @@ class Chat():
 
     def judge(self, channel, topic):
         ''' Form an opinion on topic '''
+        if not self.interact_url:
+            log.error("👨‍⚖️ judge() called with no URL defined, skipping.")
+            return None
+
         try:
             req = { "service": self.service, "channel": channel, "topic": topic }
-            response = requests.post(f"{self.config.interact.url}/judge/", params=req, timeout=20)
+            response = requests.post(f"{self.interact_url}/judge/", params=req, timeout=20)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /judge/ to interact: {err}")
@@ -301,20 +345,20 @@ class Chat():
 
     def get_caption(self, image_data):
         ''' Fetch the image caption using CLIP Interrogator '''
-        log.warning("🖼  needs a caption")
-
-        if not self.can_dream():
+        if not self.captions_url:
+            log.error("🖼  Caption called with no URL defined, skipping.")
             return None
 
+        log.warning("🖼  needs a caption")
         if image_data[:4] == "http":
             resp = requests.post(
-                    f"{self.config.dreams.captions.url}/caption/",
+                    f"{self.captions_url}/caption/",
                     json={"data": image_data},
                     timeout=20
                 )
         else:
             resp = requests.post(
-                f"{self.config.dreams.captions.url}/caption/",
+                f"{self.captions_url}/caption/",
                 json={"data": base64.b64encode(image_data).decode()},
                 timeout=20
             )

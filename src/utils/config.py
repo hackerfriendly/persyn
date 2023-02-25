@@ -64,13 +64,8 @@ def load_config(cfg=None):
                 config[service][subservice]['port'] = srv.port
 
     if 'dreams' in config:
-        if 'engines' in config['dreams']:
-            config['dreams']['all_engines'] = list(config['dreams']['engines'].keys())
-
-            for engine in config['dreams']['all_engines']:
-                if not config['dreams']['engines'][engine]:
-                    config['dreams']['engines'][engine] = {}
-                    config['dreams']['engines'][engine]['models'] = ["default"]
+        if 'cns' not in config:
+            config['cns'] = {}
 
         if 'gpus' in config['dreams']:
             gpus = config['dreams']['gpus']
@@ -79,6 +74,9 @@ def load_config(cfg=None):
                 config['dreams']['gpus'][str(gpu)] = {}
                 config['dreams']['gpus'][str(gpu)]['name'] = gpus[gpu]
                 config['dreams']['gpus'][str(gpu)]['lock'] = Lock()
+
+    if 'cns' in config and 'redis' not in config['cns']:
+        config['cns']['redis'] = 'redis://localhost:6379/'
 
     if 'chat' in config:
         if 'discord' in config['chat']:
@@ -103,7 +101,8 @@ def load_config(cfg=None):
             elastic_defaults = {
                 'version': 'v0',
                 'timeout': 30,
-                'index_prefix': config['id']['name'].replace(' ', '').lower()
+                'index_prefix': config['id']['name'].replace(' ', '').lower(),
+                'verify_certs': True
             }
 
             for setting, val in elastic_defaults.items():
@@ -112,6 +111,8 @@ def load_config(cfg=None):
 
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('sentiment', {})
+    config.setdefault('interact', {'url': None})
+    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'parrot': {'url': None}, 'stable_diffusion': {'url': None}})
 
     # Check for required models
     persyn_config = DotWiz(config)
