@@ -39,7 +39,8 @@ def run_tmux_cmd(session, cmd, tmux, cuda=None, loc='split-pane'):
     if cuda:
         cuda_env = f'CUDA_VISIBLE_DEVICES={cuda}'
 
-    return run(f"""{tmux} 'while :; do {cuda_env} {' '.join(cmd)} ; sleep 1; done'""",
+    title = r"\e]2;" + cmd[0] + r"\a"
+    return run(f"""{tmux} "while :; do echo $'{title}'; {cuda_env} {' '.join(cmd)} ; sleep 1; done" """,
         shell=True,
         check=True,
         capture_output=True,
