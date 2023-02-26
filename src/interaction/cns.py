@@ -371,9 +371,10 @@ async def read_web(event):
 
     chat.inject_idea(
         channel=event.channel,
-        idea=summary,
+        idea=f"{summary} {event.url}",
         verb="saw on the web"
     )
+    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, f"{summary} {event.url}")
 
 async def read_news(event):
     ''' Check our RSS feed. Read the first unread article. '''

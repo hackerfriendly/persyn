@@ -469,8 +469,8 @@ class Interact():
         '''
         Directly inject an idea into recall memory.
         '''
-        if idea in '\n'.join(self.recall.convo(service, channel)):
-            log.warning("🤌 Already had this idea, skipping:", idea)
+        if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel)):
+            log.warning("🤌  Already had this idea, skipping:", idea)
             return
 
         if self.recall.expired(service, channel):
