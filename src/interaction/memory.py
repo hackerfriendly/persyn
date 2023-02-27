@@ -1,10 +1,14 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
-# pylint: disable=invalid-name, no-name-in-module
+# pylint: disable=invalid-name, no-name-in-module, abstract-method
 import uuid
 import logging
 
 import elasticsearch
 import shortuuid as su
+
+from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, RelationshipTo, StructuredRel
+from neomodel import config as neomodel_config
+from neomodel.contrib import SemiStructuredNode
 
 # Time
 from interaction.chrono import elapsed, get_cur_ts
@@ -254,6 +258,48 @@ class ShortTermMemory():
 
         return None
 
+##
+# Neomodel (Neo4j) graph classes
+#
+class Entity(SemiStructuredNode):
+    ''' Superclass for Person and Thing '''
+
+class IdentityRel(StructuredRel):
+    ''' The identity relationship: something to itself '''
+    linked_on = DateTimeProperty(default_now=True)
+
+class PredicateRel(StructuredRel):
+    ''' Predicate relationship: s P o '''
+    linked_on = DateTimeProperty(default_now=True)
+    verb = StringProperty(required=True)
+
+class Person(Entity):
+    ''' Something you can have a conversation with '''
+    name = StringProperty(required=True)
+    entity_id = UniqueIdProperty()
+    created = DateTimeProperty(default_now=True)
+    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
+
+class Thing(Entity):
+    ''' Any old thing '''
+    name = StringProperty(required=True)
+    created = DateTimeProperty(default_now=True)
+    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
+
+class Human(Person):
+    ''' Flesh and blood '''
+    last_contact = DateTimeProperty(default_now=True)
+    equivalent_to = RelationshipTo('Human', 'AKA', model=IdentityRel)
+    trust = FloatProperty(default=0.0)
+
+class Bot(Person):
+    ''' Silicon and electricity '''
+    last_contact = DateTimeProperty(default_now=True)
+    equivalent_to = RelationshipTo('Bot', 'AKA', model=IdentityRel)
+    service = StringProperty(required=True)
+    channel = StringProperty(required=True)
+
+
 class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
     def __init__(self, persyn_config, version=None):
@@ -296,6 +342,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                         speaker_id=self.bot_id,
                         entity_id=self.bot_entity_id
                     )
+
+        if hasattr(persyn_config.memory, 'neo4j'):
+            neomodel_config.DATABASE_URL = persyn_config.memory.neo4j.url
 
     def get_last_timestamp(self, service, channel):
         '''
@@ -851,3 +900,52 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         log.debug(f"🗞️ {url}: {ret}")
         return ret
+
+
+    def spo_to_kg(self, text):
+        '''
+        Convert subject, predicate, object text into a Neo4j graph.
+
+        Terms should be separated by | and listed one per line:
+
+        Anna | grewUpIn | Kanata
+        Anna | hasChildhoodMemoriesOf | playing tag
+        Anna | hasSiblings | Nick
+        Nick | hasSister | Anna
+        '''
+        if not hasattr(self.persyn_config.memory, 'neo4j'):
+            log.error('፨ No graph server defined, cannot call spo_to_kg()')
+            return
+
+        speaker_names = set()
+        thing_names = set()
+        speakers = {}
+        links = []
+
+        for rel in text.split('\n'):
+            if rel.count('|') != 2:
+                log.warning("Not an spo triple, skipping:", rel)
+                continue
+            (s, p, o) = [term.strip() for term in rel.split('|')]
+
+            speaker_names.add(s)
+            thing_names.add(o)
+            links.append([s, p, o])
+
+        for name in speaker_names:
+            try:
+                speakers[name] = Person.nodes.get(name=name) #pylint: disable=no-member
+            except Person.DoesNotExist: # pylint: disable=no-member
+                speakers[name] = Person(name=name).save()
+
+        things = {}
+        for t in Thing.get_or_create(*[{'name': n} for n in list(thing_names) if n not in speakers]):
+            things[t.name] = t
+
+        for link in links:
+            if link[2] in speakers:
+                speakers[link[0]].link.connect(speakers[link[2]], {'verb': link[1]})
+            else:
+                speakers[link[0]].link.connect(things[link[2]], {'verb': link[1]})
+
+        return True

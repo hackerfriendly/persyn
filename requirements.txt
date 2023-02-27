@@ -16,6 +16,8 @@ git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip
 humanize
 Levenshtein
 Mastodon.py
+neo4j
+neomodel['extras']
 nlpcloud
 nltk
 openai

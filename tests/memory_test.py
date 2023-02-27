@@ -343,9 +343,14 @@ def test_news():
         "url": "http://persyn.io",
     }
 
-    assert ltm.have_read(**opts) == False
+    assert ltm.have_read(**opts) is False
     assert ltm.add_news(title="The Persyn Codebase", **opts)
-    assert ltm.have_read(**opts) == True
+    assert ltm.have_read(**opts) is True
+
+def test_kg():
+    ''' Neo4j tests '''
+
+    assert ltm.spo_to_kg("This | isOnly | aTest") is True
 
 def test_cleanup():
     ''' Delete indices '''
