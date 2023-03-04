@@ -261,7 +261,7 @@ class GPT():
             # Semantic similarity
             choice = self.nlp(text)
             for line in convo:
-                if choice.similarity(self.nlp(line)) > 0.97: # TODO: configurable? dynamic?
+                if choice.similarity(self.nlp(line)) > 0.97:  # TODO: configurable? dynamic?
                     self.stats.update(['semantic repetition'])
                     return None
 
@@ -305,9 +305,10 @@ class GPT():
                     pass
 
             # Fix unbalanced symbols
-            for symbol in r'(){}[]<>':
-                if text.count(symbol) % 2:
-                    text = text.replace(symbol, '')
+            for symbol in ['()', r'{}', '[]', '<>']:
+                if text.count(symbol[0]) != text.count(symbol[1]):
+                    text = text.replace(symbol[0], '')
+                    text = text.replace(symbol[1], '')
 
             # Now for sentiment analysis. This uses the entire raw response to see where it's leading.
             raw = choice['text'].strip()
