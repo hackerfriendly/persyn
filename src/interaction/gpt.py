@@ -123,6 +123,7 @@ class GPT():
 
         if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length])
 
         try:
             response = openai.ChatCompletion.create(
@@ -165,14 +166,15 @@ class GPT():
 
         if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length])
 
         try:
             response = openai.ChatCompletion.create(
                 model=self.chatgpt,
                 messages=[
-                        {"role": "system", "content": """You are an expert at determining the emotional state of people engaging in conversation."""},
-                        {"role": "user", "content": prompt}
-                    ],
+                    {"role": "system", "content": """You are an expert at determining the emotional state of people engaging in conversation."""},
+                    {"role": "user", "content": prompt}
+                ],
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stop=stop
@@ -258,11 +260,14 @@ class GPT():
             if text in ' '.join(convo):
                 self.stats.update(['pure repetition'])
                 return None
-            # Semantic similarity
+            # Semantic or substring similarity
             choice = self.nlp(text)
             for line in convo:
-                if choice.similarity(self.nlp(line)) > 0.97:  # TODO: configurable? dynamic?
+                if choice.similarity(self.nlp(line)) > 0.97:
                     self.stats.update(['semantic repetition'])
+                    return None
+                if len(text) > 32 and text.lower() in line.lower():
+                    self.stats.update(['simple repetition'])
                     return None
 
             return text
@@ -369,11 +374,10 @@ class GPT():
             return ""
 
         prompt=f"{text}\n\n{summarizer}\n"
+
         if self.toklen(prompt) > self.max_prompt_length:
-            # TODO: be smarter here. Rather than truncate, summarize in chunks.
             log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length}")
-            textlen = self.max_prompt_length - len(summarizer) - 3
-            prompt = f"{text[:textlen]}\n\n{summarizer}\n"
+            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length])
 
         try:
             response = openai.ChatCompletion.create(
