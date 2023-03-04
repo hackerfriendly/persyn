@@ -6,7 +6,7 @@ import logging
 import elasticsearch
 import shortuuid as su
 
-from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, RelationshipTo, StructuredRel
+from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, RelationshipTo, StructuredRel, Q
 from neomodel import config as neomodel_config
 from neomodel.contrib import SemiStructuredNode
 
@@ -23,6 +23,46 @@ log = ColorLog()
 
 # Silence Elasticsearch transport
 logging.getLogger('elastic_transport.transport').setLevel(logging.CRITICAL)
+
+# Neomodel (Neo4j) graph classes
+class Entity(SemiStructuredNode):
+    ''' Superclass for everything '''
+    name = StringProperty(required=True)
+    bot_id = StringProperty(required=True)
+
+class IdentityRel(StructuredRel):
+    ''' The identity relationship: something to itself '''
+    linked_on = DateTimeProperty(default_now=True)
+
+class PredicateRel(StructuredRel):
+    ''' Predicate relationship: s P o '''
+    linked_on = DateTimeProperty(default_now=True)
+    verb = StringProperty(required=True)
+
+class Person(Entity):
+    ''' Something you can have a conversation with '''
+    entity_id = UniqueIdProperty()
+    created = DateTimeProperty(default_now=True)
+    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
+
+class Thing(Entity):
+    ''' Any old thing '''
+    created = DateTimeProperty(default_now=True)
+    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
+
+class Human(Person):
+    ''' Flesh and blood '''
+    last_contact = DateTimeProperty(default_now=True)
+    equivalent_to = RelationshipTo('Human', 'AKA', model=IdentityRel)
+    trust = FloatProperty(default=0.0)
+
+class Bot(Person):
+    ''' Silicon and electricity '''
+    last_contact = DateTimeProperty(default_now=True)
+    equivalent_to = RelationshipTo('Bot', 'AKA', model=IdentityRel)
+    service = StringProperty(required=True)
+    channel = StringProperty(required=True)
+
 
 class Recall():
     ''' Total Recall: stm + ltm. '''
@@ -257,47 +297,6 @@ class ShortTermMemory():
             return last[-1]
 
         return None
-
-##
-# Neomodel (Neo4j) graph classes
-#
-class Entity(SemiStructuredNode):
-    ''' Superclass for Person and Thing '''
-
-class IdentityRel(StructuredRel):
-    ''' The identity relationship: something to itself '''
-    linked_on = DateTimeProperty(default_now=True)
-
-class PredicateRel(StructuredRel):
-    ''' Predicate relationship: s P o '''
-    linked_on = DateTimeProperty(default_now=True)
-    verb = StringProperty(required=True)
-
-class Person(Entity):
-    ''' Something you can have a conversation with '''
-    name = StringProperty(required=True)
-    entity_id = UniqueIdProperty()
-    created = DateTimeProperty(default_now=True)
-    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
-
-class Thing(Entity):
-    ''' Any old thing '''
-    name = StringProperty(required=True)
-    created = DateTimeProperty(default_now=True)
-    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
-
-class Human(Person):
-    ''' Flesh and blood '''
-    last_contact = DateTimeProperty(default_now=True)
-    equivalent_to = RelationshipTo('Human', 'AKA', model=IdentityRel)
-    trust = FloatProperty(default=0.0)
-
-class Bot(Person):
-    ''' Silicon and electricity '''
-    last_contact = DateTimeProperty(default_now=True)
-    equivalent_to = RelationshipTo('Bot', 'AKA', model=IdentityRel)
-    service = StringProperty(required=True)
-    channel = StringProperty(required=True)
 
 
 class LongTermMemory(): # pylint: disable=too-many-arguments
@@ -901,6 +900,36 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"🗞️ {url}: {ret}")
         return ret
 
+    def delete_all_nodes(self, confirm=False):
+        ''' Delete all graph nodes for this bot '''
+        if confirm is not True:
+            return False
+
+        for node in Entity.nodes.filter(Q(bot_id=self.bot_id)):
+            node.delete()
+
+        return True
+
+    def fetch_all_nodes(self, node_type=None):
+        ''' Return all graph nodes for this bot '''
+        if node_type is None:
+            return Entity.nodes.filter(Q(bot_id=self.bot_id))
+        if node_type == 'person':
+            return Person.nodes.filter(Q(bot_id=self.bot_id))
+        if node_type == 'thing':
+            return Thing.nodes.filter(Q(bot_id=self.bot_id))
+        raise RuntimeError(f'Invalid node_type: {node_type}')
+
+    def find_node(self, name, node_type=None):
+        ''' Return all nodes with the given name'''
+        if node_type is None:
+            return Entity.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
+        if node_type == 'person':
+            return Person.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
+        if node_type == 'thing':
+            return Thing.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
+        raise RuntimeError(f'Invalid node_type: {node_type}')
+
 
     def spo_to_kg(self, text):
         '''
@@ -934,12 +963,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         for name in speaker_names:
             try:
-                speakers[name] = Person.nodes.get(name=name) #pylint: disable=no-member
+                speakers[name] = Person.nodes.get(name=name, bot_id=self.bot_id) #pylint: disable=no-member
             except Person.DoesNotExist: # pylint: disable=no-member
-                speakers[name] = Person(name=name).save()
+                speakers[name] = Person(name=name, bot_id=self.bot_id).save()
 
         things = {}
-        for t in Thing.get_or_create(*[{'name': n} for n in list(thing_names) if n not in speakers]):
+        for t in Thing.get_or_create(*[{'name': n, 'bot_id': self.bot_id} for n in list(thing_names) if n not in speakers]):
             things[t.name] = t
 
         for link in links:
