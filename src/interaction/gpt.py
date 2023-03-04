@@ -31,15 +31,16 @@ class GPT():
         model_name,
         forbidden=None,
         nlp=None,
-        sentiment=None
+        chatgpt=None
         ):
         self.bot_name = bot_name
         self.min_score = min_score
         self.model_name = model_name
+        self.chatgpt = chatgpt
         self.forbidden = forbidden or []
         self.stats = Counter()
         self.nlp = nlp or spacy.load("en_core_web_sm")
-        self.sentiment = sentiment or Sentiment()
+        self.sentiment = Sentiment()
         try:
             self.enc = tiktoken.encoding_for_model(model_name)
         except KeyError:
@@ -108,30 +109,33 @@ class GPT():
 
         return scored
 
-    def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50):
+    def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50, speaker=None):
         '''
         Ask GPT3 for its opinions of entity, given the context.
         '''
         if stop is None:
             stop = [".", "!", "?"]
 
-        prompt = f'''{context}\n\nHow does {self.bot_name} feel about {entity}?'''
+        if speaker is None:
+            speaker = self.bot_name
+
+        prompt = f'''Given the following conversation, how does {speaker} feel about {entity}?\n{context}'''
 
         if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
         try:
-            response = openai.Completion.create(
-                engine=self.model_name,
-                prompt=prompt,
+            response = openai.ChatCompletion.create(
+                model=self.chatgpt,
+                messages=[
+                    {"role": "system", "content": """You are an expert at estimating opinions based on conversation."""},
+                    {"role": "user", "content": prompt}
+                ],
                 temperature=temperature,
                 max_tokens=max_tokens,
-                n=1,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0,
                 stop=stop
             )
+
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
             return ""
@@ -142,33 +146,35 @@ class GPT():
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-        reply = response.choices[0]['text'].strip()
+        reply = response['choices'][0]['message']['content'].strip()
         log.warning(f"☝️  opinion of {entity}: {reply}")
 
         return reply
 
-    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50):
+    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50, speaker=None):
         '''
         Ask GPT3 for sentiment analysis of the current convo.
         '''
         if stop is None:
             stop = [".", "!", "?"]
 
-        prompt = f'''{context}\nThree words that describe {self.bot_name}'s sentiment in the text are:'''
+        if speaker is None:
+            speaker = self.bot_name
+
+        prompt = f"Given the following text, choose three words that best describe {speaker}'s emotional state:\n{context}"
 
         if self.toklen(prompt) > self.max_prompt_length:
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
 
         try:
-            response = openai.Completion.create(
-                engine=self.model_name,
-                prompt=prompt,
+            response = openai.ChatCompletion.create(
+                model=self.chatgpt,
+                messages=[
+                        {"role": "system", "content": """You are an expert at determining the emotional state of people engaging in conversation."""},
+                        {"role": "user", "content": prompt}
+                    ],
                 temperature=temperature,
                 max_tokens=max_tokens,
-                n=1,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0,
                 stop=stop
             )
         except openai.error.APIConnectionError as err:
@@ -181,8 +187,8 @@ class GPT():
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-        reply = response.choices[0]['text'].strip()
-        log.warning(f"☺️  sentiment of conversation: {reply}")
+        reply = response['choices'][0]['message']['content'].strip().lower()
+        log.warning(f"😁 sentiment of conversation: {reply}")
 
         return reply
 
@@ -369,9 +375,12 @@ class GPT():
             prompt = f"{text[:textlen]}\n\n{summarizer}\n"
 
         try:
-            response = openai.Completion.create(
-                engine=self.model_name,
-                prompt=prompt,
+            response = openai.ChatCompletion.create(
+                model=self.chatgpt,
+                messages=[
+                    {"role": "system", "content": """You are an expert at summarizing text."""},
+                    {"role": "user", "content": prompt}
+                ],
                 max_tokens=max_tokens,
                 top_p=0.1,
                 frequency_penalty=0.8,
@@ -387,7 +396,7 @@ class GPT():
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-        reply = response.choices[0]['text'].strip().split('\n')[0]
+        reply = response['choices'][0]['message']['content'].strip().split('\n')[0]
 
         # To the right of the : (if any)
         if ':' in reply:
