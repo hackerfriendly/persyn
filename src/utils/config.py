@@ -113,6 +113,7 @@ def load_config(cfg=None):
     config.setdefault('sentiment', {})
     config.setdefault('interact', {'url': None})
     config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'parrot': {'url': None}, 'stable_diffusion': {'url': None}})
+    config.setdefault('completion', {'engine': 'openai', 'model': 'text-davinci-003', 'chatgpt': 'gpt-3.5-turbo'})
 
     # Check for required models
     persyn_config = DotWiz(config)

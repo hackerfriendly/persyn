@@ -33,6 +33,9 @@ completion:
   #   https://beta.openai.com/docs/models/overview
   #   https://beta.openai.com/docs/model-index-for-researchers
   model: text-davinci-003
+  # The chatgpt model is used for opinions, sentiment, knowledge graph building,
+  # and other non-chat functions.
+  chatgpt: gpt-3.5-turbo
   minimum_quality_score: -2.0
   temperature: 0.99
 

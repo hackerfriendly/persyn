@@ -34,9 +34,11 @@ class LanguageModel():
             if self.engine == 'openai':
                 api_base = 'https://api.openai.com/v1'
                 model_name = getattr(config.completion, 'model', 'text-davinci-003')
+                chatgpt = getattr(config.completion, 'chatgpt', 'gpt-3.5-turbo')
             else:
                 api_base = 'https://api.goose.ai/v1'
                 model_name = getattr(config.completion, 'model', 'gpt-neo-20b')
+                chatgpt = None
 
             self.model = gpt.GPT(
                 self.bot_name,
@@ -45,7 +47,8 @@ class LanguageModel():
                 api_base,
                 model_name,
                 forbidden,
-                self.nlp
+                self.nlp,
+                chatgpt=chatgpt
             )
             self.max_prompt_length = self.model.max_prompt_length
             self.toklen = self.model.toklen
