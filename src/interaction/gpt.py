@@ -111,7 +111,7 @@ class GPT():
 
     def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50, speaker=None):
         '''
-        Ask GPT3 for its opinions of entity, given the context.
+        Ask ChatGPT for its opinions of entity, given the context.
         '''
         if stop is None:
             stop = [".", "!", "?"]
@@ -154,7 +154,7 @@ class GPT():
 
     def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50, speaker=None):
         '''
-        Ask GPT3 for sentiment analysis of the current convo.
+        Ask ChatGPT for sentiment analysis of the current convo.
         '''
         if stop is None:
             stop = [".", "!", "?"]
@@ -193,6 +193,63 @@ class GPT():
         log.warning(f"😁 sentiment of conversation: {reply}")
 
         return reply
+
+    def generate_triples(self, context, temperature=0.5):
+        '''
+        Ask ChatGPT to generate a knowledge graph of the current convo.
+        Returns a list of (subject, predicate, object) triples.
+        '''
+        prompt = f"Given the following text, generate a knowledge graph of all important people and facts:\n{context}"
+
+        if self.toklen(prompt) > self.max_prompt_length:
+            log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length}")
+            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length])
+
+        try:
+
+            response = openai.ChatCompletion.create(
+                model=self.chatgpt,
+                messages=[
+                    {"role": "system", "content": """You are an expert at converting text into knowledge graphs consisting of a subject, predicate, and object separated by | .
+The subject, predicate, and object should be as short as possible, consisting of a single word or compoundWord.
+Some examples include:
+Anna | grewUpIn | Kanata
+Anna | hasSibling | Amy
+Kanata | locatedNear | Ottawa
+Ottawa | locatedIn | Canada
+"""
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temperature
+            )
+        except openai.error.APIConnectionError as err:
+            log.critical("OpenAI APIConnectionError:", err)
+            return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return ""
+        except openai.error.RateLimitError as err:
+            log.critical("OpenAI RateLimitError:", err)
+            return ""
+
+        reply = response['choices'][0]['message']['content'].strip()
+
+        ret = []
+        for line in reply.split('\n'):
+            if line.count('|') != 2:
+                log.warning('📉 Invalid node:', line)
+                continue
+            subj, pred, obj = [term.strip() for term in line.split('|')]
+            if ',' in obj:
+                for o in obj.split(','):
+                    ret.append((subj, pred, o.strip()))
+            else:
+                ret.append((subj, pred, obj))
+
+        log.info(f"📉 knowledge graph: {len(ret)} triples generated")
+        log.debug(f"📉 knowledge graph: {ret}")
+        return ret
 
     def truncate(self, text):
         '''
@@ -368,7 +425,7 @@ class GPT():
         return adjusted
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50):
-        ''' Ask GPT for a summary'''
+        ''' Ask ChatGPT for a summary'''
         if not text:
             log.warning('get_summary():', "No text, skipping summary.")
             return ""

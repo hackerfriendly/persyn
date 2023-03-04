@@ -1,5 +1,5 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
-# pylint: disable=invalid-name, no-name-in-module, abstract-method
+# pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
 import uuid
 import logging
 
@@ -592,7 +592,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ''' Return the equivalent UUID (str) for a short ID (str) '''
         return str(su.decode(entity_id))
 
-    def name_to_entity(self, service, channel, name):
+    def name_to_entity_id(self, service, channel, name):
         ''' One distinct short UUID per bot_id + service + channel + name '''
         return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
 
@@ -605,8 +605,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             speaker_id = speaker_name
 
         if not entity_id:
-            entity_id = self.name_to_entity(service, channel, speaker_id)
-        entity = self.lookup_entity(entity_id)
+            entity_id = self.name_to_entity_id(service, channel, speaker_id)
+        entity = self.lookup_entity_id(entity_id)
 
         if entity:
             return entity_id, elapsed(entity['@timestamp'], get_cur_ts())
@@ -626,7 +626,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         )
         return entity_id, 0
 
-    def lookup_entity(self, entity_id):
+    def lookup_entity_id(self, entity_id):
         ''' Look up an entity_id in Elasticsearch. '''
         entity = self.es.search( # pylint: disable=unexpected-keyword-arg
             index=self.index['entity'],
@@ -641,9 +641,29 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         return []
 
-    def entity_to_name(self, entity_id):
+    def lookup_speaker_name(self, speaker_name, size=1000):
+        '''
+        Look up a speaker by name in the Elasticsearch entities index.
+        It returns all matching entities regardless of service/channel.
+        '''
+        hits = self.es.search(  # pylint: disable=unexpected-keyword-arg
+            index=self.index['entity'],
+            query={
+                "term": {"speaker_name.keyword": speaker_name}
+            },
+            size=size
+        )['hits']['hits']
+
+        ret = []
+
+        for hit in hits:
+            ret.append(hit['_source'])
+
+        return ret
+
+    def entity_id_to_name(self, entity_id):
         ''' If the entity_id exists, return its name. '''
-        entity = self.lookup_entity(entity_id)
+        entity = self.lookup_entity_id(entity_id)
         if entity:
             return entity['speaker_name']
         return []
@@ -930,20 +950,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             return Thing.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
         raise RuntimeError(f'Invalid node_type: {node_type}')
 
-
-    def spo_to_kg(self, text):
+    def triples_to_kg(self, triples):
         '''
-        Convert subject, predicate, object text into a Neo4j graph.
-
-        Terms should be separated by | and listed one per line:
-
-        Anna | grewUpIn | Kanata
-        Anna | hasChildhoodMemoriesOf | playing tag
-        Anna | hasSiblings | Nick
-        Nick | hasSister | Anna
+        Convert subject, predicate, object triples into a Neo4j graph.
         '''
         if not hasattr(self.persyn_config.memory, 'neo4j'):
-            log.error('፨ No graph server defined, cannot call spo_to_kg()')
+            log.error('፨ No graph server defined, cannot call triples_to_kg()')
             return
 
         speaker_names = set()
@@ -951,19 +963,25 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         speakers = {}
         links = []
 
-        for rel in text.split('\n'):
-            if rel.count('|') != 2:
-                log.warning("Not an spo triple, skipping:", rel)
-                continue
-            (s, p, o) = [term.strip() for term in rel.split('|')]
+        for triple in triples:
+            (s, _, o) = triple
 
-            speaker_names.add(s)
-            thing_names.add(o)
-            links.append([s, p, o])
+            if s in speakers or self.lookup_speaker_name(s):
+                speaker_names.add(s)
+            else:
+                thing_names.add(s)
+
+            if o in speakers or self.lookup_speaker_name(o):
+                speaker_names.add(o)
+            else:
+                thing_names.add(o)
+
+            links.append(triple)
 
         for name in speaker_names:
             try:
                 speakers[name] = Person.nodes.get(name=name, bot_id=self.bot_id) #pylint: disable=no-member
+            # If they don't yet exist in the graph, make a new node
             except Person.DoesNotExist: # pylint: disable=no-member
                 speakers[name] = Person(name=name, bot_id=self.bot_id).save()
 
@@ -971,10 +989,14 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         for t in Thing.get_or_create(*[{'name': n, 'bot_id': self.bot_id} for n in list(thing_names) if n not in speakers]):
             things[t.name] = t
 
-        for link in links:
-            if link[2] in speakers:
-                speakers[link[0]].link.connect(speakers[link[2]], {'verb': link[1]})
+        for link in triples:
+            if link[0] in speakers:
+                if link[2] in speakers:
+                    speakers[link[0]].link.connect(speakers[link[2]], {'verb': link[1]})
+                else:
+                    speakers[link[0]].link.connect(things[link[2]], {'verb': link[1]})
             else:
-                speakers[link[0]].link.connect(things[link[2]], {'verb': link[1]})
-
-        return True
+                if link[2] in speakers:
+                    things[link[0]].link.connect(speakers[link[2]], {'verb': link[1]})
+                else:
+                    things[link[0]].link.connect(things[link[2]], {'verb': link[1]})
