@@ -11,8 +11,8 @@ fastapi
 fastapi[all]
 flair
 ftfy==6.1.1
-git+https://github.com/openai/CLIP.git@main#egg=clip
-git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip
+# git+https://github.com/openai/CLIP.git@main#egg=clip
+# git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip
 humanize
 Levenshtein
 Mastodon.py
@@ -20,7 +20,7 @@ neo4j
 neomodel['extras']
 nlpcloud
 nltk
-openai
+openai>=0.27.0
 pyyaml
 requests
 scikit-learn==1.1.3
