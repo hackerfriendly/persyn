@@ -99,9 +99,9 @@ class Interact():
 
         log.warning("∑ summarizing convo")
 
-        convo = '\n'.join(text)
+        convo_text = '\n'.join(text)
         summary = self.completion.get_summary(
-            text=convo,
+            text=convo_text,
             summarizer="To briefly summarize this conversation,",
             max_tokens=max_tokens
         )
@@ -109,7 +109,7 @@ class Interact():
 
         if save:
             self.recall.summary(service, channel, summary, keywords)
-            self.save_knowledge_graph(service, channel, convo_id, convo)
+            self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
             self.recall.judge(
@@ -359,6 +359,10 @@ class Interact():
         if convo:
             last_sentence = convo.pop()
 
+            # Save the knowledge graph every 5 lines
+            if len(convo) % 5 == 0:
+                self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
+
         # Ruminate a bit
         entities = self.extract_entities(msg)
 
@@ -408,9 +412,7 @@ class Interact():
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
                 return " :writing_hand: :interrobang: "
 
-            # This is a hack, but fairly effective. Instead of waiting for summaries,
-            # just use the original summaries (if any) and the last few lines of convo.
-            prompt = self.generate_prompt(summaries, convo[-3:], service, channel, lts)
+            prompt = self.generate_prompt([], convo, service, channel, lts)
 
         reply = self.choose_response(prompt, convo, service, channel, self.goals)
         if self.custom_filter:
