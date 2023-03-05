@@ -4,7 +4,7 @@ cns.py
 
 The central nervous system. Listen for events on the event bus and inject results into interact.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
+# pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
 import os
 import argparse
 
@@ -263,6 +263,12 @@ async def check_feels(event):
     )
     log.warning("😄 Feeling:", feels)
 
+async def build_knowledge_graph(event):
+    ''' Build the knowledge graph. '''
+    triples = completion.model.generate_triples(event.convo)
+    log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
+    recall.ltm.triples_to_kg(triples)
+
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
     chat = Chat(
@@ -447,6 +453,11 @@ async def goals_event(event):
 async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
     await check_feels(event)
+
+@autobus.subscribe(KnowledgeGraph)
+async def kg_event(event):
+    ''' Dispatch KnowledgeGraph event. '''
+    await build_knowledge_graph(event)
 
 @autobus.subscribe(News)
 async def news_event(event):

@@ -11,7 +11,7 @@ from copy import copy
 
 from interaction.chrono import elapsed
 
-from interaction.memory import LongTermMemory, ShortTermMemory, Recall, Thing
+from interaction.memory import LongTermMemory, ShortTermMemory, Recall, Person
 
 # Bot config
 from utils.config import load_config
@@ -350,15 +350,15 @@ def test_news():
 
 def test_kg():
     ''' Neo4j tests '''
-    assert ltm.spo_to_kg("This | isOnly | aTest") is True
+    ltm.triples_to_kg([("This", "isOnly", "aTest")])
     assert len(list(ltm.fetch_all_nodes())) == 2
     assert ltm.find_node(name='aTest').first().name == 'aTest'
     assert len(list(ltm.find_node(name='aTest', node_type='person'))) == 0
 
-    with pytest.raises(Thing.DoesNotExist):
-        ltm.find_node(name='This', node_type='thing').first()
+    with pytest.raises(Person.DoesNotExist):
+        ltm.find_node(name='This', node_type='person').first()
 
-    assert ltm.find_node(name='This', node_type='person').first().name == 'This'
+    assert ltm.find_node(name='This', node_type='thing').first().name == 'This'
 
     with pytest.raises(RuntimeError):
         assert ltm.find_node(name='This', node_type='invalid')

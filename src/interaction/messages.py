@@ -91,6 +91,18 @@ class VibeCheck(autobus.Event):
     room: str
 
 
+class KnowledgeGraph(autobus.Event):
+    '''
+    The best lack all conviction, while the worst are full of passionate intensity.
+    '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    convo_id: str
+    convo: str
+
+
 class News(autobus.Event):
     ''' What's happening in the big world? '''
     service: str

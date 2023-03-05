@@ -72,10 +72,12 @@ class Interact():
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
-        If save == True, save it to long term memory.
+
+        If save == True, save convo to long term memory and generate
+        knowledge graph nodes (via the autobus).
+
         Returns the text summary.
         '''
-
         convo_id = self.recall.stm.convo_id(service, channel)
         if not convo_id:
             return ""
@@ -95,11 +97,11 @@ class Interact():
         if not text:
             text = [f"{self.config.id.name} isn't sure what is happening."]
 
-
         log.warning("∑ summarizing convo")
 
+        convo = '\n'.join(text)
         summary = self.completion.get_summary(
-            text='\n'.join(text),
+            text=convo,
             summarizer="To briefly summarize this conversation,",
             max_tokens=max_tokens
         )
@@ -107,6 +109,7 @@ class Interact():
 
         if save:
             self.recall.summary(service, channel, summary, keywords)
+            self.save_knowledge_graph(service, channel, convo_id, convo)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
             self.recall.judge(
@@ -319,7 +322,24 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
 
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
+    def save_knowledge_graph(self, service, channel, convo_id, convo):
+        ''' Build a pretty graph of this convo... via the autobus! '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+        }
+        data = {
+            "convo": convo
+        }
+
+        try:
+            reply = requests.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
+
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 

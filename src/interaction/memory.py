@@ -1006,4 +1006,3 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
                 if not found:
                     rel = subj.link.connect(obj, {'verb': pred})
-
