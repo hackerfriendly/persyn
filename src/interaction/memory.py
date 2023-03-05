@@ -6,8 +6,9 @@ import logging
 import elasticsearch
 import shortuuid as su
 
-from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, RelationshipTo, StructuredRel, Q
+from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, IntegerProperty, RelationshipTo, StructuredRel, Q
 from neomodel import config as neomodel_config
+from neomodel import db as neomodel_db
 from neomodel.contrib import SemiStructuredNode
 
 # Time
@@ -30,19 +31,17 @@ class Entity(SemiStructuredNode):
     name = StringProperty(required=True)
     bot_id = StringProperty(required=True)
 
-class IdentityRel(StructuredRel):
-    ''' The identity relationship: something to itself '''
-    linked_on = DateTimeProperty(default_now=True)
-
 class PredicateRel(StructuredRel):
     ''' Predicate relationship: s P o '''
-    linked_on = DateTimeProperty(default_now=True)
+    weight = IntegerProperty(default=0)
     verb = StringProperty(required=True)
 
 class Person(Entity):
     ''' Something you can have a conversation with '''
-    entity_id = UniqueIdProperty()
     created = DateTimeProperty(default_now=True)
+    last_contact = DateTimeProperty(default_now=True)
+    entity_id = UniqueIdProperty()
+    speaker_id = UniqueIdProperty()
     link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
 
 class Thing(Entity):
@@ -53,15 +52,13 @@ class Thing(Entity):
 class Human(Person):
     ''' Flesh and blood '''
     last_contact = DateTimeProperty(default_now=True)
-    equivalent_to = RelationshipTo('Human', 'AKA', model=IdentityRel)
     trust = FloatProperty(default=0.0)
 
 class Bot(Person):
     ''' Silicon and electricity '''
-    last_contact = DateTimeProperty(default_now=True)
-    equivalent_to = RelationshipTo('Bot', 'AKA', model=IdentityRel)
     service = StringProperty(required=True)
     channel = StringProperty(required=True)
+    trust = FloatProperty(default=0.0)
 
 
 class Recall():
@@ -961,42 +958,52 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         speaker_names = set()
         thing_names = set()
         speakers = {}
-        links = []
 
         for triple in triples:
             (s, _, o) = triple
 
-            if s in speakers or self.lookup_speaker_name(s):
+            if s not in thing_names and self.lookup_speaker_name(s):
                 speaker_names.add(s)
             else:
                 thing_names.add(s)
 
-            if o in speakers or self.lookup_speaker_name(o):
+            if o not in thing_names and self.lookup_speaker_name(o):
                 speaker_names.add(o)
             else:
                 thing_names.add(o)
 
-            links.append(triple)
+        with neomodel_db.transaction:
+            for name in speaker_names:
+                try:
+                    speakers[name] = Person.nodes.get(name=name, bot_id=self.bot_id)  # pylint: disable=no-member
+                # If they don't yet exist in the graph, make a new node
+                except Person.DoesNotExist:  # pylint: disable=no-member
+                    speakers[name] = Person(name=name, bot_id=self.bot_id).save()
 
-        for name in speaker_names:
-            try:
-                speakers[name] = Person.nodes.get(name=name, bot_id=self.bot_id) #pylint: disable=no-member
-            # If they don't yet exist in the graph, make a new node
-            except Person.DoesNotExist: # pylint: disable=no-member
-                speakers[name] = Person(name=name, bot_id=self.bot_id).save()
+            things = {}
+            for t in Thing.get_or_create(*[{'name': n, 'bot_id': self.bot_id} for n in list(thing_names) if n not in speakers]):
+                things[t.name] = t
 
-        things = {}
-        for t in Thing.get_or_create(*[{'name': n, 'bot_id': self.bot_id} for n in list(thing_names) if n not in speakers]):
-            things[t.name] = t
-
-        for link in triples:
-            if link[0] in speakers:
-                if link[2] in speakers:
-                    speakers[link[0]].link.connect(speakers[link[2]], {'verb': link[1]})
+            for link in triples:
+                if link[0] in speakers:
+                    subj = speakers[link[0]]
                 else:
-                    speakers[link[0]].link.connect(things[link[2]], {'verb': link[1]})
-            else:
+                    subj = things[link[0]]
+
+                pred = link[1]
+
                 if link[2] in speakers:
-                    things[link[0]].link.connect(speakers[link[2]], {'verb': link[1]})
+                    obj = speakers[link[2]]
                 else:
-                    things[link[0]].link.connect(things[link[2]], {'verb': link[1]})
+                    obj = things[link[2]]
+
+                found = False
+                for rel in subj.link.all_relationships(obj):
+                    if rel.verb == pred:
+                        found = True
+                        rel.weight = rel.weight + 1
+                        rel.save()
+
+                if not found:
+                    rel = subj.link.connect(obj, {'verb': pred})
+

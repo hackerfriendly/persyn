@@ -194,6 +194,11 @@ class GPT():
 
         return reply
 
+    @staticmethod
+    def safe_name(name):
+        ''' Return a sanitized name, alphanumeric + space only, max 64 characters. '''
+        return re.sub(r"[^a-zA-Z0-9 ]+", '', name.strip())[:64]
+
     def generate_triples(self, context, temperature=0.5):
         '''
         Ask ChatGPT to generate a knowledge graph of the current convo.
@@ -240,10 +245,14 @@ Ottawa | locatedIn | Canada
             if line.count('|') != 2:
                 log.warning('📉 Invalid node:', line)
                 continue
-            subj, pred, obj = [term.strip() for term in line.split('|')]
+            subj, pred, obj = [self.safe_name(term) for term in line.split('|')]
+            if not all([subj, pred, obj]):
+                continue
             if ',' in obj:
                 for o in obj.split(','):
-                    ret.append((subj, pred, o.strip()))
+                    safe_obj = self.safe_name(o.strip())
+                    if safe_obj:
+                        ret.append((subj, pred, safe_obj))
             else:
                 ret.append((subj, pred, obj))
 
