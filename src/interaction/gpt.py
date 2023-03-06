@@ -195,9 +195,18 @@ class GPT():
         return reply
 
     @staticmethod
+    def camelCaseName(name):
+        ''' Return name sanitized as camelCaseName, alphanumeric only, max 64 characters. '''
+        ret = re.sub(r"[^a-zA-Z0-9 ]+", '', name.strip())
+        if ' ' in ret:
+            words = ret.split(' ')
+            ret = ''.join([words[0].lower()] + [w[0].upper()+w[1:].lower() for w in words[1:] if w])
+        return ret[:64]
+
+    @staticmethod
     def safe_name(name):
-        ''' Return a sanitized name, alphanumeric + space only, max 64 characters. '''
-        return re.sub(r"[^a-zA-Z0-9 ]+", '', name.strip())[:64]
+        ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
+        return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64]
 
     def generate_triples(self, context, temperature=0.5):
         '''
@@ -245,7 +254,10 @@ Ottawa | locatedIn | Canada
             if line.count('|') != 2:
                 log.warning('📉 Invalid node:', line)
                 continue
-            subj, pred, obj = [self.safe_name(term) for term in line.split('|')]
+            subj, pred, obj = line.split('|')
+            subj = self.safe_name(subj)
+            pred = self.camelCaseName(pred)
+            obj = self.safe_name(obj)
             if not all([subj, pred, obj]):
                 continue
             if ',' in obj:
