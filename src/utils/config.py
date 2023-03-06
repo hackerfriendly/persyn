@@ -109,6 +109,14 @@ def load_config(cfg=None):
                 if setting not in config['memory']['elastic']:
                     config['memory']['elastic'][setting] = val
 
+        if 'neo4j' in config['memory']:
+            neo4j_defaults = {
+                'url': 'neo4j://localhost:7687/'
+            }
+            for setting, val in neo4j_defaults.items():
+                if setting not in config['memory']['neo4j']:
+                    config['memory']['neo4j'][setting] = val
+
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('sentiment', {})
     config.setdefault('interact', {'url': None})

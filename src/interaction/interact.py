@@ -72,10 +72,12 @@ class Interact():
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
-        If save == True, save it to long term memory.
+
+        If save == True, save convo to long term memory and generate
+        knowledge graph nodes (via the autobus).
+
         Returns the text summary.
         '''
-
         convo_id = self.recall.stm.convo_id(service, channel)
         if not convo_id:
             return ""
@@ -95,11 +97,11 @@ class Interact():
         if not text:
             text = [f"{self.config.id.name} isn't sure what is happening."]
 
-
         log.warning("∑ summarizing convo")
 
+        convo_text = '\n'.join(text)
         summary = self.completion.get_summary(
-            text='\n'.join(text),
+            text=convo_text,
             summarizer="To briefly summarize this conversation,",
             max_tokens=max_tokens
         )
@@ -107,6 +109,7 @@ class Interact():
 
         if save:
             self.recall.summary(service, channel, summary, keywords)
+            self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
             self.recall.judge(
@@ -319,7 +322,24 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
 
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
+    def save_knowledge_graph(self, service, channel, convo_id, convo):
+        ''' Build a pretty graph of this convo... via the autobus! '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+        }
+        data = {
+            "convo": convo
+        }
+
+        try:
+            reply = requests.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
+
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
@@ -338,6 +358,10 @@ class Interact():
 
         if convo:
             last_sentence = convo.pop()
+
+        # Save the knowledge graph every 5 lines
+        if convo and len(convo) % 5 == 0:
+            self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -388,9 +412,7 @@ class Interact():
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
                 return " :writing_hand: :interrobang: "
 
-            # This is a hack, but fairly effective. Instead of waiting for summaries,
-            # just use the original summaries (if any) and the last few lines of convo.
-            prompt = self.generate_prompt(summaries, convo[-3:], service, channel, lts)
+            prompt = self.generate_prompt([], convo, service, channel, lts)
 
         reply = self.choose_response(prompt, convo, service, channel, self.goals)
         if self.custom_filter:
@@ -424,25 +446,30 @@ class Interact():
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
+        triples = []
+        graph_summary = ''
+        convo_text = '\n'.join(convo)
+        for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
+            for triple in self.recall.ltm.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+                triples.append(triple)
+        if triples:
+            graph_summary = self.completion.model.triples_to_text(triples)
+
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
-{newline.join(convo)}
+{graph_summary}
+{convo_text}
 {timediff}
 {self.config.id.name}:"""
 
     def get_status(self, service, channel):
         ''' status report '''
-        paragraph = '\n\n'
-        newline = '\n'
-        summaries = self.recall.summaries(service, channel, size=2)
-        convo = self.recall.convo(service, channel)
-        timediff = f"It has been {ago(self.recall.lts(service, channel))} since they last spoke."
-        return f"""{self.default_prompt_prefix(service, channel)}
-{paragraph.join(summaries)}
-
-{newline.join(convo)}
-{timediff}
-"""
+        return self.generate_prompt(
+            self.recall.summaries(service, channel, size=2),
+            self.recall.convo(service, channel),
+            service,
+            channel
+        )
 
     def amnesia(self, service, channel):
         ''' forget it '''

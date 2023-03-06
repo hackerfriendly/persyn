@@ -8,7 +8,7 @@ id:
   guid: fed828a8-64c8-4f46-a15d-93973724614c
 
 # Required: At least one long-term memory service must be defined.
-# Currently only Elasticsearch is supported.
+# Currently Elasticsearch is required. Neo4j is optional.
 memory:
   elastic:
     url: https://your-elasticsearch-instance.es.us-west-2.aws.found.io:443
@@ -16,6 +16,11 @@ memory:
     key: elastic-bot-password
     index_prefix: persyn
     verify_certs: true
+  # Optional, but recommended: Neo4j graph database server for knowledge graph generation.
+  # neo4j:
+    # url: neo4j://localhost:7687/
+    # # Or with a user and password:
+    # # url: neo4j://user:password@my.neo4j.server:7687/
   # Conversations end when this many seconds pass in silence
   conversation_interval: 600
 
@@ -103,16 +108,21 @@ sentiment:
   engine: "flair"
   model: "en-sentiment"
 
-# # Optional: Central Nervous System. Used for image generation and posting images to social media.
-# # This also requires autobus, https://github.com/schuyler/autobus/
-# cns:
-#   # Location of your redis server (default)
-#   # redis: redis://localhost:6379/
-#   # If using a simple password with the default user:
-#   # redis: redis://:secret@my.redis.server:6379/
-#   # Using SSL and an ACL with a username:
-#   # redis: rediss://user:secret@my.redis.server:6379/
-#   workers: 1
+# Optional, but recommended: Sentiment analysis engine
+sentiment:
+  engine: "flair"
+  model: "en-sentiment"
+
+# Required: Central Nervous System. Used for asynchronous events, image generation,
+# and posting images to social media. It also requires autobus, https://github.com/schuyler/autobus/
+cns:
+  # Location of your redis server (default)
+  # redis: redis://localhost:6379/
+  # If using a simple password with the default user:
+  # redis: redis://:secret@my.redis.server:6379/
+  # Using SSL and an ACL with a username:
+  # redis: rediss://user:secret@my.redis.server:6379/
+  workers: 1
 
 # # Optional: Dream image generation multiplexer (dreams.py)
 # dreams:

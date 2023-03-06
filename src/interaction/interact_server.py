@@ -23,7 +23,7 @@ import autobus
 from interaction.interact import Interact
 
 # Message classes
-from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck, News
+from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
 
 # Color logging
 from utils.color_logging import log
@@ -273,6 +273,29 @@ async def vibe_check(
         bot_id=persyn_config.id.guid,
         convo_id=convo_id,
         room=room
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
+
+@app.post("/build_graph/")
+async def build_graph(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    convo_id: str = Query(..., min_length=1, max_length=255),
+    convo: str = Form(..., max_length=65535),
+):
+    ''' Add to this convo to the knowledge graph '''
+    event = KnowledgeGraph(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=convo_id,
+        convo=convo
     )
     autobus.publish(event)
 
