@@ -359,9 +359,9 @@ class Interact():
         if convo:
             last_sentence = convo.pop()
 
-            # Save the knowledge graph every 5 lines
-            if len(convo) % 5 == 0:
-                self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
+        # Save the knowledge graph every 5 lines
+        if convo and len(convo) % 5 == 0:
+            self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -446,25 +446,30 @@ class Interact():
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
+        triples = []
+        graph_summary = ''
+        convo_text = '\n'.join(convo)
+        for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
+            for triple in self.recall.ltm.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+                triples.append(triple)
+        if triples:
+            graph_summary = self.completion.model.triples_to_text(triples)
+
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
-{newline.join(convo)}
+{graph_summary}
+{convo_text}
 {timediff}
 {self.config.id.name}:"""
 
     def get_status(self, service, channel):
         ''' status report '''
-        paragraph = '\n\n'
-        newline = '\n'
-        summaries = self.recall.summaries(service, channel, size=2)
-        convo = self.recall.convo(service, channel)
-        timediff = f"It has been {ago(self.recall.lts(service, channel))} since they last spoke."
-        return f"""{self.default_prompt_prefix(service, channel)}
-{paragraph.join(summaries)}
-
-{newline.join(convo)}
-{timediff}
-"""
+        return self.generate_prompt(
+            self.recall.summaries(service, channel, size=2),
+            self.recall.convo(service, channel),
+            service,
+            channel
+        )
 
     def amnesia(self, service, channel):
         ''' forget it '''

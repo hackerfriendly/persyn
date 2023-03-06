@@ -272,6 +272,48 @@ Ottawa | locatedIn | Canada
         log.debug(f"📉 knowledge graph: {ret}")
         return ret
 
+    def triples_to_text(self, triples, temperature=0.99, preamble=''):
+        '''
+        Ask ChatGPT to turn a knowledge graph back into text.
+        Provide a list of (subject, predicate, object) triples.
+        If provided, preamble is inserted in the prompt before graph generation.
+        Returns a plain text summary.
+        '''
+        lines = []
+        for triple in triples:
+            lines.append(f"{triple[0]} | {triple[1]} | {triple[2]}")
+
+        kg = '\n'.join(lines)
+        log.warning(kg)
+        try:
+            response = openai.ChatCompletion.create(
+                model=self.chatgpt,
+                temperature=temperature,
+                messages=[
+                    {"role": "system", "content": "You are an expert at converting knowledge graphs into succinct text."},
+                    {"role": "user", "content":
+                    f"""{preamble}
+Given the following knowledge graph, create a simple summary of the text it was extracted from, as told from the third-person point of view of {self.bot_name}.
+
+{kg}
+"""
+                    }
+                ]
+            )
+            text = response['choices'][0]['message']['content'].strip()
+            log.info("☘️  triples_to_text:", text)
+            return text
+
+        except openai.error.APIConnectionError as err:
+            log.critical("OpenAI APIConnectionError:", err)
+            return ""
+        except openai.error.ServiceUnavailableError as err:
+            log.critical("OpenAI Service Unavailable:", err)
+            return ""
+        except openai.error.RateLimitError as err:
+            log.critical("OpenAI RateLimitError:", err)
+            return ""
+
     def truncate(self, text):
         '''
         Extract the first few "sentences" from OpenAI's messy output.

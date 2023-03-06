@@ -237,7 +237,7 @@ class Chat():
             "channel": channel,
         }
         try:
-            reply = requests.post(f"{self.interact_url}/status/", params=req, timeout=10)
+            reply = requests.post(f"{self.interact_url}/status/", params=req, timeout=30)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /status/ to interact: {err}")

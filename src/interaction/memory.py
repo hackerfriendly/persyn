@@ -1,5 +1,6 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 # pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
+import re
 import uuid
 import logging
 
@@ -946,6 +947,42 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if node_type == 'thing':
             return Thing.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
         raise RuntimeError(f'Invalid node_type: {node_type}')
+
+    @staticmethod
+    def safe_name(name): # TODO: unify this with gpt.py
+        ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
+        return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64]
+
+    def shortest_path(self, src, dest, src_type=None, dest_type=None):
+        '''
+        Find the shortest path between two nodes, if any.
+        If src_type or dest_type are specified, constrain the search to nodes of that type.
+        Returns a list of triples (string names of nodes and edges) encountered along the path.
+        '''
+        safe_src = self.safe_name(src)
+        safe_dest = self.safe_name(dest)
+
+        if safe_src == safe_dest:
+            return []
+
+        query = f"""
+        MATCH
+        (a{':'+src_type if src_type else ''} {{name: '{safe_src}', bot_id: '{self.bot_id}'}}),
+        (b{':'+dest_type if dest_type else ''} {{name: '{safe_dest}', bot_id: '{self.bot_id}'}}),
+        p = shortestPath((a)-[*]-(b))
+        WITH p
+        WHERE length(p) > 1
+        RETURN p
+        """
+        paths = neomodel_db.cypher_query(query)[0]
+        ret = []
+        if not paths:
+            return ret
+
+        for r in paths[0][0].relationships:
+            ret.append((r.start_node.get('name'), r.get('verb'), r.end_node.get('name')))
+
+        return ret
 
     def triples_to_kg(self, triples):
         '''
