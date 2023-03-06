@@ -17,7 +17,7 @@ humanize
 Levenshtein
 Mastodon.py
 neo4j
-neomodel['extras']
+neomodel[extras]
 nlpcloud
 nltk
 openai>=0.27.0
