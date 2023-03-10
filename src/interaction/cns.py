@@ -12,6 +12,7 @@ import autobus
 import requests
 
 from spacy.lang.en.stop_words import STOP_WORDS
+from urllib.parse import urlparse
 
 # just-in-time Wikipedia
 import wikipedia
@@ -339,11 +340,7 @@ def text_from_url(url, selector='body'):
 
 async def read_web(event):
     ''' Read a web page '''
-    # TODO: Move these definitions to the config
-    if 'www.goodnewsnetwork.org' in event.url:
-        selector = '.td-post-content'
-    else:
-        selector = 'body'
+    selector = persyn_config.web.get(urlparse(event.url).netloc, 'body')
 
     chat = Chat(
         bot_name=event.bot_name,
