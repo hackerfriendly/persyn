@@ -446,14 +446,14 @@ class Interact():
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
-        triples = []
+        triples = set()
         graph_summary = ''
         convo_text = '\n'.join(convo)
         for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
             for triple in self.recall.ltm.shortest_path(self.recall.bot_name, noun, src_type='Person'):
-                triples.append(triple)
+                triples.add(triple)
         if triples:
-            graph_summary = self.completion.model.triples_to_text(triples)
+            graph_summary = self.completion.model.triples_to_text(list(triples))
 
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
