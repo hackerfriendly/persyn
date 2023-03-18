@@ -35,10 +35,12 @@ class LanguageModel():
                 api_base = 'https://api.openai.com/v1'
                 model_name = getattr(config.completion, 'model', 'text-davinci-003')
                 chatgpt = getattr(config.completion, 'chatgpt', 'gpt-3.5-turbo')
+                openai_org = getattr(config.completion, 'openai_org', None)
             else:
                 api_base = 'https://api.goose.ai/v1'
                 model_name = getattr(config.completion, 'model', 'gpt-neo-20b')
                 chatgpt = None
+                openai_org = None
 
             self.model = gpt.GPT(
                 self.bot_name,
@@ -48,10 +50,12 @@ class LanguageModel():
                 model_name,
                 forbidden,
                 self.nlp,
-                chatgpt=chatgpt
+                chatgpt=chatgpt,
+                openai_org=openai_org
             )
             self.max_prompt_length = self.model.max_prompt_length
             self.toklen = self.model.toklen
+            self.paginate = self.model.paginate
 
         elif self.engine == 'nlpcloud':
             model_name = getattr(config.completion, 'model', 'finetuned-gpt-neox-20b')

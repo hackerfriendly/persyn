@@ -9,6 +9,8 @@ import random
 import re # used by custom filters
 import urllib3
 
+from urllib.parse import urlparse
+
 import requests
 
 # Long and short term memory
@@ -353,6 +355,11 @@ class Interact():
         if msg != '...':
             self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
 
+        if 'http' in msg:
+            # Regex chosen by GPT-4. 😵‍💫
+            for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
+                self.read_url(service, channel, url)
+
         convo = self.recall.convo(service, channel)
         last_sentence = None
 
@@ -537,3 +544,21 @@ class Interact():
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /read_news/ to interact: {err}")
+
+    def read_url(self, service, channel, url):
+        ''' Let's ride the autobus on the information superhighway. '''
+        parsed = urlparse(url)
+        if not bool(parsed.scheme) and bool(parsed.netloc):
+            log.warning("👨‍💻 Not a URL:", url)
+            return
+
+        req = {
+            "service": service,
+            "channel": channel,
+            "url": url
+        }
+        try:
+            reply = requests.post(f"{self.config.interact.url}/read_url/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /read_url/ to interact: {err}")

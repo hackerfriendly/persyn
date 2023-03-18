@@ -31,7 +31,8 @@ class GPT():
         model_name,
         forbidden=None,
         nlp=None,
-        chatgpt=None
+        chatgpt=None,
+        openai_org=None
         ):
         self.bot_name = bot_name
         self.min_score = min_score
@@ -46,17 +47,54 @@ class GPT():
         except KeyError:
             self.enc = tiktoken.get_encoding('r50k_base')
 
-        if model_name.startswith('text-davinci-'):
-            self.max_prompt_length = 4000 # tokens
+        # Maximum prompt length, in tokens. This should really be an openai API call.
+        if model_name.startswith('gpt-4'):
+            self.max_prompt_length = 8192
+        if model_name.startswith('gpt-3.5') or model_name.startswith('text-davinci-'):
+            self.max_prompt_length = 4097
         else:
-            self.max_prompt_length = 2048 # tokens
+            self.max_prompt_length = 2048
 
         openai.api_key = api_key
         openai.api_base = api_base
+        openai.organization = openai_org
 
     def toklen(self, text):
         ''' Return the number of tokens in text '''
         return len(self.enc.encode(text))
+
+    def paginate(self, f, max_tokens=None, prompt=None, max_reply_length=0):
+        '''
+        Chunk text from iterable f. By default, fit the model's maximum prompt length.
+        If prompt is provided, subtract that many tokens from the chunk length.
+        Lines containing no alphanumeric characters are removed.
+        '''
+        if max_tokens is None:
+            max_tokens = self.max_prompt_length
+
+        if prompt:
+            max_tokens = max_tokens - self.toklen(prompt)
+
+        max_tokens = max_tokens - max_reply_length
+
+        if type(f) == str:
+            f = f.split('\n')
+
+        lines = []
+        for line in f:
+            line = line.strip()
+            if not line or not re.search('[a-zA-Z0-9]', line):
+                continue
+
+            convo = ' '.join(lines)
+            if self.toklen(convo + line) > max_tokens:
+                yield convo
+                lines = [line]
+            else:
+                lines.append(line)
+
+        if lines:
+            yield ' '.join(lines)
 
     def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5, retry_on_error=True):
         '''

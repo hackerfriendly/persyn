@@ -33,6 +33,7 @@ def main():
     parser.add_argument('service', type=str, help='Chat service (discord, mastodon, or a Slack URL)')
     parser.add_argument('channel', type=str, help='Chat channel id')
     parser.add_argument('url', type=str, help='URL to read')
+    parser.add_argument('--reread', action='store_true', help='Read the page even if it has been seen before.')
     # parser.add_argument('--selector', type=str, default='body', help='HTML selector for the main story (default: body)')
 
     args = parser.parse_args()
@@ -44,7 +45,8 @@ def main():
         bot_id=persyn_config.id.guid,
         service=args.service,
         channel=args.channel,
-        url=args.url
+        url=args.url,
+        reread=args.reread
     )
 
     async def inject_idea():

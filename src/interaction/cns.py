@@ -340,7 +340,13 @@ def text_from_url(url, selector='body'):
 
 async def read_web(event):
     ''' Read a web page '''
-    selector = persyn_config.web.get(urlparse(event.url).netloc, 'body')
+    if persyn_config.web.get(urlparse(event.url).netloc, None):
+        cfg = persyn_config.web.get(urlparse(event.url).netloc)
+        selector = cfg.get('selector', 'body')
+        stop = cfg.get('stop', [])
+    else:
+        selector = 'body'
+        stop = []
 
     chat = Chat(
         bot_name=event.bot_name,
@@ -351,9 +357,22 @@ async def read_web(event):
         captions_url=persyn_config.dreams.captions.url,
         parrot_url=persyn_config.dreams.parrot.url
     )
+    log.debug(text_from_url(event.url, selector))
 
-    if recall.ltm.have_read(event.service, event.channel, event.url):
+    if not event.reread and recall.ltm.have_read(event.service, event.channel, event.url):
         log.info("🕸️ Already read:", event.url)
+        chat.inject_idea(
+            channel=event.channel,
+            idea=f"and doesn't need to re-read it: {event.url}",
+            verb="already read this article"
+        )
+        reply = chat.get_reply(
+            channel=event.channel,
+            msg='...',
+            speaker_name=event.bot_name,
+            speaker_id=event.bot_id
+        )
+        services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
         return
 
     recall.ltm.add_news(event.service, event.channel, event.url, "web page")
@@ -366,18 +385,31 @@ async def read_web(event):
 
     log.info("📰 Reading", event.url)
 
-    summary = completion.get_summary(
-        text=body,
-        summarizer="To briefly summarize this article:",
-        max_tokens=300
-    )
+    prompt = "To briefly summarize this article:"
+    max_reply_length = 300
+    done = False
+    for chunk in completion.paginate(body, prompt=prompt, max_reply_length=max_reply_length):
+        for stop_word in stop:
+            if stop_word in chunk:
+                log.warning("📰 Stopping here:", stop_word)
+                chunk = chunk[:chunk.find(stop_word)]
+                done = True
 
-    chat.inject_idea(
-        channel=event.channel,
-        idea=f"{summary} {event.url}",
-        verb="saw on the web"
-    )
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, f"{summary} {event.url}")
+        summary = completion.get_summary(
+            text=chunk,
+            summarizer=prompt,
+            max_tokens=max_reply_length
+        )
+
+        chat.inject_idea(
+            channel=event.channel,
+            idea=f"{summary} {event.url}",
+            verb="saw on the web"
+        )
+        services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, f"{summary} {event.url}")
+
+        if done:
+            return
 
 async def read_news(event):
     ''' Check our RSS feed. Read the first unread article. '''
@@ -400,7 +432,8 @@ async def read_news(event):
             channel=event.channel,
             bot_name=event.bot_name,
             bot_id=event.bot_id,
-            url=item_url
+            url=item_url,
+            reread=False
         )
         await read_web(item_event)
         # only one at a time

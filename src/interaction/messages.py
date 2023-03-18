@@ -119,3 +119,4 @@ class Web(autobus.Event):
     bot_name: str
     bot_id: str
     url: str
+    reread: bool

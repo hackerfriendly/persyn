@@ -330,6 +330,7 @@ async def read_url(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     url: str = Query(..., min_length=9, max_length=4096),
+    reread: Optional[bool] = Query(False),
 ):
     ''' Let's surf the interwebs... on the autobus! '''
     event = Web(
@@ -338,6 +339,7 @@ async def read_url(
         bot_name=persyn_config.id.name,
         bot_id=persyn_config.id.guid,
         url=url,
+        reread=reread
     )
     autobus.publish(event)
 
