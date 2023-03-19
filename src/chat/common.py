@@ -114,7 +114,7 @@ class Chat():
             "speaker_id": speaker_id
         }
         try:
-            response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=60)
+            response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
