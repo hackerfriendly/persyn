@@ -332,7 +332,7 @@ def main():
             if random.random() < 0.95:
                 return
 
-        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
+        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id, reminders)
 
         say(the_reply)
 

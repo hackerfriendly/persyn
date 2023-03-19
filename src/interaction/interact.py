@@ -363,11 +363,6 @@ class Interact():
         if msg != '...':
             self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
 
-        if 'http' in msg:
-            # Regex chosen by GPT-4. 😵‍💫
-            for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
-                self.read_url(service, channel, url)
-
         convo = self.recall.convo(service, channel)
         last_sentence = None
 
@@ -440,6 +435,11 @@ class Interact():
 
         # Sentiment analysis via the autobus
         self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
+
+        if 'http' in msg:
+            # Regex chosen by GPT-4. 😵‍💫
+            for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
+                self.read_url(service, channel, url)
 
         return reply
 

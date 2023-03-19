@@ -181,7 +181,7 @@ async def schedule_reply(ctx):
     log.warning("⏰ schedule_reply")
 
     # TODO: implement async get_reply in chat/common.py. Consider converting _everything_ to async.
-    the_reply = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id)
+    the_reply = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id, reminders)
     await ctx.channel.send(the_reply)
 
     # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
