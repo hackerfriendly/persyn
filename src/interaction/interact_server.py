@@ -70,11 +70,12 @@ def handle_summary(
     save: Optional[bool] = Query(True),
     max_tokens: Optional[int] = Query(200),
     include_keywords: Optional[bool] = Query(False),
-    context_lines: Optional[int] = Query(0)
-    ):
+    context_lines: Optional[int] = Query(0),
+    model: Optional[str] = Query(None, min_length=1, max_length=64)
+):
     ''' Return the reply '''
     return {
-        "summary": interact.summarize_convo(service, channel, save, max_tokens, include_keywords, context_lines)
+        "summary": interact.summarize_convo(service, channel, save, max_tokens, include_keywords, context_lines, model)
     }
 
 @app.post("/status/")

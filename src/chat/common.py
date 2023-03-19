@@ -34,7 +34,7 @@ class Chat():
         self.captions_url = kwargs.get('captions_url', None)
         self.parrot_url = kwargs.get('parrot_url', None)
 
-    def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
+    def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
             log.error("∑ get_summary() called with no URL defined, skipping.")
@@ -46,7 +46,8 @@ class Chat():
             "save": save,
             "max_tokens": max_tokens,
             "include_keywords": include_keywords,
-            "context_lines": context_lines
+            "context_lines": context_lines,
+            "model": model
         }
         try:
             reply = requests.post(f"{self.interact_url}/summary/", params=req, timeout=60)
@@ -97,6 +98,7 @@ class Chat():
             response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
+            # TODO: Retry here? Desperately need asyncio for interact_server.
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
             return (" :speech_balloon: :interrobang: ", [])
 

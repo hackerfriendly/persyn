@@ -122,7 +122,8 @@ async def summarize_channel(event):
         channel=event.channel,
         save=True,
         photo=event.photo,
-        max_tokens=event.max_tokens
+        max_tokens=event.max_tokens,
+        model=persyn_config.completion.summarize_model
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 

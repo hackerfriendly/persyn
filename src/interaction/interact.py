@@ -69,7 +69,8 @@ class Interact():
         max_tokens=200,
         include_keywords=False,
         context_lines=0,
-        dialog_only=True
+        dialog_only=True,
+        model=None
         ):
         '''
         Generate a summary of the current conversation for this channel.
@@ -105,7 +106,8 @@ class Interact():
         summary = self.completion.get_summary(
             text=convo_text,
             summarizer="To briefly summarize this conversation,",
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            model=model
         )
         keywords = self.completion.get_keywords(summary)
 
@@ -137,7 +139,9 @@ class Interact():
         scored = self.completion.get_replies(
             prompt=prompt,
             convo=convo,
-            goals=goals
+            goals=goals,
+            model=self.config.completion.summarize_model,
+            n=3
         )
 
         if not scored:
@@ -146,6 +150,7 @@ class Interact():
                 prompt=prompt,
                 convo=convo,
                 goals=goals,
+                model=self.config.completion.chatgpt or self.config.completion.model,
                 n=2
             )
 
@@ -403,7 +408,7 @@ class Interact():
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
-        if self.completion.toklen(prompt) > self.completion.max_prompt_length:
+        if self.completion.toklen(prompt) > self.completion.max_prompt_length():
             # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             req = {
