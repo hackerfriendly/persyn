@@ -136,6 +136,7 @@ class Interact():
         if not convo:
             convo = []
 
+        log.info("👍 Choosing a response with model:", self.config.completion.summarize_model)
         scored = self.completion.get_replies(
             prompt=prompt,
             convo=convo,
@@ -145,7 +146,8 @@ class Interact():
         )
 
         if not scored:
-            log.warning("🤨 No surviving replies, try again.")
+            log.warning("🤨 No surviving replies, try again with model:",
+                        self.config.completion.chatgpt or self.config.completion.model)
             scored = self.completion.get_replies(
                 prompt=prompt,
                 convo=convo,
@@ -156,7 +158,7 @@ class Interact():
 
         # Uh-oh. Just ignore whatever was last said.
         if not scored:
-            log.warning("😳 No surviving replies, one last try.")
+            log.warning("😳 No surviving replies, one last try with model:", self.config.completion.model)
             scored = self.completion.get_replies(
                 prompt=self.generate_prompt([], convo[:-1], service, channel),
                 convo=convo,
@@ -346,6 +348,7 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
+    # Need to instrument this. It takes far too long and isn't async.
     def get_reply(self, service, channel, msg, speaker_name, speaker_id):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.

@@ -100,7 +100,7 @@ class Chat():
         except requests.exceptions.RequestException as err:
             # TODO: Retry here? Desperately need asyncio for interact_server.
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
-            return (" :speech_balloon: :interrobang: ", [])
+            return " :speech_balloon: :interrobang: "
 
         resp = response.json()
         reply = resp['reply']
