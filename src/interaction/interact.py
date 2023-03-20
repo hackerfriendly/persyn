@@ -207,16 +207,20 @@ class Interact():
             if hit_id not in visited:
                 if hit['hit']['_source']['service'] == 'import_service':
                     log.info("📚 Hit found from import:", hit['hit']['_source']['channel'])
-                self.inject_idea(
-                    service, channel,
-                    self.completion.get_summary(hit['hit']['_source']['convo']),
-                    verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
-                )
-                visited.append(hit_id)
-                log.info(
-                    f"🧵 Related relationship {hit_id} ({hit['score']}):",
-                    f"{hit['hit']['_source']['convo'][:100]}..."
-                )
+                the_summary = self.recall.ltm.get_summary_by_id(hit['hit']['_source']['convo_id'])
+                if the_summary:
+                    self.inject_idea(
+                        service, channel,
+                        # This is too expensive. Retrieve old summaries instead.
+                        # self.completion.get_summary(hit['hit']['_source']['convo']),
+                        the_summary[0]['_source']['summary'],
+                        verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
+                    )
+                    visited.append(hit_id)
+                    log.info(
+                        f"🧵 Related relationship {hit_id} ({hit['score']}):",
+                        f"{hit['hit']['_source']['convo'][:100]}..."
+                    )
 
         # Look for other summaries that match detected entities
         if entities:
@@ -420,7 +424,7 @@ class Interact():
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
-                return " :writing_hand: :interrobang: "
+                return " :dancer: :interrobang: "
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 

@@ -467,6 +467,26 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"get_convo_by_id({convo_id}):", ret)
         return ret
 
+    def get_summary_by_id(self, convo_id):
+        '''
+        Fetch an conversation summary its convo_id.
+        Returns the summary object.
+        '''
+        if not convo_id:
+            return []
+
+        ret = self.es.search( # pylint: disable=unexpected-keyword-arg
+            index=self.index['summary'],
+            query={
+                "term": {"convo_id.keyword": convo_id}
+            },
+            sort=[{"@timestamp":{"order":"asc"}}],
+            size=1
+        )['hits']['hits']
+
+        log.debug(f"get_summary_by_id({convo_id}):", ret)
+        return ret
+
     def lookup_summaries(self, service, channel, search=None, size=3):
         '''
         Return a list of summaries matching the search term for this channel.
