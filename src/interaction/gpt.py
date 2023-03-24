@@ -121,9 +121,9 @@ class GPT():
         if model.startswith('gpt-3.5') or model.startswith('gpt-4'):
             try:
                 response = openai.ChatCompletion.create(
-                    model=self.chatgpt,
+                    model=model,
                     messages=[
-                        {"role": "system", "content": """You are a brilliant and witty playwrite. Compose the next line of the following play:"""},
+                        {"role": "system", "content": """Compose the next line of the following play:"""},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=temperature,
@@ -478,7 +478,7 @@ Given the following knowledge graph, create a simple summary of the text it was 
 
     def score_choices(self, choices, convo, goals):
         '''
-        Filter potential responses for quality, sentimentm and profanity.
+        Filter potential responses for quality, sentiment and profanity.
         Rank the remaining choices by sentiment and return the ranked list of possible choices.
         '''
         scored = {}
@@ -494,20 +494,13 @@ Given the following knowledge graph, create a simple summary of the text it was 
             if not text:
                 continue
 
-            # if text in choices:
-            #     self.stats.update(['pure repetition'])
-            #     continue
+
+            if re.match(r'^\w+:', text):
+                self.stats.update(['putting words in my mouth'])
+                continue
 
             log.debug(f"text: {text}")
             log.debug(f"convo: {convo}")
-
-            # # Too long? Ditch the last sentence fragment.
-            # if choice['finish_reason'] == 'length':
-            #     try:
-            #         self.stats.update(['truncated to first sentence'])
-            #         text = text[:text.rindex('.') + 1]
-            #     except ValueError:
-            #         pass
 
             # Fix unbalanced symbols
             for symbol in ['()', r'{}', '[]', '<>']:
