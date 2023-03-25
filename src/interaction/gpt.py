@@ -434,7 +434,7 @@ Given the following knowledge graph, create a simple summary of the text it was 
                 self.stats.update(['blank'])
                 return None
             # Putting words Rob: In people's mouths
-            match = re.search(r'^(.*)?\s+(\w+: .*)', text)
+            match = re.search(r'^(.*)?\s+([\w\s]{1,12}: .*)', text)
             if match:
                 text = match.group(1)
             # Fix bad emoji
@@ -489,11 +489,14 @@ Given the following knowledge graph, create a simple summary of the text it was 
         for choice in choices:
             if not choice:
                 continue
-            text = self.validate_choice(self.truncate(choice), convo)
+
+            if self.model_name.startswith('gpt-3.5') or self.model_name.startswith('gpt-4'):
+                text = self.validate_choice(choice, convo)
+            else:
+                text = self.validate_choice(self.truncate(choice), convo)
 
             if not text:
                 continue
-
 
             if re.match(r'^\w+:', text):
                 self.stats.update(['putting words in my mouth'])
@@ -584,7 +587,8 @@ Given the following knowledge graph, create a simple summary of the text it was 
                 max_tokens=max_tokens,
                 top_p=0.1,
                 frequency_penalty=0.8,
-                presence_penalty=0.0
+                presence_penalty=0.0,
+                n=1
             )
         except openai.error.APIConnectionError as err:
             log.critical("OpenAI APIConnectionError:", err)
@@ -596,10 +600,10 @@ Given the following knowledge graph, create a simple summary of the text it was 
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-        reply = response['choices'][0]['message']['content'].strip().split('\n')[0]
+        reply = response['choices'][0]['message']['content'].strip() #.split('\n')[0]
 
-        # To the right of the : (if any)
-        if ':' in reply:
+        # To the right of the Speaker: (if any)
+        if re.match(r'^[\w\s]{1,12}:\s', reply):
             reply = reply.split(':')[1].strip()
 
         # Too long? Ditch the last sentence fragment.
