@@ -248,23 +248,23 @@ class Interact():
                 continue
             visited.append(summary['_id'])
 
-            # Stay on topic
-            prompt = '\n'.join(
-                self.recall.convo(service, channel)
-                + [
-                    f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
-                    + summary['_source']['summary']
-                ]
-            )
-            on_topic = self.completion.get_summary(
-                prompt,
-                summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
-                max_tokens=10)
+            # # Stay on topic
+            # prompt = '\n'.join(
+            #     self.recall.convo(service, channel)
+            #     + [
+            #         f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
+            #         + summary['_source']['summary']
+            #     ]
+            # )
+            # on_topic = self.completion.get_summary(
+            #     prompt,
+            #     summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
+            #     max_tokens=10)
 
-            log.warning(f"🧐 Are we on topic? {on_topic}")
-            if 'true' not in on_topic.lower():
-                log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
-                continue
+            # log.warning(f"🧐 Are we on topic? {on_topic}")
+            # if 'true' not in on_topic.lower():
+            #     log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
+            #     continue
 
             log.warning(f"🐘 Memory found: {summary['_source']['summary']}")
             self.inject_idea(service, channel, summary['_source']['summary'], "remembers")
@@ -400,8 +400,8 @@ class Interact():
         if entities:
             log.warning(f"🆔 extracted entities: {entities}")
         else:
-            entities = self.completion.get_keywords(convo)
-            log.warning(f"🆔 extracted keywords: {entities}")
+            entities = self.extract_nouns('\n'.join(convo))
+            log.warning(f"🆔 extracted nouns: {entities}")
 
         # Reflect on this conversation
         visited = self.gather_memories(service, channel, entities)
