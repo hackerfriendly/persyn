@@ -455,8 +455,6 @@ class Interact():
         # Say it!
         self.send_chat(service, channel, reply)
 
-        self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
-
         # Sentiment analysis via the autobus
         self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
 
