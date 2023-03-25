@@ -147,18 +147,18 @@ class Interact():
 
         if not scored:
             log.warning("🤨 No surviving replies, try again with model:",
-                        self.config.completion.chatgpt or self.config.completion.model)
+                        self.config.completion.chat_model or self.config.completion.completion_model)
             scored = self.completion.get_replies(
                 prompt=prompt,
                 convo=convo,
                 goals=goals,
-                model=self.config.completion.chatgpt or self.config.completion.model,
+                model=self.config.completion.chat_model or self.config.completion.completion_model,
                 n=2
             )
 
         # Uh-oh. Just ignore whatever was last said.
         if not scored:
-            log.warning("😳 No surviving replies, one last try with model:", self.config.completion.model)
+            log.warning("😳 No surviving replies, one last try with model:", self.config.completion.completion_model)
             scored = self.completion.get_replies(
                 prompt=self.generate_prompt([], convo[:-1], service, channel),
                 convo=convo,
