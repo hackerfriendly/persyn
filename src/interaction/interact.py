@@ -274,6 +274,23 @@ class Interact():
 
         return visited
 
+    def send_chat(self, service, channel, msg):
+        '''
+        Send a chat message via the autobus.
+        '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "msg": msg
+        }
+
+        try:
+            reply = requests.post(f"{self.config.interact.url}/send_msg/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
+            return
+
     def gather_facts(self, service, channel, entities):
         '''
         Gather facts (from Wikipedia) and opinions (from memory).
@@ -434,6 +451,9 @@ class Interact():
                 reply = self.custom_filter(reply)
             except Exception as err: # pylint: disable=broad-except
                 log.warning(f"🤮 Custom filter failed: {err}")
+
+        # Say it!
+        self.send_chat(service, channel, reply)
 
         self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
 

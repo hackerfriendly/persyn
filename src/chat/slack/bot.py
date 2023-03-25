@@ -334,7 +334,8 @@ def main():
 
         the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id, reminders)
 
-        say(the_reply)
+        # get_reply() speaks for us, no need to say it again.
+        # say(the_reply)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
@@ -371,7 +372,8 @@ def main():
 
         reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
 
-        say(reply)
+        # get_reply() speaks for us, no need to say it again.
+        # say(reply)
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -481,7 +483,8 @@ def main():
                     msg = "..."
 
                 reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
-                say(reply)
+                # get_reply() speaks for us, no need to say it again.
+                # say(reply)
 
             else:
                 say(

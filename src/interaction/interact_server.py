@@ -23,7 +23,7 @@ import autobus
 from interaction.interact import Interact
 
 # Message classes
-from interaction.messages import Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from interaction.messages import SendChat, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
 
 # Color logging
 from utils.color_logging import log
@@ -217,6 +217,28 @@ async def check_goals(
     return {
         "success": True
     }
+
+
+@app.post("/send_msg/")
+async def send_msg(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    msg: str = Query(..., min_length=1, max_length=65535)
+):
+    ''' Send a chat message via the autobus '''
+    event = SendChat(
+        service=service,
+        channel=channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        msg=msg
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
+    }
+
 
 @app.post("/opine/")
 async def opine(

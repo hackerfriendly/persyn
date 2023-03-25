@@ -145,7 +145,8 @@ async def elaborate(event):
         speaker_name=event.bot_name,
         speaker_id=event.bot_id
     )
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
+    # get_reply() speaks for us, no need to say it again.
+    # services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
 
 
 async def opine(event):
