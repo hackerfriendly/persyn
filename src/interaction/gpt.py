@@ -38,7 +38,7 @@ class GPT():
         self.min_score = min_score
         self.model_name = model_name
         self.chatgpt = chatgpt
-        self.forbidden = forbidden or []
+        self.forbidden = forbidden or ['AI language model']
         self.stats = Counter()
         self.nlp = nlp or spacy.load("en_core_web_sm")
         self.sentiment = Sentiment()
