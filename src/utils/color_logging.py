@@ -1,9 +1,9 @@
 ''' Color logging '''
-# pylint: disable=no-self-use
 
 import logging
 import os
 import sys
+from datetime import datetime
 
 from click import style
 
@@ -25,22 +25,22 @@ class ColorLog():
 
     def debug(self, prefix, msg=''):
         ''' debug level '''
-        logging.debug(' '.join([f"{style(prefix, fg='bright_cyan')}", str(msg)]))
+        logging.debug(' '.join([f"{datetime.now().isoformat().replace('T', ' ')}:", f"{style(prefix, fg='bright_cyan')}", str(msg)]))
 
     def info(self, prefix, msg=''):
         ''' info level '''
-        logging.info(' '.join([f"{style(prefix, fg='bright_green')}", str(msg)]))
+        logging.info(' '.join([f"{datetime.now().isoformat().replace('T', ' ')}:", f"{style(prefix, fg='bright_green')}", str(msg)]))
 
     def warning(self, prefix, msg=''):
         ''' warning level '''
-        logging.warning(' '.join([f"{style(prefix, fg='bright_yellow')}", str(msg)]))
+        logging.warning(' '.join([f"{datetime.now().isoformat().replace('T', ' ')}:", f"{style(prefix, fg='bright_yellow')}", str(msg)]))
 
     def error(self, prefix, msg=''):
         ''' error level '''
-        logging.error(' '.join([f"{style(prefix, fg='red')}", str(msg)]))
+        logging.error(' '.join([f"{datetime.now().isoformat().replace('T', ' ')}:", f"{style(prefix, fg='red')}", str(msg)]))
 
     def critical(self, prefix, msg=''):
         ''' critical level '''
-        logging.critical(' '.join([f"{style(prefix, fg='bright_red')}", str(msg)]))
+        logging.critical(' '.join([f"{datetime.now().isoformat().replace('T', ' ')}:", f"{style(prefix, fg='bright_red')}", str(msg)]))
 
 log = ColorLog()
