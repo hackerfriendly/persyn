@@ -10,6 +10,7 @@ import argparse
 import asyncio
 
 from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, HTTPException, Query, Form
 from fastapi.responses import RedirectResponse
@@ -31,6 +32,13 @@ from utils.color_logging import log
 # Bot config
 from utils.config import load_config
 
+_executor = ThreadPoolExecutor(8)
+
+async def in_thread(func, args):
+    ''' Run a function in its own thread and await the result '''
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, func, *args)
+
 # FastAPI
 app = FastAPI()
 
@@ -44,7 +52,7 @@ def root():
     return RedirectResponse("/docs")
 
 @app.post("/reply/")
-def handle_reply(
+async def handle_reply(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=5000),
@@ -59,12 +67,15 @@ def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
+    ret = await asyncio.gather(in_thread(
+        interact.get_reply, [service, channel, msg, speaker_name, speaker_id]
+    ))
     return {
-        "reply": interact.get_reply(service, channel, msg, speaker_name, speaker_id)
+        "reply": ret[0]
     }
 
 @app.post("/summary/")
-def handle_summary(
+async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     save: Optional[bool] = Query(True),
@@ -74,64 +85,80 @@ def handle_summary(
     model: Optional[str] = Query(None, min_length=1, max_length=64)
 ):
     ''' Return the reply '''
+    ret = await asyncio.gather(in_thread(
+        interact.summarize_convo, [service, channel, save, max_tokens, include_keywords, context_lines, model]
+    ))
     return {
-        "summary": interact.summarize_convo(service, channel, save, max_tokens, include_keywords, context_lines, model)
+        "summary": ret[0]
     }
 
 @app.post("/status/")
-def handle_status(
+async def handle_status(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):
     ''' Return the reply '''
+    ret = await asyncio.gather(in_thread(
+        interact.get_status, [service, channel]
+    ))
     return {
-        "status": interact.get_status(service, channel)
+        "status": ret[0]
     }
 
 @app.post("/amnesia/")
-def handle_amnesia(
+async def handle_amnesia(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):
     ''' Return the reply '''
+    ret = await asyncio.gather(in_thread(
+        interact.amnesia, [service, channel]
+    ))
     return {
-        "amnesia": interact.amnesia(service, channel)
+        "amnesia": ret[0]
     }
 
 @app.post("/nouns/")
-def handle_nouns(
+async def handle_nouns(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
     ''' Return the reply '''
+    ret = await asyncio.gather(in_thread(
+        interact.extract_nouns, [text]
+    ))
     return {
-        "nouns": interact.extract_nouns(text)
+        "nouns": ret[0]
     }
 
 @app.post("/entities/")
-def handle_entities(
+async def handle_entities(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
     ''' Return the reply '''
+    ret = await asyncio.gather(in_thread(
+        interact.extract_entities, [text]
+    ))
     return {
-        "entities": interact.extract_entities(text)
+        "entities": ret[0]
     }
 
 @app.post("/inject/")
-def handle_inject(
+async def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     idea: str = Form(..., min_length=1, max_length=65535),
     verb: Optional[str] = Query('recalls', min_length=1, max_length=255),
 ):
     ''' Inject an idea into the stream of consciousness '''
-    interact.inject_idea(service, channel, idea, verb)
-
+    await asyncio.gather(in_thread(
+        interact.inject_idea, [service, channel, idea, verb]
+    ))
     return {
         "success": True
     }
 
 @app.post("/opinion/")
-def handle_opinion(
+async def handle_opinion(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     topic: str = Query(..., min_length=1, max_length=16384),
@@ -142,19 +169,23 @@ def handle_opinion(
     ):
     ''' Get our opinion about topic '''
 
-    opinions = interact.opine(service, channel, topic, speaker_id, size)
+    ret = await asyncio.gather(in_thread(
+        interact.opine, [service, channel, topic, speaker_id, size]
+    ))
+
+    opinions = ret[0]
 
     if summarize:
         if not opinions:
             return { "opinions": [] }
 
+        ret = await asyncio.gather(in_thread(
+            interact.completion.get_summary, ['\n'.join(opinions), "To briefly summarize,", max_tokens]
+        ))
+
         return {
             "opinions": [
-                interact.completion.get_summary(
-                    text='\n'.join(opinions),
-                    summarizer="To briefly summarize,",
-                    max_tokens=max_tokens
-                )
+                ret[0]
             ]
         }
 
@@ -164,36 +195,48 @@ def handle_opinion(
     }
 
 @app.post("/add_goal/")
-def add_goal(
+async def add_goal(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
     ):
     ''' Add a goal in a given context '''
+    ret = []
     if goal.strip():
-        interact.add_goal(service, channel, goal.strip())
+        ret = await asyncio.gather(in_thread(
+            interact.add_goal, [service, channel, goal.strip()]
+        ))
+
     return {
-        "goals": interact.list_goals(service, channel, achieved=False)
+        "goals": ret[0]
     }
 
 @app.post("/get_goals/")
-def get_goals(
+async def get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
 ):
     ''' Fetch the current goals for a given context '''
+    ret = await asyncio.gather(in_thread(
+        interact.get_goals, [service, channel, None, False]
+    ))
+
     return {
-        "goals": interact.get_goals(service, channel, achieved=False)
+        "goals": ret[0]
     }
 
 @app.post("/list_goals/")
-def list_goals(
+async def list_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
 ):
     ''' Fetch the current goals for a given context '''
+    ret = await asyncio.gather(in_thread(
+        interact.list_goals, [service, channel, False]
+    ))
+
     return {
-        "goals": interact.list_goals(service, channel, achieved=False)
+        "goals": ret[0]
     }
 
 @app.post("/check_goals/")
@@ -411,7 +454,12 @@ async def main():
 
 def launch():
     ''' asyncio wrapper to allow launching from pyproject.toml scripts '''
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main())
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
 if __name__ == '__main__':
     launch()
