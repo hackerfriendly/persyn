@@ -136,12 +136,12 @@ class Interact():
         if not convo:
             convo = []
 
-        log.info("👍 Choosing a response with model:", self.config.completion.summarize_model)
+        log.info("👍 Choosing a response with model:", self.config.completion.summary_model)
         scored = self.completion.get_replies(
             prompt=prompt,
             convo=convo,
             goals=goals,
-            model=self.config.completion.summarize_model,
+            model=self.config.completion.summary_model,
             n=3
         )
 
@@ -378,6 +378,7 @@ class Interact():
         '''
         self.goals = self.recall.list_goals(service, channel)
 
+        # This should be async, separate thread?
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
 
@@ -390,6 +391,7 @@ class Interact():
         if convo:
             last_sentence = convo.pop()
 
+        # This should be async, separate thread?
         # Save the knowledge graph every 5 lines
         if convo and len(convo) % 5 == 0:
             self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
@@ -409,6 +411,8 @@ class Interact():
         # Facts and opinions
         self.gather_facts(service, channel, entities)
 
+        # This should be async, separate thread?
+        # Also, where did the goals go? Haven't seen a trophy in ages.
         # Goals. Don't give out _too_ many trophies.
         if random.random() < 0.5:
             self.check_goals(service, channel, convo)

@@ -24,38 +24,41 @@ class GPT():
     ''' Container for OpenAI completion requests '''
     def __init__(
         self,
-        bot_name,
-        min_score,
-        api_key,
-        api_base,
-        model_name,
-        forbidden=None,
-        nlp=None,
-        chatgpt=None,
-        openai_org=None
+        config
         ):
-        self.bot_name = bot_name
-        self.min_score = min_score
-        self.model_name = model_name
-        self.chatgpt = chatgpt
-        self.forbidden = forbidden or ['AI language model']
+        self.config = config
+
+        self.forbidden = None
+        self.bot_name = config.id.name
+        self.bot_id = config.id.guid
+        self.min_score = config.completion.minimum_quality_score
+        self.completion_model = config.completion.completion_model
+        self.chat_model = config.completion.chat_model
+        self.summary_model = config.completion.summary_model
+        self.nlp = spacy.load(config.spacy.model)
+
         self.stats = Counter()
-        self.nlp = nlp or spacy.load("en_core_web_sm")
-        self.sentiment = Sentiment()
+        self.sentiment = Sentiment(getattr(config.sentiment, "engine", "flair"),
+                                   getattr(config.sentiment, "model", None))
+
+        openai.api_key = config.completion.api_key
+        openai.api_base = config.completion.api_base
+        openai.organization = config.completion.openai_org
+
+    def get_enc(self, model):
+        ''' Return the encoder for model_name '''
+        if model is None:
+            model = self.completion_model
+
         try:
-            self.enc = tiktoken.encoding_for_model(model_name)
+            return tiktoken.encoding_for_model(model)
         except KeyError:
-            self.enc = tiktoken.get_encoding('r50k_base')
-
-        openai.api_key = api_key
-        openai.api_base = api_base
-        openai.organization = openai_org
-
+            return tiktoken.get_encoding('r50k_base')
 
     def max_prompt_length(self, model=None):
         ''' Return the maximum number of tokens allowed for a model. '''
         if model is None:
-            model = self.model_name
+            model = self.completion_model
 
         if model.startswith('gpt-4'):
             return 8192
@@ -65,9 +68,9 @@ class GPT():
         # Most models are 2k
         return 2048
 
-    def toklen(self, text):
+    def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
-        return len(self.enc.encode(text))
+        return len(self.get_enc(model).encode(text))
 
     def paginate(self, f, max_tokens=None, prompt=None, max_reply_length=0):
         '''
@@ -107,15 +110,16 @@ class GPT():
         Given a text prompt and recent conversation, send the prompt to OpenAI
         and return a list of possible replies.
         '''
+        enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():
             log.warning(f"get_replies: text too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length()])
+            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
         if goals is None:
             goals = []
 
         if model is None:
-            model = self.model_name
+            model = self.completion_model
 
         choices = []
         if model.startswith('gpt-3.5') or model.startswith('gpt-4'):
@@ -189,7 +193,7 @@ class GPT():
 
         return scored
 
-    def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50, speaker=None):
+    def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50, speaker=None, model=None):
         '''
         Ask ChatGPT for its opinions of entity, given the context.
         '''
@@ -199,15 +203,19 @@ class GPT():
         if speaker is None:
             speaker = self.bot_name
 
+        if model is None:
+            model = self.config.completion.chat_model
+
         prompt = f'''Given the following conversation, how does {speaker} feel about {entity}?\n{context}'''
 
+        enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length()])
+            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
         try:
             response = openai.ChatCompletion.create(
-                model=self.chatgpt,
+                model=model,
                 messages=[
                     {"role": "system", "content": """You are an expert at estimating opinions based on conversation."""},
                     {"role": "user", "content": prompt}
@@ -232,7 +240,7 @@ class GPT():
 
         return reply
 
-    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50, speaker=None):
+    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50, speaker=None, model=None):
         '''
         Ask ChatGPT for sentiment analysis of the current convo.
         '''
@@ -242,15 +250,19 @@ class GPT():
         if speaker is None:
             speaker = self.bot_name
 
+        if model is None:
+            model = self.config.completion.chat_model
+
         prompt = f"Given the following text, choose three words that best describe {speaker}'s emotional state:\n{context}"
 
+        enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length()])
+            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
         try:
             response = openai.ChatCompletion.create(
-                model=self.chatgpt,
+                model=self.chat_model,
                 messages=[
                     {"role": "system", "content": """You are an expert at determining the emotional state of people engaging in conversation."""},
                     {"role": "user", "content": prompt}
@@ -288,21 +300,25 @@ class GPT():
         ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
         return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64]
 
-    def generate_triples(self, context, temperature=0.5):
+    def generate_triples(self, context, temperature=0.5, model=None):
         '''
         Ask ChatGPT to generate a knowledge graph of the current convo.
         Returns a list of (subject, predicate, object) triples.
         '''
         prompt = f"Given the following text, generate a knowledge graph of all important people and facts:\n{context}"
 
+        if model is None:
+            model = self.config.completion.chat_model
+
+        enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length()])
+            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
         try:
 
             response = openai.ChatCompletion.create(
-                model=self.chatgpt,
+                model=self.chat_model,
                 messages=[
                     {"role": "system", "content": """You are an expert at converting text into knowledge graphs consisting of a subject, predicate, and object separated by | .
 The subject, predicate, and object should be as short as possible, consisting of a single word or compoundWord.
@@ -367,7 +383,7 @@ Ottawa | locatedIn | Canada
         log.warning(kg)
         try:
             response = openai.ChatCompletion.create(
-                model=self.chatgpt,
+                model=self.chat_model,
                 temperature=temperature,
                 messages=[
                     {"role": "system", "content": "You are an expert at converting knowledge graphs into succinct text."},
@@ -490,7 +506,7 @@ Given the following knowledge graph, create a simple summary of the text it was 
             if not choice:
                 continue
 
-            if self.model_name.startswith('gpt-3.5') or self.model_name.startswith('gpt-4'):
+            if self.completion_model.startswith('gpt-3.5') or self.completion_model.startswith('gpt-4'):
                 text = self.validate_choice(choice, convo)
             else:
                 text = self.validate_choice(self.truncate(choice), convo)
@@ -571,11 +587,12 @@ Given the following knowledge graph, create a simple summary of the text it was 
         prompt=f"{text}\n\n{summarizer}\n"
 
         if model is None:
-            model = self.chatgpt
+            model = self.config.completion.summary_model
 
+        enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length(model):
             log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length(model)}")
-            prompt = self.enc.decode(self.enc.encode(prompt)[:self.max_prompt_length(model)])
+            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length(model)])
 
         try:
             response = openai.ChatCompletion.create(
