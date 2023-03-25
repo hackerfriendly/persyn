@@ -169,7 +169,7 @@ class Chat():
             log.critical(f"🤖 Could not post /inject/ to interact: {err}")
             return " :syringe: :interrobang: "
 
-        return response.json()['status']
+        return ":thumbsup:"
 
     def take_a_photo(
         self,

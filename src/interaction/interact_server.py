@@ -127,7 +127,7 @@ def handle_inject(
     interact.inject_idea(service, channel, idea, verb)
 
     return {
-        "status": interact.get_status(service, channel)
+        "success": True
     }
 
 @app.post("/opinion/")
