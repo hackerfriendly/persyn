@@ -2,7 +2,6 @@
 # pylint: disable=invalid-name
 
 import re
-import string
 
 from collections import Counter
 from time import sleep
@@ -320,7 +319,8 @@ class GPT():
             response = openai.ChatCompletion.create(
                 model=self.chat_model,
                 messages=[
-                    {"role": "system", "content": """You are an expert at converting text into knowledge graphs consisting of a subject, predicate, and object separated by | .
+                    {"role": "system", "content": """
+You are an expert at converting text into knowledge graphs consisting of a subject, predicate, and object separated by | .
 The subject, predicate, and object should be as short as possible, consisting of a single word or compoundWord.
 Some examples include:
 Anna | grewUpIn | Kanata
@@ -389,7 +389,8 @@ Ottawa | locatedIn | Canada
                     {"role": "system", "content": "You are an expert at converting knowledge graphs into succinct text."},
                     {"role": "user", "content":
                     f"""{preamble}
-Given the following knowledge graph, create a simple summary of the text it was extracted from, as told from the third-person point of view of {self.bot_name}.
+Given the following knowledge graph, create a simple summary of the text it was extracted from
+as told from the third-person point of view of {self.bot_name}.
 
 {kg}
 """
@@ -638,13 +639,19 @@ Given the following knowledge graph, create a simple summary of the text it was 
         keywords = []
         bot_name = self.bot_name.lower()
 
-        doc = self.nlp(text)
-        for tok in doc:
-            keyword = tok.text.strip('#').lstrip('-').strip().lower()
-            if keyword != bot_name and keyword not in string.punctuation:
-                keywords.append(keyword)
+        for kw in text.split('\n'):
+            # Regex chosen by GPT-4 to match bulleted lists (#*-) or numbered lists. 😵‍💫
+            match = re.search(r'^\s*(?:\d+\.\s+|\*\s+|-{1}\s+|#\s*)(.*)', kw)
+            # At least one alpha required
+            if match and re.match(r'.*[a-zA-Z]', match.group(1)):
+                kw = match.group(1).strip()
+            else:
+                kw = kw.strip()
 
-        return sorted(list(set(keywords)))
+            if kw.lower() != bot_name:
+                keywords.append(kw)
+
+        return sorted(set(keywords))
 
     def get_keywords(
         self,
@@ -654,7 +661,7 @@ Given the following knowledge graph, create a simple summary of the text it was 
         ):
         ''' Ask OpenAI for keywords'''
         keywords = self.get_summary(text, summarizer, max_tokens)
-        log.warning(f"gpt get_keywords() raw: {keywords}")
+        log.debug(f"gpt get_keywords() raw: {keywords}")
 
         reply = self.cleanup_keywords(keywords)
         log.warning(f"gpt get_keywords(): {reply}")
