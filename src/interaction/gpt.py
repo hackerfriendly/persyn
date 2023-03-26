@@ -639,9 +639,9 @@ as told from the third-person point of view of {self.bot_name}.
         keywords = []
         bot_name = self.bot_name.lower()
 
-        for kw in text.split('\n'):
+        for kw in [item.strip() for line in text.split('\n') for item in line.split(',')]:
             # Regex chosen by GPT-4 to match bulleted lists (#*-) or numbered lists. 😵‍💫
-            match = re.search(r'^\s*(?:\d+\.\s+|\*\s+|-{1}\s+|#\s*)(.*)', kw)
+            match = re.search(r'^\s*(?:\d+\.\s+|\*\s+|-{1}\s+|#\s*)?(.*)', kw)
             # At least one alpha required
             if match and re.match(r'.*[a-zA-Z]', match.group(1)):
                 kw = match.group(1).strip()
