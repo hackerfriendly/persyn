@@ -123,7 +123,7 @@ async def summarize_channel(event):
         save=True,
         photo=event.photo,
         max_tokens=event.max_tokens,
-        model=persyn_config.completion.summarize_model
+        model=persyn_config.completion.summary_model
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
@@ -139,13 +139,14 @@ async def elaborate(event):
         captions_url=persyn_config.dreams.captions.url,
         parrot_url=persyn_config.dreams.parrot.url
     )
-    reply = chat.get_reply(
+    chat.get_reply(
         channel=event.channel,
         msg='...',
         speaker_name=event.bot_name,
         speaker_id=event.bot_id
     )
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
+    # get_reply() speaks for us, no need to say it again.
+    # services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
 
 
 async def opine(event):
@@ -298,29 +299,31 @@ async def goals_achieved(event):
         else:
             log.warning(f"🚫 Goal not yet achieved: {goal}")
 
-    # Any new goals?
-    summary = completion.nlp(completion.get_summary(
-        text=event.convo,
-        summarizer=f"{persyn_config.id.name}'s goal is",
-        max_tokens=100
-    ))
+    # # Any new goals?
+    # summary = completion.nlp(completion.get_summary(
+    #     text=event.convo,
+    #     summarizer=f"In a few words, {persyn_config.id.name}'s overall goal is:",
+    #     max_tokens=100
+    # ))
 
-    # 1 sentence max please.
-    the_goal = ' '.join([s.text for s in summary.sents][:1])
+    # # 1 sentence max please.
+    # the_goal = ' '.join([s.text for s in summary.sents][:1])
 
-    # some goals are too easy
-    for taboo in ['remember', 'learn']:
-        if taboo in the_goal:
-            return
+    # log.warning("🥅 Potential goal:", the_goal)
 
-    new_goal = AddGoal(
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        service=event.service,
-        channel=event.channel,
-        goal=the_goal
-    )
-    await add_goal(new_goal)
+    # # some goals are too easy
+    # for taboo in ['remember', 'learn']:
+    #     if taboo in the_goal:
+    #         return
+
+    # new_goal = AddGoal(
+    #     bot_name=persyn_config.id.name,
+    #     bot_id=persyn_config.id.guid,
+    #     service=event.service,
+    #     channel=event.channel,
+    #     goal=the_goal
+    # )
+    # await add_goal(new_goal)
 
 def text_from_url(url, selector='body'):
     ''' Return just the text from url. You probably want a better selector than <body>. '''

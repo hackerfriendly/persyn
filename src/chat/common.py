@@ -118,10 +118,8 @@ class Chat():
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
-            # This doesn't work, since there is nothing to receive the reply.
-            # TODO: use autobus to dispatch a Chat event to cns.py
-            # if reminders:
-            #     reminders.add(channel, 0, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name, speaker_id])
+            if reminders:
+                reminders.add(channel, 5, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name, speaker_id])
             return random.choice(excuses)
 
         resp = response.json()
@@ -171,7 +169,7 @@ class Chat():
             log.critical(f"🤖 Could not post /inject/ to interact: {err}")
             return " :syringe: :interrobang: "
 
-        return response.json()['status']
+        return ":thumbsup:"
 
     def take_a_photo(
         self,

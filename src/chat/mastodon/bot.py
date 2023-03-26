@@ -237,7 +237,8 @@ class Mastodon():
                 )
             else:
                 the_reply = self.chat.get_reply(channel, msg, self.cfg.id.name, self.cfg.id.guid, self.reminders)
-                my_response = self.toot(the_reply)
+                # get_reply() speaks for us, no need to say it again.
+                # my_response = self.toot(the_reply)
 
             self.chat.summarize_later(channel, self.reminders)
 
