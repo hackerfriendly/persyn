@@ -85,7 +85,7 @@ def main():
                     continue
 
                 convo = ' '.join(lines)
-                if interact.completion.toklen(convo + line) + 1 > interact.completion.max_prompt_length:
+                if interact.completion.toklen(convo + line) + 1 > interact.completion.max_prompt_length():
                     save_imported_convo(
                         service, channel, args.convo_id, convo, args.author, summarize=args.summarize
                     )

@@ -8,7 +8,7 @@ id:
   guid: fed828a8-64c8-4f46-a15d-93973724614c
 
 # Required: At least one long-term memory service must be defined.
-# Currently only Elasticsearch is supported.
+# Currently Elasticsearch is required. Neo4j is optional.
 memory:
   elastic:
     url: https://your-elasticsearch-instance.es.us-west-2.aws.found.io:443
@@ -16,6 +16,11 @@ memory:
     key: elastic-bot-password
     index_prefix: persyn
     verify_certs: true
+  # Optional, but recommended: Neo4j graph database server for knowledge graph generation.
+  # neo4j:
+    # url: neo4j://localhost:7687/
+    # # Or with a user and password:
+    # # url: neo4j://user:password@my.neo4j.server:7687/
   # Conversations end when this many seconds pass in silence
   conversation_interval: 600
 
@@ -32,7 +37,16 @@ completion:
   # Choose an OpenAI model:
   #   https://beta.openai.com/docs/models/overview
   #   https://beta.openai.com/docs/model-index-for-researchers
-  model: text-davinci-003
+  # The default completion model
+  completion_model: text-davinci-003
+  # The chat model is used for opinions, sentiment, knowledge graph building,
+  # and other non-chat functions. Required.
+  chat_model: gpt-3.5-turbo
+  # The summary model is used for summarizing conversations, predicting replies,
+  # and assessing goals.
+  # Optional since it can cost significantly more than the chat model. Falls back
+  # to the chat_model if undefined.
+  # summary_model: gpt-4
   minimum_quality_score: -2.0
   temperature: 0.99
 
@@ -100,16 +114,16 @@ sentiment:
   engine: "flair"
   model: "en-sentiment"
 
-# # Optional: Central Nervous System. Used for image generation and posting images to social media.
-# # This also requires autobus, https://github.com/schuyler/autobus/
-# cns:
-#   # Location of your redis server (default)
-#   # redis: redis://localhost:6379/
-#   # If using a simple password with the default user:
-#   # redis: redis://:secret@my.redis.server:6379/
-#   # Using SSL and an ACL with a username:
-#   # redis: rediss://user:secret@my.redis.server:6379/
-#   workers: 1
+# Required: Central Nervous System. Used for asynchronous events, image generation,
+# and posting images to social media. It also requires autobus, https://github.com/schuyler/autobus/
+cns:
+  # Location of your redis server (default)
+  # redis: redis://localhost:6379/
+  # If using a simple password with the default user:
+  # redis: redis://:secret@my.redis.server:6379/
+  # Using SSL and an ACL with a username:
+  # redis: rediss://user:secret@my.redis.server:6379/
+  workers: 1
 
 # # Optional: Dream image generation multiplexer (dreams.py)
 # dreams:

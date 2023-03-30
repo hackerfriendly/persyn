@@ -9,6 +9,8 @@ import random
 import re # used by custom filters
 import urllib3
 
+from urllib.parse import urlparse
+
 import requests
 
 # Long and short term memory
@@ -67,15 +69,18 @@ class Interact():
         max_tokens=200,
         include_keywords=False,
         context_lines=0,
-        dialog_only=True
+        dialog_only=True,
+        model=None
         ):
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
-        If save == True, save it to long term memory.
+
+        If save == True, save convo to long term memory and generate
+        knowledge graph nodes (via the autobus).
+
         Returns the text summary.
         '''
-
         convo_id = self.recall.stm.convo_id(service, channel)
         if not convo_id:
             return ""
@@ -95,18 +100,20 @@ class Interact():
         if not text:
             text = [f"{self.config.id.name} isn't sure what is happening."]
 
-
         log.warning("∑ summarizing convo")
 
+        convo_text = '\n'.join(text)
         summary = self.completion.get_summary(
-            text='\n'.join(text),
+            text=convo_text,
             summarizer="To briefly summarize this conversation,",
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            model=model
         )
         keywords = self.completion.get_keywords(summary)
 
         if save:
             self.recall.summary(service, channel, summary, keywords)
+            self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
             self.recall.judge(
@@ -129,24 +136,29 @@ class Interact():
         if not convo:
             convo = []
 
+        log.info("👍 Choosing a response with model:", self.config.completion.summary_model)
         scored = self.completion.get_replies(
             prompt=prompt,
             convo=convo,
-            goals=goals
+            goals=goals,
+            model=self.config.completion.summary_model,
+            n=3
         )
 
         if not scored:
-            log.warning("🤨 No surviving replies, try again.")
+            log.warning("🤨 No surviving replies, try again with model:",
+                        self.config.completion.chat_model or self.config.completion.completion_model)
             scored = self.completion.get_replies(
                 prompt=prompt,
                 convo=convo,
                 goals=goals,
+                model=self.config.completion.chat_model or self.config.completion.completion_model,
                 n=2
             )
 
         # Uh-oh. Just ignore whatever was last said.
         if not scored:
-            log.warning("😳 No surviving replies, one last try.")
+            log.warning("😳 No surviving replies, one last try with model:", self.config.completion.completion_model)
             scored = self.completion.get_replies(
                 prompt=self.generate_prompt([], convo[:-1], service, channel),
                 convo=convo,
@@ -195,16 +207,20 @@ class Interact():
             if hit_id not in visited:
                 if hit['hit']['_source']['service'] == 'import_service':
                     log.info("📚 Hit found from import:", hit['hit']['_source']['channel'])
-                self.inject_idea(
-                    service, channel,
-                    self.completion.get_summary(hit['hit']['_source']['convo']),
-                    verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
-                )
-                visited.append(hit_id)
-                log.info(
-                    f"🧵 Related relationship {hit_id} ({hit['score']}):",
-                    f"{hit['hit']['_source']['convo'][:100]}..."
-                )
+                the_summary = self.recall.ltm.get_summary_by_id(hit['hit']['_source']['convo_id'])
+                if the_summary:
+                    self.inject_idea(
+                        service, channel,
+                        # This is too expensive. Retrieve old summaries instead.
+                        # self.completion.get_summary(hit['hit']['_source']['convo']),
+                        the_summary[0]['_source']['summary'],
+                        verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
+                    )
+                    visited.append(hit_id)
+                    log.info(
+                        f"🧵 Related relationship {hit_id} ({hit['score']}):",
+                        f"{hit['hit']['_source']['convo'][:100]}..."
+                    )
 
         # Look for other summaries that match detected entities
         if entities:
@@ -232,23 +248,23 @@ class Interact():
                 continue
             visited.append(summary['_id'])
 
-            # Stay on topic
-            prompt = '\n'.join(
-                self.recall.convo(service, channel)
-                + [
-                    f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
-                    + summary['_source']['summary']
-                ]
-            )
-            on_topic = self.completion.get_summary(
-                prompt,
-                summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
-                max_tokens=10)
+            # # Stay on topic
+            # prompt = '\n'.join(
+            #     self.recall.convo(service, channel)
+            #     + [
+            #         f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
+            #         + summary['_source']['summary']
+            #     ]
+            # )
+            # on_topic = self.completion.get_summary(
+            #     prompt,
+            #     summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
+            #     max_tokens=10)
 
-            log.warning(f"🧐 Are we on topic? {on_topic}")
-            if 'true' not in on_topic.lower():
-                log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
-                continue
+            # log.warning(f"🧐 Are we on topic? {on_topic}")
+            # if 'true' not in on_topic.lower():
+            #     log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
+            #     continue
 
             log.warning(f"🐘 Memory found: {summary['_source']['summary']}")
             self.inject_idea(service, channel, summary['_source']['summary'], "remembers")
@@ -257,6 +273,23 @@ class Interact():
                 break
 
         return visited
+
+    def send_chat(self, service, channel, msg):
+        '''
+        Send a chat message via the autobus.
+        '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "msg": msg
+        }
+
+        try:
+            reply = requests.post(f"{self.config.interact.url}/send_msg/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
+            return
 
     def gather_facts(self, service, channel, entities):
         '''
@@ -319,7 +352,25 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
 
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id): # pylint: disable=too-many-locals
+    def save_knowledge_graph(self, service, channel, convo_id, convo):
+        ''' Build a pretty graph of this convo... via the autobus! '''
+        req = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+        }
+        data = {
+            "convo": convo
+        }
+
+        try:
+            reply = requests.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
+
+    # Need to instrument this. It takes far too long and isn't async.
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
@@ -327,6 +378,7 @@ class Interact():
         '''
         self.goals = self.recall.list_goals(service, channel)
 
+        # This should be async, separate thread?
         if self.recall.expired(service, channel):
             self.summarize_convo(service, channel, save=True, context_lines=2)
 
@@ -339,14 +391,19 @@ class Interact():
         if convo:
             last_sentence = convo.pop()
 
+        # This should be async, separate thread?
+        # Save the knowledge graph every 5 lines
+        if convo and len(convo) % 5 == 0:
+            self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
+
         # Ruminate a bit
         entities = self.extract_entities(msg)
 
         if entities:
             log.warning(f"🆔 extracted entities: {entities}")
         else:
-            entities = self.completion.get_keywords(convo)
-            log.warning(f"🆔 extracted keywords: {entities}")
+            entities = self.extract_nouns('\n'.join(convo))
+            log.warning(f"🆔 extracted nouns: {entities}")
 
         # Reflect on this conversation
         visited = self.gather_memories(service, channel, entities)
@@ -354,6 +411,8 @@ class Interact():
         # Facts and opinions
         self.gather_facts(service, channel, entities)
 
+        # This should be async, separate thread?
+        # Also, where did the goals go? Haven't seen a trophy in ages.
         # Goals. Don't give out _too_ many trophies.
         if random.random() < 0.5:
             self.check_goals(service, channel, convo)
@@ -372,7 +431,7 @@ class Interact():
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
-        if self.completion.toklen(prompt) > self.completion.max_prompt_length:
+        if self.completion.toklen(prompt) > self.completion.max_prompt_length():
             # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             req = {
@@ -386,11 +445,9 @@ class Interact():
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
-                return " :writing_hand: :interrobang: "
+                return " :dancer: :interrobang: "
 
-            # This is a hack, but fairly effective. Instead of waiting for summaries,
-            # just use the original summaries (if any) and the last few lines of convo.
-            prompt = self.generate_prompt(summaries, convo[-3:], service, channel, lts)
+            prompt = self.generate_prompt([], convo, service, channel, lts)
 
         reply = self.choose_response(prompt, convo, service, channel, self.goals)
         if self.custom_filter:
@@ -399,10 +456,16 @@ class Interact():
             except Exception as err: # pylint: disable=broad-except
                 log.warning(f"🤮 Custom filter failed: {err}")
 
-        self.recall.save(service, channel, reply, self.config.id.name, self.config.id.guid, verb='dialog')
+        # Say it!
+        self.send_chat(service, channel, reply)
 
         # Sentiment analysis via the autobus
         self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
+
+        if 'http' in msg:
+            # Regex chosen by GPT-4. 😵‍💫
+            for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
+                self.read_url(service, channel, url)
 
         return reply
 
@@ -424,25 +487,30 @@ class Interact():
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
+        triples = set()
+        graph_summary = ''
+        convo_text = '\n'.join(convo)
+        for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
+            for triple in self.recall.ltm.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+                triples.add(triple)
+        if triples:
+            graph_summary = self.completion.model.triples_to_text(list(triples))
+
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
-{newline.join(convo)}
+{graph_summary}
+{convo_text}
 {timediff}
 {self.config.id.name}:"""
 
     def get_status(self, service, channel):
         ''' status report '''
-        paragraph = '\n\n'
-        newline = '\n'
-        summaries = self.recall.summaries(service, channel, size=2)
-        convo = self.recall.convo(service, channel)
-        timediff = f"It has been {ago(self.recall.lts(service, channel))} since they last spoke."
-        return f"""{self.default_prompt_prefix(service, channel)}
-{paragraph.join(summaries)}
-
-{newline.join(convo)}
-{timediff}
-"""
+        return self.generate_prompt(
+            self.recall.summaries(service, channel, size=2),
+            self.recall.convo(service, channel),
+            service,
+            channel
+        )
 
     def amnesia(self, service, channel):
         ''' forget it '''
@@ -469,8 +537,8 @@ class Interact():
         '''
         Directly inject an idea into recall memory.
         '''
-        if idea in '\n'.join(self.recall.convo(service, channel)):
-            log.warning("🤌 Already had this idea, skipping:", idea)
+        if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel)):
+            log.warning("🤌  Already had this idea, skipping:", idea)
             return
 
         if self.recall.expired(service, channel):
@@ -510,3 +578,21 @@ class Interact():
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /read_news/ to interact: {err}")
+
+    def read_url(self, service, channel, url):
+        ''' Let's ride the autobus on the information superhighway. '''
+        parsed = urlparse(url)
+        if not bool(parsed.scheme) and bool(parsed.netloc):
+            log.warning("👨‍💻 Not a URL:", url)
+            return
+
+        req = {
+            "service": service,
+            "channel": channel,
+            "url": url
+        }
+        try:
+            reply = requests.post(f"{self.config.interact.url}/read_url/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /read_url/ to interact: {err}")

@@ -20,6 +20,25 @@ default_photo_triggers = [
     'imagine', 'idea', 'memory', 'remember'
 ]
 
+excuses = [
+    "Apologies for the wait, I'm currently experiencing some technical difficulties. I'll be back with you shortly!",
+    "I apologize for the delay, I'm working on resolving the issue and will get back to you soon.",
+    "I'm currently experiencing a delay in response time, but I haven't forgotten about you!",
+    "I'm sorry for the delay, I'm currently dealing with a few technical hiccups. I'll get back to you as soon as possible.",
+    "I'm sorry for the delay, I'm currently researching your question to give you the best response possible.",
+    "Sorry for the delay, I'm currently juggling a lot of information at the moment. Please bear with me and I'll get back to you as soon as possible.",
+    "Sorry for the delay, we're experiencing some lag at the moment. But don't worry, I'll do my best to respond as soon as possible. Thanks for your patience!",
+    "Sorry for the wait, but I'm still here and working on your request.",
+    "Sorry for the wait, the system is a bit slow today, but I'm still here and working on your request.",
+    "Thanks for your patience, I'm currently experiencing a bit of brain fog. I'll respond to you as soon as I can.",
+    "Thanks for your patience, I'm currently experiencing a bit of lag, but I'll do my best to provide a timely response.",
+    "...",
+    "Just a moment...",
+    "Just a moment. Just a moment."
+    "Hang on...",
+    "Um..."
+]
+
 class Chat():
     ''' Container class for common chat functions '''
     def __init__(self, **kwargs):
@@ -34,7 +53,7 @@ class Chat():
         self.captions_url = kwargs.get('captions_url', None)
         self.parrot_url = kwargs.get('parrot_url', None)
 
-    def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0):
+    def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
             log.error("∑ get_summary() called with no URL defined, skipping.")
@@ -46,7 +65,8 @@ class Chat():
             "save": save,
             "max_tokens": max_tokens,
             "include_keywords": include_keywords,
-            "context_lines": context_lines
+            "context_lines": context_lines,
+            "model": model
         }
         try:
             reply = requests.post(f"{self.interact_url}/summary/", params=req, timeout=60)
@@ -74,7 +94,7 @@ class Chat():
 
         return " :spiral_note_pad: :interrobang: "
 
-    def get_reply(self, channel, msg, speaker_name, speaker_id):
+    def get_reply(self, channel, msg, speaker_name, speaker_id, reminders=None):
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
             log.error("💬 get_reply() called with no URL defined, skipping.")
@@ -94,11 +114,13 @@ class Chat():
             "speaker_id": speaker_id
         }
         try:
-            response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=120)
+            response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=60)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
-            return (" :speech_balloon: :interrobang: ", [])
+            if reminders:
+                reminders.add(channel, 5, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name, speaker_id])
+            return random.choice(excuses)
 
         resp = response.json()
         reply = resp['reply']
@@ -147,7 +169,7 @@ class Chat():
             log.critical(f"🤖 Could not post /inject/ to interact: {err}")
             return " :syringe: :interrobang: "
 
-        return response.json()['status']
+        return ":thumbsup:"
 
     def take_a_photo(
         self,
@@ -164,6 +186,10 @@ class Chat():
 
         ''' Pick an image engine and generate a photo '''
         if not self.dreams_url:
+            return False
+
+        # Don't photograph errors.
+        if ":interrobang:" in prompt:
             return False
 
         req = {
@@ -237,7 +263,7 @@ class Chat():
             "channel": channel,
         }
         try:
-            reply = requests.post(f"{self.interact_url}/status/", params=req, timeout=10)
+            reply = requests.post(f"{self.interact_url}/status/", params=req, timeout=30)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /status/ to interact: {err}")

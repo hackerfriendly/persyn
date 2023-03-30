@@ -4,13 +4,14 @@ memory (elasticsearch) tests
 # pylint: disable=import-error, wrong-import-position, invalid-name, no-member
 import datetime as dt
 import uuid
+import pytest
 
 from time import sleep
 from copy import copy
 
 from interaction.chrono import elapsed
 
-from interaction.memory import LongTermMemory, ShortTermMemory, Recall
+from interaction.memory import LongTermMemory, ShortTermMemory, Recall, Person
 
 # Bot config
 from utils.config import load_config
@@ -91,22 +92,22 @@ def test_entities():
     speaker_id = "test_id"
 
     # This is computed using persyn_config.id.guid. If it changes, this value needs updating.
-    eid = ltm.name_to_entity(service, channel, speaker_id)
+    eid = ltm.name_to_entity_id(service, channel, speaker_id)
     assert eid == "HzfSLNaCdxgdzcbxPZw6aE"
 
     other_eids = set([
-        ltm.name_to_entity(service, channel, "another_name"),
-        ltm.name_to_entity(service, "another_channel", speaker_name),
-        ltm.name_to_entity("another_service", channel, speaker_name),
-        ltm.name_to_entity("another_service", "another_channel", "another_name")
+        ltm.name_to_entity_id(service, channel, "another_name"),
+        ltm.name_to_entity_id(service, "another_channel", speaker_name),
+        ltm.name_to_entity_id("another_service", channel, speaker_name),
+        ltm.name_to_entity_id("another_service", "another_channel", "another_name")
     ])
     # Every eid should be unique
     assert len(other_eids) == 4
     assert eid not in other_eids
 
     # Does not exist in ltm yet
-    assert not ltm.lookup_entity(eid)
-    assert not ltm.entity_to_name(eid)
+    assert not ltm.lookup_entity_id(eid)
+    assert not ltm.entity_id_to_name(eid)
 
     # Store it. Returns seconds since it was first stored.
     assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] == 0
@@ -116,10 +117,10 @@ def test_entities():
     assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] < 8
 
     # Should match
-    assert ltm.entity_to_name(eid) == speaker_name
+    assert ltm.entity_id_to_name(eid) == speaker_name
 
     # All fields
-    doc = ltm.lookup_entity(eid)
+    doc = ltm.lookup_entity_id(eid)
     assert doc['service'] == service
     assert doc['channel'] == channel
     assert doc['speaker_name'] == speaker_name
@@ -343,11 +344,28 @@ def test_news():
         "url": "http://persyn.io",
     }
 
-    assert ltm.have_read(**opts) == False
+    assert ltm.have_read(**opts) is False
     assert ltm.add_news(title="The Persyn Codebase", **opts)
-    assert ltm.have_read(**opts) == True
+    assert ltm.have_read(**opts) is True
+
+def test_kg():
+    ''' Neo4j tests '''
+    ltm.triples_to_kg([("This", "isOnly", "aTest")])
+    assert len(list(ltm.fetch_all_nodes())) == 2
+    assert ltm.find_node(name='aTest').first().name == 'aTest'
+    assert len(list(ltm.find_node(name='aTest', node_type='person'))) == 0
+
+    with pytest.raises(Person.DoesNotExist):
+        ltm.find_node(name='This', node_type='person').first()
+
+    assert ltm.find_node(name='This', node_type='thing').first().name == 'This'
+
+    with pytest.raises(RuntimeError):
+        assert ltm.find_node(name='This', node_type='invalid')
 
 def test_cleanup():
-    ''' Delete indices '''
+    ''' Delete indices and graph nodes '''
     for i in ltm.index.items():
         ltm.es.options(ignore_status=[400, 404]).indices.delete(index=i[1])
+
+    ltm.delete_all_nodes(confirm=True)
