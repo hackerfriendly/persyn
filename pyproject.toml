@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "persyn"
-version = "0.0.4-dev"
+version = "0.0.5"
 authors = [
   { name="Rob Flickenger", email="rob@hackerfriendly.com" },
 ]
@@ -45,7 +45,10 @@ dependencies = [
   "spacytextblob",
   "uvicorn",
   "wikipedia",
-  "asyncio"
+  "asyncio",
+  "tiktoken",
+  "neomodel",
+  "autobus @ git+https://github.com/hackerfriendly/autobus"
 ]
 
 [project.scripts]
