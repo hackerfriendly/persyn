@@ -402,7 +402,7 @@ class Interact():
         if entities:
             log.warning(f"🆔 extracted entities: {entities}")
         else:
-            entities = self.extract_nouns('\n'.join(convo))
+            entities = self.extract_nouns('\n'.join(convo))[:8]
             log.warning(f"🆔 extracted nouns: {entities}")
 
         # Reflect on this conversation
