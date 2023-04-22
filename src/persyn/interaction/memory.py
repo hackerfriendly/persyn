@@ -4,6 +4,7 @@ import re
 import uuid
 import logging
 from datetime import datetime
+import os
 
 from abc import ABC
 from typing import Optional
@@ -30,9 +31,6 @@ from persyn.utils.color_logging import ColorLog
 
 log = ColorLog()
 
-# Silence Elasticsearch transport
-logging.getLogger('elastic_transport.transport').setLevel(logging.CRITICAL)
-
 
 class Recall():
     ''' Total Recall: stm + ltm. '''
@@ -52,17 +50,20 @@ class Recall():
         if self.stm.expired(service, channel):
             self.stm.clear(service, channel)
 
+        if convo_id is None:
+            convo_id = str(ulid.ULID())
+
         return self.stm.append(
             service,
             channel,
             self.ltm.save_convo(
-                service,
-                channel,
-                msg,
-                speaker_name,
-                speaker_id,
-                convo_id or self.stm.convo_id(service, channel),
-                verb
+                service=service,
+                channel=channel,
+                speaker_name=speaker_name,
+                msg=msg,
+                convo_id=convo_id,
+                speaker_id=speaker_id,
+                verb=verb
             )
         )
 
@@ -123,8 +124,8 @@ class Recall():
         convo = self.stm.fetch(service, channel)
         if convo:
             return [
-                f"{line['speaker']}: {line['msg']}" for line in convo
-                if 'verb' not in line or line['verb'] == 'dialog'
+                f"{line.speaker_name}: {line.msg}" for line in convo
+                if 'verb' not in line or line.verb == 'dialog'
             ]
         return []
 
@@ -132,22 +133,18 @@ class Recall():
         '''
         Return the entire convo from stm (if any).
 
-        Result is a list of "speaker (verb): msg" strings.
+        Result is a list of "speaker: msg" or "speaker (verb): msg" strings.
         '''
         convo = self.stm.fetch(service, channel)
         if not convo:
             return []
 
-        # [Convo(pk='01GXKGJ00RFZ8T13CXGRHCBA52', service='https://persyn.slack.com/', channel='D03PH1754SV', convo_id='U03NSF74ABY', speaker_id='unknown speaker', msg='Rob', verb='dialog')]
-
-        log.error(convo)
-
         ret = []
         for msg in convo:
             if msg.verb in ['dialog', None]:
-                ret.append(f"{msg.speaker_id}: {msg.msg}")
+                ret.append(f"{msg.speaker_name}: {msg.msg}")
             elif feels or msg.verb != 'feels':
-                ret.append(f"{msg.speaker_id} {msg.verb}: {msg.msg}")
+                ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
 
         return ret
 
@@ -158,14 +155,14 @@ class Recall():
         convo = self.ltm.get_convo_by_id(convo_id)
         log.debug("📢", convo)
         for doc in convo[::-1]:
-            if doc['_source']['verb'] == 'feels':
-                return doc['_source']['msg']
+            if doc.verb == 'feels':
+                return doc.msg
 
         return "nothing in particular"
 
     def summaries(self, service, channel, size=3):
         ''' Return the summary text from ltm (if any) '''
-        return [s['_source']['summary'] for s in self.ltm.lookup_summaries(service, channel, None, size=size)]
+        return [s.summary for s in self.ltm.lookup_summaries(service, channel, None, size=size)]
 
     def lts(self, service, channel):
         ''' Return the timestamp of the last message from this channel (if any) '''
@@ -278,13 +275,16 @@ class ShortTermMemory():
 class BaseModel(HashModel, ABC):
     class Meta:
         global_key_prefix = "persyn"
-
+        database = redis.Redis().from_url(os.environ['REDIS_OM_URL'])
+        index_name = "MyCustomIndex"
+        _ = Migrator().run()
 
 # 'persyn':bot_id:'convo':pk
 class Convo(BaseModel):
     service: str = Field(index=True)
     channel: str = Field(index=True)
     convo_id: str = Field(index=True)
+    speaker_name: str = Field(index=True)
     speaker_id: str = Field(index=True)
     msg: str = Field(index=True, full_text_search=True)
     verb: str = Field(index=True)
@@ -309,7 +309,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         self.redis = redis.from_url(persyn_config.memory.redis)
 
-        Migrator().run()
+    def shortest_path(self, src, dest, src_type=None, dest_type=None):
+        ''' TODO: REMOVE THIS STUB AND REPLACE WITH graph.py '''
+        return []
 
     def get_last_timestamp(self, service, channel):
         '''
@@ -321,11 +323,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         else:
             return get_cur_ts()
 
+
     def save_convo(
         self,
         service,
         channel,
-        speaker,
+        speaker_name,
         msg,
         convo_id=ulid.ULID(),
         speaker_id=None,
@@ -343,6 +346,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             service=service,
             channel=channel,
             convo_id=convo_id,
+            speaker_name=speaker_name,
             speaker_id=speaker_id,
             msg=msg,
             verb=verb
@@ -389,11 +393,16 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Return a list of summaries matching the search term for this channel.
         '''
+        # log.warning("Running Migrator")
+        # Migrator().run()
 
         log.warning(f"lookup_summaries(): {service} {channel} {search} {size}")
         if search is None:
+            log.warning("find with no search term to server:", os.environ['REDIS_OM_URL'])
             return Summary.find((Summary.service == service) & (Summary.channel == channel)).all()[:size]
 
+        # Do we need to escape search terms?
+        search = search.replace('%', '')
         return Summary.find((Summary.service == service) & (Summary.channel == channel) & (Summary.summary % search)).all()[:size]
 
 
@@ -505,23 +514,25 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Save an opinion to Elasticscarch.
         '''
-        if not speaker_id:
-            speaker_id = self.bot_id
+        return None
 
-        doc = {
-            "service": service,
-            "channel": channel,
-            "topic": topic.lower(),
-            "opinion": opinion,
-            "speaker_id": speaker_id,
-            "@timestamp": get_cur_ts()
-        }
-        self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            index=self.index['opinion'],
-            document=doc,
-            refresh='true' if refresh else 'false'
-        )
-        # return something here?
+        # if not speaker_id:
+        #     speaker_id = self.bot_id
+
+        # doc = {
+        #     "service": service,
+        #     "channel": channel,
+        #     "topic": topic.lower(),
+        #     "opinion": opinion,
+        #     "speaker_id": speaker_id,
+        #     "@timestamp": get_cur_ts()
+        # }
+        # self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        #     index=self.index['opinion'],
+        #     document=doc,
+        #     refresh='true' if refresh else 'false'
+        # )
+        # # return something here?
 
     def lookup_opinion(self, topic, service=None, channel=None, speaker_id=None, size=10):
         ''' Look up an opinion in Elasticsearch. '''
@@ -557,30 +568,32 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Save a relationship to Elasticearch.
         '''
-        if 'source_id' in kwargs and not all(['rel' in kwargs, 'target_id' in kwargs]):
-            log.critical('👩‍👧‍👦 source_id requires rel and target_id')
-            return None
+        return []
 
-        if 'convo_id' in kwargs and 'graph' not in kwargs:
-            log.critical('👩‍👧‍👦 convo_id requires graph')
-            return None
+        # if 'source_id' in kwargs and not all(['rel' in kwargs, 'target_id' in kwargs]):
+        #     log.critical('👩‍👧‍👦 source_id requires rel and target_id')
+        #     return None
 
-        cur_ts = get_cur_ts()
-        doc = {
-            "@timestamp": cur_ts,
-            "service": service,
-            "channel": channel
-        }
+        # if 'convo_id' in kwargs and 'graph' not in kwargs:
+        #     log.critical('👩‍👧‍👦 convo_id requires graph')
+        #     return None
 
-        for term, val in kwargs.items():
-            doc[term] = val
+        # cur_ts = get_cur_ts()
+        # doc = {
+        #     "@timestamp": cur_ts,
+        #     "service": service,
+        #     "channel": channel
+        # }
 
-        ret = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            index=self.index['relationship'],
-            document=doc,
-            refresh='true' if refresh else 'false'
-        )
-        return ret
+        # for term, val in kwargs.items():
+        #     doc[term] = val
+
+        # ret = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        #     index=self.index['relationship'],
+        #     document=doc,
+        #     refresh='true' if refresh else 'false'
+        # )
+        # return ret
 
     def lookup_relationship(self, service, channel, size=10, **kwargs):
         ''' Look up a relationship in Elasticsearch. '''
@@ -639,34 +652,36 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Add a goal to a channel. Returns the top 10 unachieved goals.
         '''
-        cur_ts = get_cur_ts()
-        doc = {
-            "service": service,
-            "channel": channel,
-            "@timestamp": cur_ts,
-            "goal": goal,
-            "achieved": False
-        }
-        _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            index=self.index['goal'],
-            document=doc,
-            refresh='true' if refresh else 'false'
-        )["_id"]
+        return []
+        # cur_ts = get_cur_ts()
+        # doc = {
+        #     "service": service,
+        #     "channel": channel,
+        #     "@timestamp": cur_ts,
+        #     "goal": goal,
+        #     "achieved": False
+        # }
+        # _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        #     index=self.index['goal'],
+        #     document=doc,
+        #     refresh='true' if refresh else 'false'
+        # )["_id"]
 
-        log.debug("doc:", _id)
+        # log.debug("doc:", _id)
 
-        return self.get_goals(service, channel, achieved=False)
+        # return self.get_goals(service, channel, achieved=False)
 
     def achieve_goal(self, service, channel, goal):
         '''
         Set a goal to the achieved state. Returns the top ten unachieved goals.
         '''
-        for doc in self.get_goals(service, channel, goal, achieved=False):
-            doc['_source']['achieved'] = True
-            doc['_source']['achieved_on'] = get_cur_ts()
-            self.es.update(index=self.index['goal'], id=doc['_id'], doc=doc['_source'], refresh=True)
+        return []
+        # for doc in self.get_goals(service, channel, goal, achieved=False):
+        #     doc['_source']['achieved'] = True
+        #     doc['_source']['achieved_on'] = get_cur_ts()
+        #     self.es.update(index=self.index['goal'], id=doc['_id'], doc=doc['_source'], refresh=True)
 
-        return self.get_goals(service, channel, achieved=False)
+        # return self.get_goals(service, channel, achieved=False)
 
     def get_goals(self, service, channel, goal=None, achieved=None, size=10):
         '''
@@ -706,30 +721,31 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         ret = []
         for goal in self.get_goals(service, channel, goal=None, achieved=achieved, size=size):
-            ret.append(goal['_source']['goal'])
+            ret.append(goal.goal)
         return ret
 
     def add_news(self, service, channel, url, title, refresh=True):
         '''
         Add a news url that we've read. Returns the doc _id.
         '''
-        cur_ts = get_cur_ts()
-        doc = {
-            "service": service,
-            "channel": channel,
-            "@timestamp": cur_ts,
-            "url": url,
-            "title": title
-        }
-        _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-            index=self.index['news'],
-            document=doc,
-            refresh='true' if refresh else 'false'
-        )["_id"]
+        return None
+        # cur_ts = get_cur_ts()
+        # doc = {
+        #     "service": service,
+        #     "channel": channel,
+        #     "@timestamp": cur_ts,
+        #     "url": url,
+        #     "title": title
+        # }
+        # _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+        #     index=self.index['news'],
+        #     document=doc,
+        #     refresh='true' if refresh else 'false'
+        # )["_id"]
 
-        log.debug("🗞️ doc:", _id)
+        # log.debug("🗞️ doc:", _id)
 
-        return _id
+        # return _id
 
     def have_read(self, service, channel, url):
         '''
