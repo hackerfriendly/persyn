@@ -98,7 +98,7 @@ def load_config(cfg=None):
             config['memory']['conversation_interval'] = 600
 
         if 'redis' in config['memory']:
-            os.environ['REDIS_OM_URL'] = 'redis://tachikoma0.s9:6379/'
+            os.environ['REDIS_OM_URL'] = config['memory']['redis']
         else:
             config['memory']['redis'] = 'redis://localhost:6379/'
 
