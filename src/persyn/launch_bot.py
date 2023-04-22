@@ -23,7 +23,7 @@ def tmux_is_running(session, tmux):
         capture_output=True
     ).returncode == 0
 
-def run_tmux_cmd(session, cmd, tmux, cuda=None, loc='split-pane'):
+def run_tmux_cmd(session, cmd, tmux, cuda=None, redis=None, loc='split-pane'):
     ''' Start a new tmux session if needed, then add panes for each cmd '''
     running = tmux_is_running(session, tmux)
     tmux = ' '.join([
@@ -39,8 +39,12 @@ def run_tmux_cmd(session, cmd, tmux, cuda=None, loc='split-pane'):
     if cuda:
         cuda_env = f'CUDA_VISIBLE_DEVICES={cuda}'
 
+    redis_env = ''
+    if redis:
+        redis_env = f'REDIS_OM_URL={redis}'
+
     title = r"\e]2;" + cmd[0] + r"\a"
-    return run(f"""{tmux} "while :; do echo $'{title}'; {cuda_env} {' '.join(cmd)} ; sleep 1; done" """,
+    return run(f"""{tmux} "while :; do echo $'{title}'; {cuda_env} {redis_env} {' '.join(cmd)} ; sleep 1; done" """,
         shell=True,
         check=True,
         capture_output=True,
@@ -86,11 +90,11 @@ def main():
         if hasattr(cfg.interact, 'gpu'):
             gpu = cfg.interact.gpu
         log.info("🧠 Starting interact_server")
-        run_tmux_cmd(session_name, ['interact', args.config_file], args.tmux, gpu)
+        run_tmux_cmd(session_name, ['interact', args.config_file], args.tmux, gpu, cfg.memory.redis)
 
     if hasattr(cfg, 'cns') and hasattr(cfg.cns, 'workers') and cfg.cns.workers > 0:
         log.info("⚡️ Starting cns")
-        run_tmux_cmd(session_name, ['cns', args.config_file], args.tmux)
+        run_tmux_cmd(session_name, ['cns', args.config_file], args.tmux, redis=cfg.memory.redis)
 
     if hasattr(cfg, 'chat'):
         if hasattr(cfg.chat, 'slack'):
