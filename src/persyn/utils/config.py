@@ -97,9 +97,7 @@ def load_config(cfg=None):
         if 'conversation_interval' not in config['memory']:
             config['memory']['conversation_interval'] = 600
 
-        if 'redis' in config['memory']:
-            os.environ['REDIS_OM_URL'] = config['memory']['redis']
-        else:
+        if 'redis' not in config['memory']:
             config['memory']['redis'] = 'redis://localhost:6379/'
 
     if 'completion' in config:
