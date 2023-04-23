@@ -13,12 +13,9 @@ from urllib.parse import urlparse
 import ulid
 
 import redis
+from redis.commands.search.query import Query
 
-from redis_om import (
-    Field,
-    HashModel,
-    Migrator
-)
+from dotwiz import DotWiz  # pylint: disable=no-member
 
 # Time
 from persyn.interaction.chrono import elapsed, get_cur_ts
@@ -181,6 +178,7 @@ class ShortTermMemory():
         self.convo[service][channel]['convo'] = []
         self.convo[service][channel]['id'] = str(ulid.ULID())
         self.convo[service][channel]['opinions'] = []
+        log.warning("⚠️  New convo:", self.convo[service][channel]['id'])
 
     def exists(self, service, channel):
         ''' True if a channel already exists, else False '''
@@ -269,34 +267,6 @@ class ShortTermMemory():
 
         return None
 
-
-
-
-class BaseModel(HashModel, ABC):
-    class Meta:
-        global_key_prefix = "persyn"
-        database = redis.Redis().from_url(os.environ['REDIS_OM_URL'])
-        index_name = "MyCustomIndex"
-        _ = Migrator().run()
-
-# 'persyn':bot_id:'convo':pk
-class Convo(BaseModel):
-    service: str = Field(index=True)
-    channel: str = Field(index=True)
-    convo_id: str = Field(index=True)
-    speaker_name: str = Field(index=True)
-    speaker_id: str = Field(index=True)
-    msg: str = Field(index=True, full_text_search=True)
-    verb: str = Field(index=True)
-
-# 'persyn':bot_id:'summary':pk
-class Summary(BaseModel):
-    service: str = Field(index=True)
-    channel: str = Field(index=True)
-    convo_id: str = Field(index=True)
-    summary: str = Field(index=True, full_text_search=True)
-    keywords: Optional[str] = Field(index=True)
-
 # LTM object
 class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
@@ -308,6 +278,30 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         self.bot_ulid = ulid.ULID().from_uuid(self.bot_id)
 
         self.redis = redis.from_url(persyn_config.memory.redis)
+
+        self.convo_prefix = f'persyn:{self.bot_id}:convo'
+        self.summary_prefix = f'persyn:{self.bot_id}:summary'
+
+        # I don't see a way to detect the existence of an index, so just try/except.
+        for cmd in [
+            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT speaker_name TEXT speaker_id TEXT msg TEXT verb TEXT",
+            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT summary TEXT keywords TAG"
+        ]:
+            try:
+                self.redis.execute_command(cmd)
+                log.warning("Creating index:", cmd.split(' ')[1])
+            except redis.exceptions.ResponseError as err:
+                if str(err) == "Index already exists":
+                    log.debug(f"{err}:", cmd.split(' ')[1])
+                else:
+                    log.error(f"{err}:", cmd.split(' ')[1])
+                continue
+
+    @staticmethod
+    def escape(qs):
+        if qs is None:
+            return qs
+        return qs.replace('%', '?').replace('-', '?').replace(':', '?')
 
     def shortest_path(self, src, dest, src_type=None, dest_type=None):
         ''' TODO: REMOVE THIS STUB AND REPLACE WITH graph.py '''
@@ -342,69 +336,87 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             # speaker_id = self.get_speaker_id(service, channel, speaker)
             speaker_id = "unknown speaker"
 
-        convo_line = Convo(
-            service=service,
-            channel=channel,
-            convo_id=convo_id,
-            speaker_name=speaker_name,
-            speaker_id=speaker_id,
-            msg=msg,
-            verb=verb
-        )
-        convo_line.Meta.model_key_prefix = f"{self.bot_id}:convo"
+        if service.startswith('http'):
+            service = urlparse(service).hostname
 
-        return convo_line.save()
+        ret = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+            "speaker_name": speaker_name,
+            "speaker_id": speaker_id,
+            "msg": msg,
+            "verb": verb
+        }
 
-    # TODO: set refresh=False after separate summary thread is implemented.
+        for k, v in ret.items():
+            self.redis.hset(f"{self.convo_prefix}:{convo_id}", k, v)
+
+        return DotWiz(ret)
+
     def save_summary(self, service, channel, convo_id, summary, keywords=None):
         '''
         Save a conversation summary to memory. Returns the Summary object.
         '''
-        the_summary = Summary(
-            service=service,
-            channel=channel,
-            convo_id=convo_id,
-            summary=summary,
-            keywords=' '.join(keywords)
-        )
-        the_summary.Meta.model_key_prefix = f"{self.bot_id}:summary"
+        if service.startswith('http'):
+            service = urlparse(service).hostname
 
-        return the_summary.save()
+        ret = {
+            "service": service,
+            "channel": channel,
+            "convo_id": convo_id,
+            "summary": summary,
+            "keywords": ','.join(keywords)
+        }
+
+        for k, v in ret.items():
+            self.redis.hset(f"{self.summary_prefix}:{convo_id}", k, v)
+
+        return DotWiz(ret)
+
 
     def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
+        service = self.escape(service)
+        channel = self.escape(channel)
+
         try:
-            return Convo.find((Convo.service == service) & (Convo.channel == channel)).all()[-1]
+            return self.redis.ft(self.convo_prefix).search(Query(f"@service:'{service}' @channel:'{channel}")).docs[-1]
         except IndexError:
             return None
 
     def get_convo_by_id(self, convo_id):
         ''' Return all Convo objects matching convo_id in chronological order '''
-        return Convo.find(Convo.convo_id == convo_id).all()
+        convo_id = self.escape(convo_id)
+        return self.redis.ft(self.convo_prefix).search(Query(f'@convo_id:"{convo_id}"')).docs
 
     def get_summary_by_id(self, convo_id):
         ''' Return the last summary for this convo_id '''
+        convo_id = self.escape(convo_id)
         try:
-            return Summary.find(Summary.convo_id == convo_id).all()[-1]
+            return self.redis.ft(self.summary_prefix).search(Query(f'@convo_id:"{convo_id}"')).docs[-1]
         except IndexError:
             return None
 
-    def lookup_summaries(self, service, channel, search=None, size=None):
+
+    def lookup_summaries(self, service, channel, search=None, size=3):
         '''
         Return a list of summaries matching the search term for this channel.
         '''
-        # log.warning("Running Migrator")
-        # Migrator().run()
-
         log.warning(f"lookup_summaries(): {service} {channel} {search} {size}")
+
+        if service.startswith('http'):
+            service = urlparse(service).hostname
+
+        service = self.escape(service)
+        channel = self.escape(channel)
+        search = self.escape(search)
+
         if search is None:
-            log.warning("find with no search term to server:", os.environ['REDIS_OM_URL'])
-            return Summary.find((Summary.service == service) & (Summary.channel == channel)).all()[:size]
+            # return self.redis.find((Summary.service == service) & (Summary.channel == channel)).all(size)
+            return self.redis.ft(self.summary_prefix).search(Query(f"@service:'{service}' @channel:'{channel}'").paging(0, size)).docs
 
-        # Do we need to escape search terms?
-        search = search.replace('%', '')
-        return Summary.find((Summary.service == service) & (Summary.channel == channel) & (Summary.summary % search)).all()[:size]
-
+        return self.redis.ft(self.summary_prefix).search(Query(f"@service:'{service}' @channel:'{channel}' @summary:'{search}'").paging(0, size)).docs
 
     def lookup_relationships(self, service, channel, search=None, size=3):
         '''

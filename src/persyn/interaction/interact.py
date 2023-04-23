@@ -203,23 +203,22 @@ class Interact():
         )
 
         for hit in ranked:
-            hit_id = hit['hit'].get('convo_id', hit['hit']['_id'])
-            if hit_id not in visited:
-                if hit['hit']['_source']['service'] == 'import_service':
-                    log.info("📚 Hit found from import:", hit['hit']['_source']['channel'])
-                the_summary = self.recall.ltm.get_summary_by_id(hit['hit']['_source']['convo_id'])
+            if hit.pk not in visited:
+                if hit.service == 'import_service':
+                    log.info("📚 Hit found from import:", hit.channel)
+                the_summary = self.recall.ltm.get_summary_by_id(hit.convo_id)
                 if the_summary:
                     self.inject_idea(
                         service, channel,
                         # This is too expensive. Retrieve old summaries instead.
                         # self.completion.get_summary(hit['hit']['_source']['convo']),
-                        the_summary[0]['_source']['summary'],
-                        verb=f"remembers that {ago(hit['hit']['_source']['@timestamp'])} ago"
+                        the_summary[0].summary,
+                        verb="remembers" # that {ago(hit['@timestamp'])} ago"
                     )
-                    visited.append(hit_id)
+                    visited.append(hit.pk)
                     log.info(
-                        f"🧵 Related relationship {hit_id} ({hit['score']}):",
-                        f"{hit['hit']['_source']['convo'][:100]}..."
+                        f"🧵 Related relationship {hit.pk} ({hit['score']}):",
+                        f"{hit.convo[:100]}..."
                     )
 
         # Look for other summaries that match detected entities
@@ -244,9 +243,9 @@ class Interact():
         log.warning(f"ℹ️  look up '{search_term}' in memories")
 
         for summary in self.recall.lookup_summaries(service, channel, search_term, size=10):
-            if summary['_id'] in visited:
+            if summary.convo_id in visited:
                 continue
-            visited.append(summary['_id'])
+            visited.append(summary.convo_id)
 
             # # Stay on topic
             # prompt = '\n'.join(
@@ -266,8 +265,8 @@ class Interact():
             #     log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
             #     continue
 
-            log.warning(f"🐘 Memory found: {summary['_source']['summary']}")
-            self.inject_idea(service, channel, summary['_source']['summary'], "remembers")
+            log.warning(f"🐘 Memory found: {summary.summary}")
+            self.inject_idea(service, channel, summary.summary, "remembers")
 
             if len(visited) >= size:
                 break
@@ -423,9 +422,9 @@ class Interact():
 
         summaries = []
         for summary in self.recall.lookup_summaries(service, channel, None, size=5):
-            if summary['_id'] not in visited and summary['_source']['summary'] not in summaries:
-                summaries.append(summary['_source']['summary'])
-                visited.append(summary['_id'])
+            if summary.convo_id not in visited and summary.summary not in summaries:
+                summaries.append(summary.summary)
+                visited.append(summary.convo_id)
 
         lts = self.recall.lts(service, channel)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
