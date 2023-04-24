@@ -381,6 +381,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if service.startswith('http'):
             service = urlparse(service).hostname
 
+        if keywords is None:
+            keywords = []
+
         ret = {
             "service": service,
             "channel": channel,
