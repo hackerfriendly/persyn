@@ -41,6 +41,16 @@ Image posting now requires Schuyler Erle's https://github.com/schuyler/autobus/ 
 
 Tmux is also highly recommended, and is required for using the bot launcher.
 
+# Redis
+
+Redis is required for memory, graph generation, and pub/sub. It also requires the following modules:
+
+ * RedisSearch
+ * RedisGraph
+ * RedisJSON
+
+Best to build from scratch. TODO: Instructions needed.
+
 # Configure a new bot
 
 Create a new config file, using `config/example.yaml` as a template.
