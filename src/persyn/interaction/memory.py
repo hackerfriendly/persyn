@@ -299,9 +299,21 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     @staticmethod
     def escape(qs):
+        ''' TODO: This is dumb and dangerous. Figure out proper query parameters. '''
         if qs is None:
             return qs
         return qs.replace('%', '?').replace('-', '?').replace(':', '?')
+
+    @staticmethod
+    def entity_id_to_timestamp(entity_id):
+        ''' Extract the timestamp from a ULID '''
+        if entity_id is None:
+            return entity_id
+
+        if isinstance(entity_id, str):
+            return ulid.ULID().from_str(entity_id).timestamp
+
+        return entity_id.timestamp
 
     def shortest_path(self, src, dest, src_type=None, dest_type=None):
         ''' TODO: REMOVE THIS STUB AND REPLACE WITH graph.py '''
@@ -324,7 +336,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         channel,
         speaker_name,
         msg,
-        convo_id=ulid.ULID(),
+        convo_id=str(ulid.ULID()),
         speaker_id=None,
         verb='dialog'
     ):
@@ -346,11 +358,19 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "speaker_name": speaker_name,
             "speaker_id": speaker_id,
             "msg": msg,
-            "verb": verb
+            "verb": verb,
+            "pk": str(ulid.ULID())
         }
 
+        key = f"{self.convo_prefix}:{convo_id}"
         for k, v in ret.items():
-            self.redis.hset(f"{self.convo_prefix}:{convo_id}", k, v)
+            try:
+                self.redis.hset(key, k, v)
+            except redis.exceptions.DataError as err:
+                log.error(f"{err}:", f"{key} | {k} | {v}")
+                raise(err)
+
+        log.debug(f"💾 Convo line saved for {key}:", ret['pk'])
 
         return DotWiz(ret)
 
