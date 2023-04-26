@@ -31,12 +31,12 @@ log = ColorLog()
 
 class Recall():
     ''' Total Recall: stm + ltm. '''
-    def __init__(self, persyn_config, version=None, conversation_interval=None):
+    def __init__(self, persyn_config, conversation_interval=None):
         self.bot_name = persyn_config.id.name
         self.bot_id = uuid.UUID(persyn_config.id.guid)
 
         self.stm = ShortTermMemory(persyn_config, conversation_interval)
-        self.ltm = LongTermMemory(persyn_config, version)
+        self.ltm = LongTermMemory(persyn_config)
 
     def save(self, service, channel, msg, speaker_name, speaker_id, verb=None, convo_id=None):
         '''
@@ -273,7 +273,7 @@ class ShortTermMemory():
 # LTM object
 class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
-    def __init__(self, persyn_config, version=None):
+    def __init__(self, persyn_config):
         self.relationships = Relationships(persyn_config)
         self.persyn_config = persyn_config
         self.bot_name = persyn_config.id.name

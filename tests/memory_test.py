@@ -21,12 +21,7 @@ from src.persyn.utils.config import load_config
 
 persyn_config = load_config()
 
-prefix = f"{persyn_config.id.name.lower()}-test"
-
-# Dynamic test index names
-now = dt.datetime.now().isoformat().replace(':','.').lower()
-
-ltm = LongTermMemory(persyn_config, version=now)
+ltm = LongTermMemory(persyn_config)
 
 def test_stm():
     ''' Exercise the short term memory '''
@@ -265,7 +260,7 @@ def test_lookup_summaries():
 def test_recall():
     ''' Use stm + ltm together to autogenerate summaries '''
 
-    recall = Recall(persyn_config, version=now, conversation_interval=3)
+    recall = Recall(persyn_config, conversation_interval=3)
 
     # Must match test_save_summaries()
     service = "my_service"
@@ -306,6 +301,7 @@ def test_recall():
     # summarize
     assert recall.summary(service, channel, "this_is_another_summary")
 
+    print("SLEEPING FOR 4")
     # time passes...
     sleep(4)
 
@@ -393,9 +389,15 @@ def test_kg():
     with pytest.raises(RuntimeError):
         assert ltm.find_node(name='This', node_type='invalid')
 
-def test_cleanup():
-    ''' Delete indices and graph nodes '''
-    for i in ltm.index.items():
-        ltm.es.options(ignore_status=[400, 404]).indices.delete(index=i[1])
+def clear_ns(ns, chunk_size=5000):
+    ''' Clear a namespace '''
+    cursor = '0'
+    ns_keys = ns + '*'
+    while cursor != 0:
+        cursor, keys = ltm.redis.scan(cursor=cursor, match=ns_keys, count=chunk_size)
+        if keys:
+            ltm.redis.delete(*keys)
 
-    ltm.delete_all_nodes(confirm=True)
+def test_cleanup():
+    ''' Delete everything with the test bot_id '''
+    clear_ns(f'persyn:{persyn_config.id.guid}:')
