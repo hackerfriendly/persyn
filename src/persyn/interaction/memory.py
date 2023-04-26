@@ -59,10 +59,10 @@ class Recall():
             self.ltm.save_convo(
                 service=service,
                 channel=channel,
-                speaker_name=speaker_name,
-                msg=msg,
                 convo_id=convo_id,
+                msg=msg,
                 speaker_id=speaker_id,
+                speaker_name=speaker_name,
                 verb=verb
             )
         )
@@ -332,7 +332,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         else:
             return get_cur_ts()
 
-
     def save_convo(
         self,
         service,
@@ -446,74 +445,9 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         search = self.escape(search)
 
         if search is None:
-            # return self.redis.find((Summary.service == service) & (Summary.channel == channel)).all(size)
             return self.redis.ft(self.summary_prefix).search(Query(f"@service:'{service}' @channel:'{channel}'").paging(0, size)).docs
 
         return self.redis.ft(self.summary_prefix).search(Query(f"@service:'{service}' @channel:'{channel}' @summary:'{search}'").paging(0, size)).docs
-
-    def lookup_relationships(self, service, channel, search=None, size=3):
-        '''
-        Return a list of convo graphs matching the search term for this channel.
-        '''
-        return []
-        # # TODO: match speaker id HERE when cross-channel entity merging is working
-        # query = {
-        #     "bool": {
-        #         "should": [
-        #             {
-        #                 "bool": {
-        #                     "must": [
-        #                         {"match": {"service.keyword": "import_service"}},
-        #                     ]
-        #                 }
-        #             },
-        #             {
-        #                 "bool": {
-        #                     "must": [
-        #                         {"match": {"service.keyword": service}},
-        #                         {"match": {"channel.keyword": channel}}
-        #                     ],
-        #                 }
-        #             }
-        #         ],
-        #     }
-        # }
-
-        # if search:
-        #     for i in range(len(query['bool']['should'])):
-        #         query['bool']['should'][i]['bool']['must'].append({"match": {"convo": {"query": search}}})
-
-        # history = self.es.search( # pylint: disable=unexpected-keyword-arg
-        #     index=self.index['relationship'],
-        #     query=query,
-        #     size=size
-        # )['hits']['hits']
-
-        # ret = []
-        # for hit in history[::-1]:
-        #     ret.append(hit)
-
-        # log.debug(f"lookup_relationships(): {ret}")
-        # return ret
-
-    def save_relationship_graph(self, service, channel, convo_id, text, include_archetypes=True):
-        ''' Save a relationship graph '''
-        return True
-        # doc = {
-        #     '@timestamp': get_cur_ts(),
-        #     'service': service,
-        #     'channel': channel,
-        #     'convo_id': convo_id,
-        #     'graph': self.relationships.graph_to_json(
-        #         self.relationships.get_relationship_graph(text, include_archetypes=include_archetypes)
-        #     ),
-        #     'convo': text,
-        #     'refresh': False
-        # }
-        # rep = self.save_relationship(**doc)
-        # if rep['result'] != 'created':
-        #     log.critical("📉 Could not save relationship:", rep)
-        # return rep['result']
 
     @staticmethod
     def entity_key(service, channel, name):
@@ -609,89 +543,23 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         # return ret
 
-    def save_relationship(self, service, channel, refresh=True, **kwargs):
-        '''
-        Save a relationship to Elasticearch.
-        '''
-        return []
-
-        # if 'source_id' in kwargs and not all(['rel' in kwargs, 'target_id' in kwargs]):
-        #     log.critical('👩‍👧‍👦 source_id requires rel and target_id')
-        #     return None
-
-        # if 'convo_id' in kwargs and 'graph' not in kwargs:
-        #     log.critical('👩‍👧‍👦 convo_id requires graph')
-        #     return None
-
-        # cur_ts = get_cur_ts()
-        # doc = {
-        #     "@timestamp": cur_ts,
-        #     "service": service,
-        #     "channel": channel
-        # }
-
-        # for term, val in kwargs.items():
-        #     doc[term] = val
-
-        # ret = self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-        #     index=self.index['relationship'],
-        #     document=doc,
-        #     refresh='true' if refresh else 'false'
-        # )
-        # return ret
-
-    def lookup_relationship(self, service, channel, size=10, **kwargs):
-        ''' Look up a relationship in Elasticsearch. '''
-        ret = []
-
-        return ret
-
-        # query = {
-        #     "bool": {
-        #         "must": [
-        #             {"match": {"service.keyword": service}},
-        #             {"match": {"channel.keyword": channel}}
-        #         ]
-        #     }
-        # }
-
-        # for term, val in kwargs.items():
-        #     query['bool']['must'].append({"match": {f'{term}.keyword': val}})
-
-        # log.debug(f"👨‍👩‍👧 query: {query}")
-
-        # ret = self.es.search( # pylint: disable=unexpected-keyword-arg
-        #     index=self.index['relationship'],
-        #     query=query,
-        #     sort=[{"@timestamp":{"order":"desc"}}],
-        #     size=size
-        # )['hits']['hits']
-
-        # log.debug(f"👨‍👩‍👧 return: {ret}")
-        # return ret
-
     def find_related_convos(self, service, channel, convo, size=1, edge_bias=0.5):
         '''
         Find conversations related to convo using ES score and graph analysis.
 
         Returns a ranked list of graph hits.
         '''
-        if not convo:
-            return []
+        return []
 
-        convo_text = ' '.join(convo)
+        # TODO: Implement vector similarity search HERE
 
-        # No relationships? Nothing to match.
-        hits = self.lookup_relationships(service, channel, convo_text, size)
-        if not hits:
-            log.info("👨‍👩‍👧‍👦 find_related_convos():", "No hits, nothing to match.")
-            return []
+        # convo_text = ' '.join(convo)
 
-        G = self.relationships.get_relationship_graph(convo_text)
+        # G = self.relationships.get_relationship_graph(convo_text)
 
-        ranked = self.relationships.ranked_matches(G, hits, edge_bias=edge_bias)
-        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
-        return ranked
+        # ranked = self.relationships.ranked_matches(G, hits, edge_bias=edge_bias)
+        # log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
+        # return ranked
 
     def add_goal(self, service, channel, goal, refresh=True):
         '''

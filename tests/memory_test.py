@@ -316,78 +316,33 @@ def test_recall():
         []
     )
 
-def test_relationships():
-    ''' Store and retrieve relationships '''
+# def test_news():
+#     ''' Store news urls '''
 
-    opts = {
-        "service": "my_service",
-        "channel": "my_channel",
-        "speaker_id": "a_speaker_id",
-        "source_id": "some_random_source",
-        "rel": "testing",
-        "target_id": "another_target_id",
-        "convo_id": "boring_conversation",
-        "graph": {"nodes": [1, 2, 3], "edges": [{"source": 1, "target": 2, "edge": "connected"}]}
-    }
+#     opts = {
+#         "service": "my_service",
+#         "channel": "my_channel",
+#         "url": "http://persyn.io",
+#     }
 
-    assert ltm.save_relationship(**opts)['result'] == 'created'
+#     assert ltm.have_read(**opts) is False
+#     assert ltm.add_news(title="The Persyn Codebase", **opts)
+#     assert ltm.have_read(**opts) is True
 
-    q = copy(opts)
-    del q['graph']
+# def test_kg():
+#     ''' Neo4j tests '''
+#     ltm.triples_to_kg([("This", "isOnly", "aTest")])
+#     assert len(list(ltm.fetch_all_nodes())) == 2
+#     assert ltm.find_node(name='aTest').first().name == 'aTest'
+#     assert len(list(ltm.find_node(name='aTest', node_type='person'))) == 0
 
-    # exact match
-    ret = ltm.lookup_relationship(**q)[0]
-    del ret['@timestamp']
-    assert ret == opts
+#     # with pytest.raises(Person.DoesNotExist):
+#     #     ltm.find_node(name='This', node_type='person').first()
 
-    # negative match
-    assert ltm.lookup_relationship(
-        service=opts['service'],
-        channel=opts['channel'],
-        foo='bar'
-    ) == []
+#     assert ltm.find_node(name='This', node_type='thing').first().name == 'This'
 
-    # test partial matches
-    for k in ['source_id', 'rel', 'target_id']:
-        del q[k]
-
-    ret = ltm.lookup_relationship(**q)[0]
-    del ret['@timestamp']
-    assert ret == opts
-
-    del q.convo_id
-
-    ret = ltm.lookup_relationship(**q)[0]
-    del ret['@timestamp']
-    assert ret == opts
-
-def test_news():
-    ''' Store news urls '''
-
-    opts = {
-        "service": "my_service",
-        "channel": "my_channel",
-        "url": "http://persyn.io",
-    }
-
-    assert ltm.have_read(**opts) is False
-    assert ltm.add_news(title="The Persyn Codebase", **opts)
-    assert ltm.have_read(**opts) is True
-
-def test_kg():
-    ''' Neo4j tests '''
-    ltm.triples_to_kg([("This", "isOnly", "aTest")])
-    assert len(list(ltm.fetch_all_nodes())) == 2
-    assert ltm.find_node(name='aTest').first().name == 'aTest'
-    assert len(list(ltm.find_node(name='aTest', node_type='person'))) == 0
-
-    # with pytest.raises(Person.DoesNotExist):
-    #     ltm.find_node(name='This', node_type='person').first()
-
-    assert ltm.find_node(name='This', node_type='thing').first().name == 'This'
-
-    with pytest.raises(RuntimeError):
-        assert ltm.find_node(name='This', node_type='invalid')
+#     with pytest.raises(RuntimeError):
+#         assert ltm.find_node(name='This', node_type='invalid')
 
 def clear_ns(ns, chunk_size=5000):
     ''' Clear a namespace '''

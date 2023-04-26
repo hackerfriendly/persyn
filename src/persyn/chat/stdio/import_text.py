@@ -32,13 +32,7 @@ def save_imported_convo(service, channel, convo_id, text, author, summarize=Fals
         interact.summarize_convo(service, channel, save=True, dialog_only=False)
 
     else:
-        interact.recall.ltm.save_relationship_graph(
-            service=service,
-            channel=channel,
-            convo_id=convo_id,
-            text=text,
-            include_archetypes=True
-        )
+        raise NotImplementedError('Not implemented yet.')
 
 def main():
     ''' Main event '''
