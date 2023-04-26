@@ -17,6 +17,9 @@ import coreferee
 
 from dotwiz import DotWiz # pylint: disable=no-member
 
+class PersynConfig(DotWiz):
+    ...
+
 def download_models(persyn_config):
     ''' Download any required ML models '''
     try:
@@ -121,7 +124,7 @@ def load_config(cfg=None):
 
 
     # Check for required models
-    persyn_config = DotWiz(config)
+    persyn_config = PersynConfig(config)
     download_models(persyn_config)
 
     return persyn_config
