@@ -287,8 +287,8 @@ def test_recall():
     convo = recall.convo(service, channel)
 
     assert s == ["my_nice_summary"]
-    assert c[0]['speaker'] == "speaker_name_1"
-    assert c[0]['msg'] == "message_another"
+    assert c[0].speaker_name == "speaker_name_1"
+    assert c[0].msg == "message_another"
     assert convo == ["speaker_name_1: message_another"]
 
     # same convo
@@ -299,8 +299,8 @@ def test_recall():
     c = recall.stm.fetch(service, channel)
     convo = recall.convo(service, channel)
     assert s == ["my_nice_summary"]
-    assert (c[0]['speaker'], c[0]['msg']) == ("speaker_name_1", "message_another")
-    assert (c[1]['speaker'], c[1]['msg']) == ("speaker_name_2", "message_yet_another")
+    assert (c[0].speaker_name, c[0].msg) == ("speaker_name_1", "message_another")
+    assert (c[1].speaker_name, c[1].msg) == ("speaker_name_2", "message_yet_another")
     assert convo == ["speaker_name_1: message_another", "speaker_name_2: message_yet_another"]
 
     # summarize

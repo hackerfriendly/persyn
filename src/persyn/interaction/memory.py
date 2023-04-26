@@ -50,6 +50,9 @@ class Recall():
         if convo_id is None:
             convo_id = str(ulid.ULID())
 
+        if verb is None:
+            verb = 'dialog'
+
         return self.stm.append(
             service,
             channel,
