@@ -336,7 +336,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         channel,
         speaker_name,
         msg,
-        convo_id=str(ulid.ULID()),
+        convo_id=None,
         speaker_id=None,
         verb='dialog'
     ):
@@ -348,8 +348,13 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             # speaker_id = self.get_speaker_id(service, channel, speaker)
             speaker_id = "unknown speaker"
 
+        if convo_id is None:
+            convo_id = str(ulid.ULID())
+
         if service.startswith('http'):
-            service = urlparse(service).hostname
+            service = self.escape(urlparse(service).hostname)
+
+        pk = str(ulid.ULID())
 
         ret = {
             "service": service,
@@ -359,10 +364,10 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "speaker_id": speaker_id,
             "msg": msg,
             "verb": verb,
-            "pk": str(ulid.ULID())
+            "pk": pk
         }
 
-        key = f"{self.convo_prefix}:{convo_id}"
+        key = f"{self.convo_prefix}:{convo_id}:{pk}"
         for k, v in ret.items():
             try:
                 self.redis.hset(key, k, v)
@@ -392,6 +397,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "keywords": ','.join(keywords)
         }
 
+        # Don't namespace on pk like we do for convo.
+        # This will overwrite the conversation summary each time a new one is generated.
         for k, v in ret.items():
             self.redis.hset(f"{self.summary_prefix}:{convo_id}", k, v)
 
