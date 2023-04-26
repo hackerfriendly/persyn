@@ -85,13 +85,6 @@ class Interact():
         if not convo_id:
             return ""
 
-        log.warning("∑ saving relationships")
-        self.recall.ltm.save_relationship_graph(
-            service, channel,
-            convo_id,
-            ' '.join(self.recall.convo(service, channel))
-        )
-
         if dialog_only:
             text = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
         else:
