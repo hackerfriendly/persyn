@@ -1,13 +1,7 @@
 ''' memory.py: long and short term memory by Elasticsearch. '''
 # pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
-import re
 import uuid
-import logging
-from datetime import datetime
-import os
 
-from abc import ABC
-from typing import Optional
 from urllib.parse import urlparse
 
 import ulid
@@ -19,6 +13,9 @@ from dotwiz import DotWiz  # pylint: disable=no-member
 
 # Time
 from persyn.interaction.chrono import elapsed, get_cur_ts
+
+# Embeddings
+from persyn.interaction.completion import LanguageModel
 
 # Relationship graphs
 from persyn.interaction.relationships import Relationships
@@ -42,18 +39,18 @@ class Recall():
         '''
         Save to stm and ltm. Clears stm if it expired. Returns the current convo_id.
 
-        Specify a different convo_id to override the value in ltm.
+        Specify a different convo_id to override the value in stm.
         '''
         if self.stm.expired(service, channel):
             self.stm.clear(service, channel)
 
         if convo_id is None:
-            convo_id = str(ulid.ULID())
+            convo_id = self.stm.convo_id(service, channel)
 
         if verb is None:
             verb = 'dialog'
 
-        return self.stm.append(
+        self.stm.append(
             service,
             channel,
             self.ltm.save_convo(
@@ -66,6 +63,7 @@ class Recall():
                 verb=verb
             )
         )
+        return convo_id
 
     def summary(self, service, channel, summary, keywords=None):
         ''' Save a summary. Clears stm. '''
@@ -182,6 +180,7 @@ class ShortTermMemory():
         self.convo[service][channel]['id'] = str(ulid.ULID())
         self.convo[service][channel]['opinions'] = []
         log.warning("⚠️  New convo:", self.convo[service][channel]['id'])
+        return self.convo[service][channel]
 
     def exists(self, service, channel):
         ''' True if a channel already exists, else False '''
@@ -194,7 +193,7 @@ class ShortTermMemory():
                 self.convo[service] = {}
             if channel not in self.convo[service]:
                 self.convo[service][channel] = {}
-        self._new(service, channel)
+        return self._new(service, channel)
 
     def clear(self, service, channel):
         ''' Clear a channel. '''
@@ -254,9 +253,9 @@ class ShortTermMemory():
         return self.convo[service][channel]['opinions']
 
     def convo_id(self, service, channel):
-        ''' Return the convo id, if any '''
+        ''' Return the current convo id. Make a new convo if needed. '''
         if not self.exists(service, channel):
-            return None
+            return self.create(service, channel)['id']
         return self.convo[service][channel]['id']
 
     def last(self, service, channel):
@@ -275,6 +274,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     ''' Wrapper class for Elasticsearch conversational memory. '''
     def __init__(self, persyn_config):
         self.relationships = Relationships(persyn_config)
+        self.completion = LanguageModel(persyn_config)
         self.persyn_config = persyn_config
         self.bot_name = persyn_config.id.name
         self.bot_id = uuid.UUID(persyn_config.id.guid)
@@ -287,8 +287,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         # I don't see a way to detect the existence of an index, so just try/except.
         for cmd in [
-            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT speaker_name TEXT speaker_id TEXT msg TEXT verb TEXT",
-            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT summary TEXT keywords TAG"
+            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT speaker_name TEXT speaker_id TEXT msg TEXT verb TEXT emb VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT summary TEXT keywords TAG emb VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
         ]:
             try:
                 self.redis.execute_command(cmd)
@@ -366,7 +366,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "speaker_id": speaker_id,
             "msg": msg,
             "verb": verb,
-            "pk": pk
+            "pk": pk,
+            "emb": self.completion.model.get_embedding(msg)
         }
 
         key = f"{self.convo_prefix}:{convo_id}:{pk}"
@@ -396,7 +397,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             "channel": channel,
             "convo_id": convo_id,
             "summary": summary,
-            "keywords": ','.join(keywords)
+            "keywords": ','.join(keywords),
+            "emb": self.completion.model.get_embedding(summary)
         }
 
         # Don't namespace on pk like we do for convo.
@@ -467,27 +469,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     def name_to_entity_id(self, service, channel, name):
         ''' One distinct short UUID per bot_id + service + channel + name '''
         return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
-
-    def lookup_speaker_name(self, speaker_name, size=1000):
-        return None
-        # '''
-        # Look up a speaker by name in the Elasticsearch entities index.
-        # It returns all matching entities regardless of service/channel.
-        # '''
-        # hits = self.es.search(  # pylint: disable=unexpected-keyword-arg
-        #     index=self.index['entity'],
-        #     query={
-        #         "term": {"speaker_name.keyword": speaker_name}
-        #     },
-        #     size=size
-        # )['hits']['hits']
-
-        # ret = []
-
-        # for hit in hits:
-        #     ret.append(hit['_source'])
-
-        # return ret
 
     def save_opinion(self, service, channel, topic, opinion, speaker_id=None, refresh=True):
         '''

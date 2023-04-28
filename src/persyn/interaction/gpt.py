@@ -6,9 +6,16 @@ import re
 from collections import Counter
 from time import sleep
 
-import openai
 import spacy
 import tiktoken
+
+import openai
+from openai.embeddings_utils import (
+    get_embedding as oai_get_embedding,
+    cosine_similarity as oai_cosine_similarity
+)
+
+import numpy as np
 
 from ftfy import fix_text
 
@@ -103,6 +110,14 @@ class GPT():
 
         if lines:
             yield ' '.join(lines)
+
+    def get_embedding(self, text, engine='text-embedding-ada-002'):
+        ''' Return the embedding for text '''
+        return  np.array(oai_get_embedding(text, engine=engine), dtype=np.float32).tobytes()
+
+    def cosine_similarity(self, vec1, vec2):
+        ''' Cosine similarity for two embeddings '''
+        return oai_cosine_similarity(vec1, vec2)
 
     def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5, retry_on_error=True, model=None):
         '''
