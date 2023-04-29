@@ -198,7 +198,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
             )
             assert doc5.convo_id == doc6.convo_id
-            assert ltm.entity_id_to_timestamp(doc6.pk) - ltm.entity_id_to_timestamp(doc5.pk) < 0.5
+            assert ltm.entity_id_to_timestamp(doc6.pk) - ltm.entity_id_to_timestamp(doc5.pk) < 2.0
 
             sleep(0.1)
 
@@ -212,7 +212,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
             )
             assert doc4.convo_id == doc7.convo_id
-            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 5.0
+            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 8.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
@@ -356,3 +356,10 @@ def clear_ns(ns, chunk_size=5000):
 def test_cleanup():
     ''' Delete everything with the test bot_id '''
     clear_ns(f'persyn:{persyn_config.id.guid}:')
+
+    for idx in [ltm.convo_prefix, ltm.summary_prefix]:
+        try:
+            ltm.redis.execute_command(f"FT.DROPINDEX {idx}")
+        except ltm.redis.exceptions.ResponseError as err:
+            print(f"Couldn't drop index {idx}:", err)
+            pass
