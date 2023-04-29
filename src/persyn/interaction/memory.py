@@ -287,8 +287,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         # I don't see a way to detect the existence of an index, so just try/except.
         for cmd in [
-            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT speaker_name TEXT speaker_id TEXT msg TEXT verb TEXT emb VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
-            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT summary TEXT keywords TAG emb VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT speaker_name TEXT speaker_id TEXT msg TEXT verb TEXT emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
         ]:
             try:
                 self.redis.execute_command(cmd)
@@ -299,13 +299,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                 else:
                     log.error(f"{err}:", cmd.split(' ')[1])
                 continue
-
-    @staticmethod
-    def escape(qs):
-        ''' TODO: This is dumb and dangerous. Figure out proper query parameters. '''
-        if qs is None:
-            return qs
-        return qs.replace('%', '?').replace('-', '?').replace(':', '?')
 
     @staticmethod
     def entity_id_to_timestamp(entity_id):
@@ -329,8 +322,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         msg = self.get_last_message(service, channel)
         if msg:
             return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
-        else:
-            return get_cur_ts()
+
+        return get_cur_ts()
 
     def save_convo(
         self,
@@ -354,7 +347,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             convo_id = str(ulid.ULID())
 
         if service.startswith('http'):
-            service = self.escape(urlparse(service).hostname)
+            service = urlparse(service).hostname
 
         pk = str(ulid.ULID())
 
@@ -376,7 +369,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                 self.redis.hset(key, k, v)
             except redis.exceptions.DataError as err:
                 log.error(f"{err}:", f"{key} | {k} | {v}")
-                raise(err)
+                raise err
 
         log.debug(f"💾 Convo line saved for {key}:", ret['pk'])
 
@@ -411,24 +404,26 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
-        service = self.escape(service)
-        channel = self.escape(channel)
 
+        query = Query("@service:$service @channel:$channel").dialect(2)
+        query_params = {"service": service, "channel": channel}
         try:
-            return self.redis.ft(self.convo_prefix).search(Query(f"@service:'{service}' @channel:'{channel}")).docs[-1]
+            return self.redis.ft(self.convo_prefix).search(query, query_params).docs[-1]
         except IndexError:
             return None
 
     def get_convo_by_id(self, convo_id):
         ''' Return all Convo objects matching convo_id in chronological order '''
-        convo_id = self.escape(convo_id)
-        return self.redis.ft(self.convo_prefix).search(Query(f'@convo_id:"{convo_id}"')).docs
+        query = Query("@convo_id:$convo_id").dialect(2)
+        query_params = {"convo_id": convo_id}
+        return self.redis.ft(self.convo_prefix).search(query, query_params).docs
 
     def get_summary_by_id(self, convo_id):
         ''' Return the last summary for this convo_id '''
-        convo_id = self.escape(convo_id)
+        query = Query("@convo_id:$convo_id").dialect(2)
+        query_params = {"convo_id": convo_id}
         try:
-            return self.redis.ft(self.summary_prefix).search(Query(f'@convo_id:"{convo_id}"')).docs[-1]
+            return self.redis.ft(self.summary_prefix).search(query, query_params).docs[-1]
         except IndexError:
             return None
 
@@ -442,14 +437,14 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if service.startswith('http'):
             service = urlparse(service).hostname
 
-        service = self.escape(service)
-        channel = self.escape(channel)
-        search = self.escape(search)
-
         if search is None:
-            return self.redis.ft(self.summary_prefix).search(Query(f"@service:'{service}' @channel:'{channel}'").paging(0, size)).docs
+            query = Query("@service:$service @channel:$channel").paging(0, size).dialect(2)
+            query_params = {"service": service, "channel": channel}
+            return self.redis.ft(self.summary_prefix).search(query, query_params).docs
 
-        return self.redis.ft(self.summary_prefix).search(Query(f"@service:'{service}' @channel:'{channel}' @summary:'{search}'").paging(0, size)).docs
+        query = Query("@service:$service @channel:$channel @summary:$summary").paging(0, size).dialect(2)
+        query_params = {"service": service, "channel": channel, "summary": search}
+        return self.redis.ft(self.summary_prefix).search(query, query_params).docs
 
     @staticmethod
     def entity_key(service, channel, name):
