@@ -65,14 +65,14 @@ services = {
     'mastodon': mastodon_msg
 }
 
-def get_service(svc):
+def get_service(service):
     ''' Find the correct service for the dispatcher '''
-    if 'slack.com' in svc:
+    if 'slack.com' in service:
         return 'slack'
-    if svc in services:
-        return svc
+    if service in services:
+        return service
 
-    log.critical(f"Unknown service: {svc}")
+    log.critical(f"Unknown service: {service}")
     return None
 
 async def say_something(event):
