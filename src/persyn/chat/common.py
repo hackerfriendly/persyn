@@ -207,12 +207,15 @@ class Chat():
             "height": height,
             "guidance": guidance
         }
-        reply = requests.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
-        if reply.ok:
-            log.warning(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code}")
-        else:
-            log.error(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
-        return reply.ok
+        try:
+            reply = requests.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
+            if reply.ok:
+                log.warning(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code}")
+            else:
+                log.error(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
+            return reply.ok
+        except requests.exceptions.ConnectionError as err:
+            log.error(f"{self.dreams_url}/generate/", err)
 
     def get_nouns(self, text):
         ''' Ask interact for all the nouns in text, excluding the speakers. '''
