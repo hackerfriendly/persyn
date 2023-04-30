@@ -359,7 +359,7 @@ def test_cleanup():
 
     for idx in [ltm.convo_prefix, ltm.summary_prefix]:
         try:
-            ltm.redis.execute_command(f"FT.DROPINDEX {idx}")
+            ltm.redis.ft(idx).dropindex()
         except ltm.redis.exceptions.ResponseError as err:
             print(f"Couldn't drop index {idx}:", err)
             pass
