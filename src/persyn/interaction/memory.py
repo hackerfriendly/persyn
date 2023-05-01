@@ -2,8 +2,6 @@
 # pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
 import uuid
 
-from urllib.parse import urlparse
-
 import ulid
 
 import redis
@@ -346,9 +344,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         if convo_id is None:
             convo_id = str(ulid.ULID())
 
-        if service.startswith('http'):
-            service = urlparse(service).hostname
-
         pk = str(ulid.ULID())
 
         ret = {
@@ -379,9 +374,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         '''
         Save a conversation summary to memory. Returns the Summary object.
         '''
-        if service.startswith('http'):
-            service = urlparse(service).hostname
-
         if keywords is None:
             keywords = []
 
@@ -404,11 +396,29 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
-
-        query = Query("(@service:{$service}) (@channel:{$channel})").dialect(2)
+        query = (
+            Query(
+                """(@service:{$service}) (@channel:{$channel}) (@verb:{dialog})"""
+            )
+            .return_fields(
+                "service",
+                "channel",
+                "convo_id",
+                "speaker_name",
+                "msg",
+                "verb",
+                "speaker_id",
+                "pk",
+                "id",
+            )
+            .sort_by("convo_id", asc=False)
+            .paging(0, 1)
+            .dialect(2)
+        )
         query_params = {"service": service, "channel": channel}
         try:
-            return self.redis.ft(self.convo_prefix).search(query, query_params).docs[-1]
+
+            return self.redis.ft(self.convo_prefix).search(query, query_params).docs[0]
         except IndexError:
             return None
 
@@ -433,9 +443,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         Return a list of summaries matching the search term for this channel.
         '''
         log.warning(f"lookup_summaries(): {service} {channel} {search} {size}")
-
-        if service.startswith('http'):
-            service = urlparse(service).hostname
 
         if search is None:
             query = Query("(@service:{$service}) (@channel:{$channel})").paging(0, size).dialect(2)
@@ -520,23 +527,46 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         # return ret
 
-    def find_related_convos(self, service, channel, convo, size=1, edge_bias=0.5):
+    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0):
         '''
-        Find conversations related to convo using ES score and graph analysis.
-
-        Returns a ranked list of graph hits.
+        Find conversations related to convo using vector similarity
         '''
-        return []
+        emb = self.completion.model.get_embedding(' '.join(convo))
 
-        # TODO: Implement vector similarity search HERE
+        if current_convo_id is None:
+            query = (
+                Query(
+                    "((@service:{$service}) (@channel:{$channel}) (@verb:{dialog}))=>[KNN " + str(size) + " @emb $emb as score]"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb}
 
-        # convo_text = ' '.join(convo)
+        else:
+            # exclude the current convo_id
+            query = (
+                Query(
+                    "((@service:{$service}) (@channel:{$channel}) (@verb:{dialog}) -(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb, "convo_id": current_convo_id}
 
-        # G = self.relationships.get_relationship_graph(convo_text)
+        reply = self.redis.ft(self.convo_prefix).search(query, query_params)
+        ret = []
+        for doc in reply.docs:
+            # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
+            if float(doc.score) < threshold:
+                ret.append(doc)
 
-        # ranked = self.relationships.ranked_matches(G, hits, edge_bias=edge_bias)
-        # log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{len(ranked)} matches")
-        # return ranked
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}")
+        return ret
 
     def add_goal(self, service, channel, goal, refresh=True):
         '''

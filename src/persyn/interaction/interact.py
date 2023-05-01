@@ -96,6 +96,9 @@ class Interact():
         log.warning("∑ summarizing convo")
 
         convo_text = '\n'.join(text)
+
+        log.info(convo_text)
+
         summary = self.completion.get_summary(
             text=convo_text,
             summarizer="To briefly summarize this conversation,",
@@ -184,19 +187,22 @@ class Interact():
         if not convo:
             return visited
 
-        # Use the entire existing convo, and just the last line on imported text
+
+        # TODO: Decide how much convo to use?
         ranked = self.recall.ltm.find_related_convos(
             service, channel,
-            convo=convo,
-            size=3
-        ) + self.recall.ltm.find_related_convos(
-            "import_service", "no_channel",
-            convo=[convo[-1]],
-            size=1
+            convo='\n'.join(convo[:5]),
+            size=3,
+            current_convo_id=self.recall.stm.convo_id(service, channel)
         )
+        # + self.recall.ltm.find_related_convos(
+        #     "import_service", "no_channel",
+        #     convo=[convo[-1]],
+        #     size=1
+        # )
 
         for hit in ranked:
-            if hit.pk not in visited:
+            if hit.convo_id not in visited:
                 if hit.service == 'import_service':
                     log.info("📚 Hit found from import:", hit.channel)
                 the_summary = self.recall.ltm.get_summary_by_id(hit.convo_id)
@@ -205,13 +211,13 @@ class Interact():
                         service, channel,
                         # This is too expensive. Retrieve old summaries instead.
                         # self.completion.get_summary(hit['hit']['_source']['convo']),
-                        the_summary[0].summary,
+                        the_summary.summary,
                         verb="remembers" # that {ago(hit['@timestamp'])} ago"
                     )
-                    visited.append(hit.pk)
+                    visited.append(hit.convo_id)
                     log.info(
-                        f"🧵 Related relationship {hit.pk} ({hit['score']}):",
-                        f"{hit.convo[:100]}..."
+                        f"🧵 Related convo {hit.convo_id} ({hit.score}):",
+                        f"{the_summary.summary[100:]}"
                     )
 
         # Look for other summaries that match detected entities
