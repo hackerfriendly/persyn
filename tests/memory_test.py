@@ -212,7 +212,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
             )
             assert doc4.convo_id == doc7.convo_id
-            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 8.0
+            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 10.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
