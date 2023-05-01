@@ -2,6 +2,7 @@
 # pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
 import uuid
 
+from base64 import b64encode, b64decode
 from urllib.parse import urlparse
 
 import ulid
@@ -287,8 +288,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         # I don't see a way to detect the existence of an index, so just try/except.
         for cmd in [
-            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT speaker_name TEXT speaker_id TEXT msg TEXT verb TEXT emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
-            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TEXT channel TEXT convo_id TEXT summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG convo_id TAG speaker_name TEXT speaker_id TEXT msg TEXT verb TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TAG channel TAG convo_id TAG summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
         ]:
             try:
                 self.redis.execute_command(cmd)
@@ -405,7 +406,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
     def get_last_message(self, service, channel):
         ''' Return the last message seen on this channel '''
 
-        query = Query("@service:$service @channel:$channel").dialect(2)
+        query = Query("(@service:{$service}) (@channel:{$channel})").dialect(2)
         query_params = {"service": service, "channel": channel}
         try:
             return self.redis.ft(self.convo_prefix).search(query, query_params).docs[-1]
@@ -414,13 +415,13 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     def get_convo_by_id(self, convo_id):
         ''' Return all Convo objects matching convo_id in chronological order '''
-        query = Query("@convo_id:$convo_id").dialect(2)
+        query = Query("(@convo_id:{$convo_id})").dialect(2)
         query_params = {"convo_id": convo_id}
         return self.redis.ft(self.convo_prefix).search(query, query_params).docs
 
     def get_summary_by_id(self, convo_id):
         ''' Return the last summary for this convo_id '''
-        query = Query("@convo_id:$convo_id").dialect(2)
+        query = Query("(@convo_id:{$convo_id})").dialect(2)
         query_params = {"convo_id": convo_id}
         try:
             return self.redis.ft(self.summary_prefix).search(query, query_params).docs[-1]
@@ -438,11 +439,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             service = urlparse(service).hostname
 
         if search is None:
-            query = Query("@service:$service @channel:$channel").paging(0, size).dialect(2)
+            query = Query("(@service:{$service}) (@channel:{$channel})").paging(0, size).dialect(2)
             query_params = {"service": service, "channel": channel}
             return self.redis.ft(self.summary_prefix).search(query, query_params).docs
 
-        query = Query("@service:$service @channel:$channel @summary:$summary").paging(0, size).dialect(2)
+        # summary is a text field, so tokenization and stemming apply.
+        query = Query('(@service:{$service}) (@channel:{$channel}) (@summary:$summary)').paging(0, size).dialect(2)
         query_params = {"service": service, "channel": channel, "summary": search}
         return self.redis.ft(self.summary_prefix).search(query, query_params).docs
 
