@@ -2,7 +2,6 @@
 # pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
 import uuid
 
-from base64 import b64encode, b64decode
 from urllib.parse import urlparse
 
 import ulid
