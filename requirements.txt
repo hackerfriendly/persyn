@@ -21,7 +21,6 @@ nlpcloud
 nltk
 openai>=0.27.2
 pyyaml
-redis-om
 redis[hiredis]>=4.5.0
 requests
 scikit-learn==1.1.3
