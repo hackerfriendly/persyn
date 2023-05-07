@@ -502,7 +502,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
     def lookup_opinions(self, service, channel, topic, size=10):
         ''' Look up an opinion in Redis. '''
-        log.warning(f"lookup_opinions(): {service} {channel} {topic} {size}")
+        log.debug(f"lookup_opinions(): {service} {channel} {topic} {size}")
 
         query = (
             Query(
