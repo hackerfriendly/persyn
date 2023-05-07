@@ -284,11 +284,13 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         self.convo_prefix = f'persyn:{self.bot_id}:convo'
         self.summary_prefix = f'persyn:{self.bot_id}:summary'
         self.opinion_prefix = f'persyn:{self.bot_id}:opinion'
+        self.news_prefix = f'persyn:{self.bot_id}:news'
 
         for cmd in [
             f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG convo_id TAG speaker_name TEXT speaker_id TEXT msg TEXT verb TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TAG channel TAG convo_id TAG summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.opinion_prefix} on HASH PREFIX 1 {self.opinion_prefix}: SCHEMA service TAG channel TAG opinion TEXT topic TAG convo_id TAG",
+            f"FT.CREATE {self.news_prefix} on HASH PREFIX 1 {self.news_prefix}: SCHEMA service TAG channel TAG url TAG title TEXT",
         ]:
             try:
                 self.redis.execute_command(cmd)
@@ -418,8 +420,8 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             .dialect(2)
         )
         query_params = {"service": service, "channel": channel}
-        try:
 
+        try:
             return self.redis.ft(self.convo_prefix).search(query, query_params).docs[0]
         except IndexError:
             return None
@@ -482,8 +484,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             log.warning("save_opinion(): no convo_id, skipping.")
             return
 
-        log.info(f"💾 Opinion of {topic}:", opinion)
-
         ret = {
             "service": service,
             "channel": channel,
@@ -498,7 +498,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         for k, v in ret.items():
             self.redis.hset(f"{self.opinion_prefix}:{convo_id}:{topic_id}", k, v)
 
-        log.debug(f"💾 Opinion of {topic}:", opinion)
+        log.debug(f"📌 Opinion of {topic}:", opinion)
 
     def lookup_opinions(self, service, channel, topic, size=10):
         ''' Look up an opinion in Redis. '''
@@ -633,52 +633,35 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             ret.append(goal.goal)
         return ret
 
-    def add_news(self, service, channel, url, title, refresh=True):
+    def add_news(self, service, channel, url, title):
         '''
-        Add a news url that we've read. Returns the doc _id.
+        Add a news url that we've read.
         '''
-        return None
-        # cur_ts = get_cur_ts()
-        # doc = {
-        #     "service": service,
-        #     "channel": channel,
-        #     "@timestamp": cur_ts,
-        #     "url": url,
-        #     "title": title
-        # }
-        # _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-        #     index=self.index['news'],
-        #     document=doc,
-        #     refresh='true' if refresh else 'false'
-        # )["_id"]
+        ret = {
+            "service": service,
+            "channel": channel,
+            "url": url,
+            "title": title,
+        }
 
-        # log.debug("🗞️ doc:", _id)
+        title_id = self.name_to_entity_id(service, channel, title)
+        for k, v in ret.items():
+            self.redis.hset(f"{self.news_prefix}:{title_id}", k, v)
 
-        # return _id
+        log.debug(f"📰 Read the news:", title)
+        return True
 
     def have_read(self, service, channel, url):
         '''
         Return True if we have read this article, otherwise False.
         '''
-        ret = []
-        return False
+        query = (
+            Query(
+                '(@service:{$service}) (@channel:{$channel}) (@url:{$url})'
+            )
+            .paging(0, 1)
+            .dialect(2)
+        )
 
-        # query = {
-        #     "bool": {
-        #         "must": [
-        #             {"match": {"service.keyword": service}},
-        #             {"match": {"channel.keyword": channel}},
-        #             {"match": {"url.keyword": url}}
-        #         ]
-        #     }
-        # }
-
-        # ret = bool(self.es.search(  # pylint: disable=unexpected-keyword-arg
-        #     index=self.index['news'],
-        #     query=query,
-        #     sort=[{"@timestamp": {"order": "desc"}}],
-        #     size=1
-        # )['hits']['hits'])
-
-        # log.debug(f"🗞️ {url}: {ret}")
-        # return ret
+        query_params = {"service": service, "channel": channel, "url": url}
+        return bool(self.redis.ft(self.news_prefix).search(query, query_params).total)

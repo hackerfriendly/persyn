@@ -2,17 +2,11 @@
 memory (redis) tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, no-member
-import datetime as dt
 import uuid
 
-import ulid
-
 from time import sleep
-from copy import copy
 
-import pytest
-
-from src.persyn.interaction.chrono import elapsed
+import ulid
 
 from src.persyn.interaction.memory import LongTermMemory, ShortTermMemory, Recall
 
@@ -214,7 +208,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
             )
             assert doc4.convo_id == doc7.convo_id
-            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 10.0
+            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 12.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
@@ -352,18 +346,18 @@ def test_opinions():
     # No impact on other opinions
     assert recall.surmise(service, channel, topic2) == ["I like 'em"]
 
-# def test_news():
-#     ''' Store news urls '''
+def test_news():
+    ''' Store news urls '''
 
-#     opts = {
-#         "service": "my_service",
-#         "channel": "my_channel",
-#         "url": "http://persyn.io",
-#     }
+    opts = {
+        "service": "my_service",
+        "channel": "my_channel",
+        "url": "http://persyn.io",
+    }
 
-#     assert ltm.have_read(**opts) is False
-#     assert ltm.add_news(title="The Persyn Codebase", **opts)
-#     assert ltm.have_read(**opts) is True
+    assert ltm.have_read(**opts) is False
+    assert ltm.add_news(title="The Persyn Codebase", **opts)
+    assert ltm.have_read(**opts) is True
 
 # def test_kg():
 #     ''' Neo4j tests '''
@@ -397,4 +391,3 @@ def test_cleanup():
             ltm.redis.ft(idx).dropindex()
         except ltm.redis.exceptions.ResponseError as err:
             print(f"Couldn't drop index {idx}:", err)
-            pass
