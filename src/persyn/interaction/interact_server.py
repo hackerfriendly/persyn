@@ -162,7 +162,6 @@ async def handle_opinion(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     topic: str = Query(..., min_length=1, max_length=16384),
-    speaker_id: Optional[str] = Query(None, min_length=1, max_length=36),
     size: Optional[int] = Query(10),
     summarize: Optional[bool] = Query(True),
     max_tokens: Optional[int] = Query(50)
@@ -170,7 +169,7 @@ async def handle_opinion(
     ''' Get our opinion about topic '''
 
     ret = await asyncio.gather(in_thread(
-        interact.opine, [service, channel, topic, speaker_id, size]
+        interact.surmise, [service, channel, topic, size]
     ))
 
     opinions = ret[0]

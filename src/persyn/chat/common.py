@@ -216,6 +216,7 @@ class Chat():
             return reply.ok
         except requests.exceptions.ConnectionError as err:
             log.error(f"{self.dreams_url}/generate/", err)
+            return False
 
     def get_nouns(self, text):
         ''' Ask interact for all the nouns in text, excluding the speakers. '''
@@ -277,7 +278,7 @@ class Chat():
     def get_opinions(self, channel, topic, condense=True):
         ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
         if not self.interact_url:
-            log.error("🧷 get_opinions() called with no URL defined, skipping.")
+            log.error("📌 get_opinions() called with no URL defined, skipping.")
             return []
 
         req = {
@@ -357,20 +358,20 @@ class Chat():
             return prompt
         return response.json()['parrot']
 
-    def judge(self, channel, topic):
-        ''' Form an opinion on topic '''
-        if not self.interact_url:
-            log.error("👨‍⚖️ judge() called with no URL defined, skipping.")
-            return None
+    # def judge(self, channel, topic):
+    #     ''' Form an opinion on topic '''
+    #     if not self.interact_url:
+    #         log.error("👨‍⚖️ judge() called with no URL defined, skipping.")
+    #         return None
 
-        try:
-            req = { "service": self.service, "channel": channel, "topic": topic }
-            response = requests.post(f"{self.interact_url}/judge/", params=req, timeout=20)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /judge/ to interact: {err}")
-            return ""
-        return response.json()['opinion']
+    #     try:
+    #         req = { "service": self.service, "channel": channel, "topic": topic }
+    #         response = requests.post(f"{self.interact_url}/judge/", params=req, timeout=20)
+    #         response.raise_for_status()
+    #     except requests.exceptions.RequestException as err:
+    #         log.critical(f"🤖 Could not post /judge/ to interact: {err}")
+    #         return ""
+    #     return response.json()['opinion']
 
     def get_caption(self, image_data):
         ''' Fetch the image caption using CLIP Interrogator '''

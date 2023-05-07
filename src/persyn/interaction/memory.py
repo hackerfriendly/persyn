@@ -105,15 +105,15 @@ class Recall():
         ''' Oh right. '''
         return self.ltm.lookup_summaries(service, channel, search, size)
 
-    def judge(self, service, channel, topic, opinion, speaker_id=None):
+    def judge(self, service, channel, topic, opinion, convo_id):
         ''' Judge not, lest ye be judged '''
         log.warning(f"👨‍⚖️ judging {topic}")
-        return self.ltm.save_opinion(service, channel, topic, opinion, speaker_id)
+        return self.ltm.save_opinion(service, channel, topic, opinion, convo_id)
 
-    def opine(self, service, channel, topic, speaker_id=None, size=10):
+    def surmise(self, service, channel, topic, size=10):
         ''' Everyone's got an opinion '''
-        log.warning(f"🧷 opinion on {topic}")
-        return self.ltm.lookup_opinion(topic, service, channel, speaker_id, size)
+        log.warning(f"📌 opinion on {topic}")
+        return self.ltm.lookup_opinions(service, channel, topic, size)
 
     def dialog(self, service, channel):
         ''' Return the dialog from stm (if any) '''
@@ -151,6 +151,7 @@ class Recall():
         convo = self.ltm.get_convo_by_id(convo_id)
         log.debug("📢", convo)
         for doc in convo[::-1]:
+            log.debug("📢", doc)
             if doc.verb == 'feels':
                 return doc.msg
 
@@ -282,11 +283,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
         self.convo_prefix = f'persyn:{self.bot_id}:convo'
         self.summary_prefix = f'persyn:{self.bot_id}:summary'
+        self.opinion_prefix = f'persyn:{self.bot_id}:opinion'
 
-        # I don't see a way to detect the existence of an index, so just try/except.
         for cmd in [
             f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG convo_id TAG speaker_name TEXT speaker_id TEXT msg TEXT verb TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TAG channel TAG convo_id TAG summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.opinion_prefix} on HASH PREFIX 1 {self.opinion_prefix}: SCHEMA service TAG channel TAG opinion TEXT topic TAG convo_id TAG",
         ]:
             try:
                 self.redis.execute_command(cmd)
@@ -437,7 +439,6 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         except IndexError:
             return None
 
-
     def lookup_summaries(self, service, channel, search=None, size=3):
         '''
         Return a list of summaries matching the search term for this channel.
@@ -473,59 +474,47 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         ''' One distinct short UUID per bot_id + service + channel + name '''
         return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
 
-    def save_opinion(self, service, channel, topic, opinion, speaker_id=None, refresh=True):
+    def save_opinion(self, service, channel, topic, opinion, convo_id):
         '''
-        Save an opinion to Elasticscarch.
+        Save an opinion to Redis.
         '''
-        return None
+        if convo_id is None:
+            log.warning("save_opinion(): no convo_id, skipping.")
+            return
 
-        # if not speaker_id:
-        #     speaker_id = self.bot_id
+        log.info(f"💾 Opinion of {topic}:", opinion)
 
-        # doc = {
-        #     "service": service,
-        #     "channel": channel,
-        #     "topic": topic.lower(),
-        #     "opinion": opinion,
-        #     "speaker_id": speaker_id,
-        #     "@timestamp": get_cur_ts()
-        # }
-        # self.es.index( # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-        #     index=self.index['opinion'],
-        #     document=doc,
-        #     refresh='true' if refresh else 'false'
-        # )
-        # # return something here?
+        ret = {
+            "service": service,
+            "channel": channel,
+            "topic": topic,
+            "opinion": opinion,
+            "convo_id": convo_id
+        }
 
-    def lookup_opinion(self, topic, service=None, channel=None, speaker_id=None, size=10):
-        ''' Look up an opinion in Elasticsearch. '''
-        return []
-        # query = {
-        #     "bool": {
-        #         "must": [
-        #             {"match": {"topic.keyword": topic.lower()}}
-        #         ]
-        #     }
-        # }
+        # One opinion per topic, for each service+channel+convo_id.
+        # Opinions accumulate over more conversations.
+        topic_id = self.name_to_entity_id(service, channel, topic)
+        for k, v in ret.items():
+            self.redis.hset(f"{self.opinion_prefix}:{convo_id}:{topic_id}", k, v)
 
-        # if service:
-        #     query["bool"]["must"].append({"match": {"service.keyword": service}})
+        log.debug(f"💾 Opinion of {topic}:", opinion)
 
-        # if channel:
-        #     query["bool"]["must"].append({"match": {"channel.keyword": channel}})
+    def lookup_opinions(self, service, channel, topic, size=10):
+        ''' Look up an opinion in Redis. '''
+        log.warning(f"lookup_opinions(): {service} {channel} {topic} {size}")
 
-        # if speaker_id:
-        #     query["bool"]["must"].append({"match": {"speaker_id.keyword": speaker_id}})
+        query = (
+            Query(
+                '(@service:{$service}) (@channel:{$channel}) (@topic:{$topic})'
+            )
+            .sort_by("convo_id", asc=False)
+            .paging(0, size)
+            .dialect(2)
+        )
 
-        # ret = []
-        # for opinion in self.es.search( # pylint: disable=unexpected-keyword-arg
-        #     index=self.index['opinion'],
-        #     query=query,
-        #     size=size
-        # )['hits']['hits']:
-        #     ret.append(opinion["_source"]["opinion"])
-
-        # return ret
+        query_params = {"service": service, "channel": channel, "topic": topic}
+        return [doc.opinion for doc in self.redis.ft(self.opinion_prefix).search(query, query_params).docs]
 
     def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0):
         '''

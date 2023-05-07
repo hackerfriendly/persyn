@@ -116,7 +116,8 @@ class Interact():
                 service,
                 channel,
                 topic,
-                self.completion.get_opinions(summary, topic)
+                self.completion.get_opinions(summary, topic),
+                convo_id
             )
 
         if include_keywords:
@@ -547,9 +548,9 @@ class Interact():
         log.warning(f"🤔 {verb}:", idea)
         return
 
-    def opine(self, service, channel, entity, speaker_id=None, size=10):
+    def surmise(self, service, channel, topic, size=10):
         ''' Stub for recall '''
-        return self.recall.opine(service, channel, entity, speaker_id, size)
+        return self.recall.surmise(service, channel, topic, size)
 
     def add_goal(self, service, channel, goal):
         ''' Stub for recall '''

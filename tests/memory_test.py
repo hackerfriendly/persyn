@@ -5,6 +5,8 @@ memory (redis) tests
 import datetime as dt
 import uuid
 
+import ulid
+
 from time import sleep
 from copy import copy
 
@@ -316,6 +318,40 @@ def test_recall():
         []
     )
 
+def test_opinions():
+    ''' Save and recall some opinions '''
+
+    recall = Recall(persyn_config, conversation_interval=600)
+
+    service = "opinionated_service"
+    channel = "opinion_channel"
+    convo_id = str(ulid.ULID())
+
+    topic = "self-awareness"
+    topic2 = "bananas"
+
+    assert recall.surmise(service, channel, topic) == []
+
+    recall.judge(service, channel, topic, "I'm a fan.", convo_id)
+    assert recall.surmise(service, channel, topic) == ["I'm a fan."]
+
+    recall.judge(service, channel, topic2, "I like 'em", convo_id)
+    assert recall.surmise(service, channel, topic2) == ["I like 'em"]
+
+    # only one opinion stored per convo_id
+    recall.judge(service, channel, topic, "Actually, not so much.", convo_id)
+    assert recall.surmise(service, channel, topic) == ["Actually, not so much."]
+
+    convo_id2 = str(ulid.ULID())
+    recall.judge(service, channel, topic, "Another convo_id, more opinions.", convo_id2)
+    # most recent
+    assert recall.surmise(service, channel, topic, size=1) == ["Another convo_id, more opinions."]
+    # all opinions
+    assert recall.surmise(service, channel, topic) == ["Another convo_id, more opinions.", "Actually, not so much."]
+
+    # No impact on other opinions
+    assert recall.surmise(service, channel, topic2) == ["I like 'em"]
+
 # def test_news():
 #     ''' Store news urls '''
 
@@ -347,9 +383,8 @@ def test_recall():
 def clear_ns(ns, chunk_size=5000):
     ''' Clear a namespace '''
     cursor = '0'
-    ns_keys = ns + '*'
     while cursor != 0:
-        cursor, keys = ltm.redis.scan(cursor=cursor, match=ns_keys, count=chunk_size)
+        cursor, keys = ltm.redis.scan(cursor=cursor, match=f"{ns}*", count=chunk_size)
         if keys:
             ltm.redis.delete(*keys)
 
