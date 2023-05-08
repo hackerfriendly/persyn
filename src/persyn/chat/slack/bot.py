@@ -297,7 +297,7 @@ def main():
         for noun in chat.get_nouns(chat.get_status(channel)):
             opinion = chat.get_opinions(channel, noun.lower(), condense=True)
             if not opinion:
-                opinion = [chat.judge(channel, noun.lower())]
+                opinion = [chat.opinion(channel, noun.lower())]
 
             say(f"{noun}: {opinion[0]}")
 
@@ -370,10 +370,8 @@ def main():
         speaker_name = get_display_name(speaker_id)
         msg = substitute_names(body['event']['text'])
 
-        reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
-
         # get_reply() speaks for us, no need to say it again.
-        # say(reply)
+        chat.get_reply(channel, msg, speaker_name, speaker_id)
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -482,9 +480,8 @@ def main():
                 if not msg.strip():
                     msg = "..."
 
-                reply = chat.get_reply(channel, msg, speaker_name, speaker_id)
                 # get_reply() speaks for us, no need to say it again.
-                # say(reply)
+                chat.get_reply(channel, msg, speaker_name, speaker_id)
 
             else:
                 say(

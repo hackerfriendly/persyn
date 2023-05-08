@@ -214,28 +214,30 @@ async def add_goal(
 async def get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
+    size: Optional[int] = Query(10),
 ):
     ''' Fetch the current goals for a given context '''
     ret = await asyncio.gather(in_thread(
-        interact.get_goals, [service, channel, None, False]
+        interact.get_goals, [service, channel, None, size]
     ))
 
     return {
-        "goals": ret[0]
+        "goals": ret
     }
 
 @app.post("/list_goals/")
 async def list_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
+    size: Optional[int] = Query(10),
 ):
-    ''' Fetch the current goals for a given context '''
+    ''' List the current goals for a given context '''
     ret = await asyncio.gather(in_thread(
-        interact.list_goals, [service, channel, False]
+        interact.list_goals, [service, channel, size]
     ))
 
     return {
-        "goals": ret[0]
+        "goals": ret
     }
 
 @app.post("/check_goals/")

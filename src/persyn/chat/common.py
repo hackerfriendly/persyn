@@ -235,7 +235,6 @@ class Chat():
             return []
 
         return reply.json()['nouns']
-        # return [e for e in reply.json()['nouns'] if e not in speakers()]
 
     def get_entities(self, text):
         ''' Ask interact for all the entities in text, excluding the speakers. '''
@@ -254,7 +253,6 @@ class Chat():
             return []
 
         return reply.json()['entities']
-        # return [e for e in reply.json()['entities'] if e not in speakers()]
 
     def get_status(self, channel):
         ''' Ask interact for status. '''
@@ -299,7 +297,6 @@ class Chat():
             return ret['opinions']
 
         return []
-        # return [e for e in reply.json()['nouns'] if e not in speakers()]
 
     def list_goals(self, channel):
         ''' Return the goals for this channel, if any. '''
@@ -323,7 +320,6 @@ class Chat():
             return ret['goals']
 
         return []
-        # return [e for e in reply.json()['nouns'] if e not in speakers()]
 
     def forget_it(self, channel):
         ''' There is no antimemetics division. '''
@@ -358,20 +354,20 @@ class Chat():
             return prompt
         return response.json()['parrot']
 
-    # def judge(self, channel, topic):
-    #     ''' Form an opinion on topic '''
-    #     if not self.interact_url:
-    #         log.error("👨‍⚖️ judge() called with no URL defined, skipping.")
-    #         return None
+    def opinion(self, channel, topic):
+        ''' Form an opinion on topic '''
+        if not self.interact_url:
+            log.error("🧷 opinion() called with no URL defined, skipping.")
+            return None
 
-    #     try:
-    #         req = { "service": self.service, "channel": channel, "topic": topic }
-    #         response = requests.post(f"{self.interact_url}/judge/", params=req, timeout=20)
-    #         response.raise_for_status()
-    #     except requests.exceptions.RequestException as err:
-    #         log.critical(f"🤖 Could not post /judge/ to interact: {err}")
-    #         return ""
-    #     return response.json()['opinion']
+        try:
+            req = { "service": self.service, "channel": channel, "topic": topic }
+            response = requests.post(f"{self.interact_url}/opinion/", params=req, timeout=20)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as err:
+            log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
+            return ""
+        return response.json()['opinion']
 
     def get_caption(self, image_data):
         ''' Fetch the image caption using CLIP Interrogator '''

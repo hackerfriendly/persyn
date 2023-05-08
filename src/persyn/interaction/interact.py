@@ -4,10 +4,8 @@ interact.py
 The limbic system library.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order
-import json
 import random
 import re # used by custom filters
-import urllib3
 
 from urllib.parse import urlparse
 
@@ -48,15 +46,6 @@ class Interact():
         if hasattr(self.config.interact, "filter"):
             assert re # prevent "unused import" type linting
             self.custom_filter = eval(f"lambda reply: {self.config.interact.filter}") # pylint: disable=eval-used
-
-        # Elasticsearch memory:
-        # First, check if we don't want to verify TLS certs (because self-hosted Elasticsearch)
-        verify_certs_setting = persyn_config.memory.elastic.get("verify_certs", "true")
-        verify_certs = json.loads(str(verify_certs_setting).lower()) # convert "false" -> False, "0" -> False
-
-        # If not, disable the pesky urllib3 insecure request warning.
-        if not verify_certs:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         # Then create the Recall object using the Elasticsearch credentials.
         self.recall = Recall(persyn_config)
@@ -194,7 +183,8 @@ class Interact():
             service, channel,
             convo='\n'.join(convo[:5]),
             size=3,
-            current_convo_id=self.recall.stm.convo_id(service, channel)
+            current_convo_id=self.recall.stm.convo_id(service, channel),
+            threshold=0.3
         )
         # + self.recall.ltm.find_related_convos(
         #     "import_service", "no_channel",
@@ -556,13 +546,13 @@ class Interact():
         ''' Stub for recall '''
         return self.recall.add_goal(service, channel, goal)
 
-    def get_goals(self, service, channel, goal=None, achieved=False, size=10):
+    def get_goals(self, service, channel, goal=None, size=10):
         ''' Stub for recall '''
-        return self.recall.get_goals(service, channel, goal, achieved, size)
+        return self.recall.get_goals(service, channel, goal, size)
 
-    def list_goals(self, service, channel, achieved=False, size=10):
+    def list_goals(self, service, channel, size=10):
         ''' Stub for recall '''
-        return self.recall.list_goals(service, channel, achieved, size)
+        return self.recall.list_goals(service, channel, size)
 
     def read_news(self, service, channel, url, title):
         ''' Let's check the news while we ride the autobus. '''

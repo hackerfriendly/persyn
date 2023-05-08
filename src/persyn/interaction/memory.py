@@ -93,13 +93,13 @@ class Recall():
         ''' Achieve a goal from this channel. '''
         return self.ltm.achieve_goal(service, channel, goal)
 
-    def get_goals(self, service, channel, goal=None, achieved=None, size=10):
+    def get_goals(self, service, channel, goal=None, size=10):
         ''' Return the goals for this channel, if any. '''
-        return self.ltm.get_goals(service, channel, goal, achieved, size)
+        return self.ltm.get_goals(service, channel, goal, size)
 
-    def list_goals(self, service, channel, achieved=False, size=10):
+    def list_goals(self, service, channel, size=10):
         ''' Return a simple list of goals for this channel, if any. '''
-        return self.ltm.list_goals(service, channel, achieved, size)
+        return self.ltm.list_goals(service, channel, size)
 
     def lookup_summaries(self, service, channel, search, size=1):
         ''' Oh right. '''
@@ -284,12 +284,14 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         self.convo_prefix = f'persyn:{self.bot_id}:convo'
         self.summary_prefix = f'persyn:{self.bot_id}:summary'
         self.opinion_prefix = f'persyn:{self.bot_id}:opinion'
+        self.goal_prefix = f'persyn:{self.bot_id}:goal'
         self.news_prefix = f'persyn:{self.bot_id}:news'
 
         for cmd in [
             f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG convo_id TAG speaker_name TEXT speaker_id TEXT msg TEXT verb TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TAG channel TAG convo_id TAG summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.opinion_prefix} on HASH PREFIX 1 {self.opinion_prefix}: SCHEMA service TAG channel TAG opinion TEXT topic TAG convo_id TAG",
+            f"FT.CREATE {self.goal_prefix} on HASH PREFIX 1 {self.goal_prefix}: SCHEMA service TAG channel TAG goal TAG",
             f"FT.CREATE {self.news_prefix} on HASH PREFIX 1 {self.news_prefix}: SCHEMA service TAG channel TAG url TAG title TEXT",
         ]:
             try:
@@ -557,81 +559,79 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}")
         return ret
 
-    def add_goal(self, service, channel, goal, refresh=True):
+    def add_goal(self, service, channel, goal):
         '''
-        Add a goal to a channel. Returns the top 10 unachieved goals.
+        Add a goal to a channel.
         '''
-        return []
-        # cur_ts = get_cur_ts()
-        # doc = {
-        #     "service": service,
-        #     "channel": channel,
-        #     "@timestamp": cur_ts,
-        #     "goal": goal,
-        #     "achieved": False
-        # }
-        # _id = self.es.index(  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-        #     index=self.index['goal'],
-        #     document=doc,
-        #     refresh='true' if refresh else 'false'
-        # )["_id"]
+        ret = {
+            "service": service,
+            "channel": channel,
+            "goal": goal,
+        }
 
-        # log.debug("doc:", _id)
+        goal_id = self.name_to_entity_id(service, channel, goal)
+        for k, v in ret.items():
+            self.redis.hset(f"{self.goal_prefix}:{goal_id}", k, v)
 
-        # return self.get_goals(service, channel, achieved=False)
+        log.info("⚽️ New goal:", goal)
 
     def achieve_goal(self, service, channel, goal):
         '''
-        Set a goal to the achieved state. Returns the top ten unachieved goals.
+        Achieve a goal (ie. delete it).
         '''
-        return []
-        # for doc in self.get_goals(service, channel, goal, achieved=False):
-        #     doc['_source']['achieved'] = True
-        #     doc['_source']['achieved_on'] = get_cur_ts()
-        #     self.es.update(index=self.index['goal'], id=doc['_id'], doc=doc['_source'], refresh=True)
+        goal_id = self.name_to_entity_id(service, channel, goal)
 
-        # return self.get_goals(service, channel, achieved=False)
+        self.redis.delete(f"{self.goal_prefix}:{goal_id}")
 
-    def get_goals(self, service, channel, goal=None, achieved=None, size=10):
+        log.info("🥅 Goal achieved:", goal)
+
+    def get_goals(self, service, channel, goal=None, size=10):
         '''
         Return goals for a channel. Returns the 10 most recent goals by default.
-        Set achieved to True or False to return only achieved or unachieved goals.
         Specify a goal to return only that specific goal.
         '''
-        ret = []
-        return ret
+        if goal is None:
+            query = (
+                Query(
+                    """(@service:{$service}) (@channel:{$channel})"""
+                )
+                .return_fields(
+                    "service",
+                    "channel",
+                    "goal",
+                )
+                .sort_by("goal", asc=False)
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel}
+        else:
+            query = (
+                Query(
+                    """(@service:{$service}) (@channel:{$channel}) (@goal:{goal})"""
+                )
+                .return_fields(
+                    "service",
+                    "channel",
+                    "goal",
+                )
+                .sort_by("goal", asc=False)
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "goal": goal}
 
-        # query = {
-        #     "bool": {
-        #         "must": [
-        #             {"match": {"service.keyword": service}},
-        #             {"match": {"channel.keyword": channel}},
-        #         ]
-        #     }
-        # }
-        # if goal:
-        #     query["bool"]["must"].append({"match": {"goal": goal}})
-        # if achieved is not None:
-        #     query["bool"]["must"].append({"match": {"achieved": achieved}})
+        try:
+            return self.redis.ft(self.goal_prefix).search(query, query_params).docs
+        except IndexError:
+            return None
 
-        # ret = self.es.search(  # pylint: disable=unexpected-keyword-arg
-        #     index=self.index['goal'],
-        #     query=query,
-        #     sort=[{"@timestamp": {"order": "desc"}}],
-        #     size=size
-        # )['hits']['hits']
 
-        # log.debug(f"🥇 return: {ret}")
-        # return ret
-
-    def list_goals(self, service, channel, achieved=False, size=10):
+    def list_goals(self, service, channel, size=10):
         '''
         Return a simple list of goals for a channel. Returns the 10 most recent goals by default.
         '''
-        ret = []
-        for goal in self.get_goals(service, channel, goal=None, achieved=achieved, size=size):
-            ret.append(goal.goal)
-        return ret
+        return [goal.goal for goal in self.get_goals(service, channel, goal=None, size=size)]
 
     def add_news(self, service, channel, url, title):
         '''
@@ -648,7 +648,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         for k, v in ret.items():
             self.redis.hset(f"{self.news_prefix}:{title_id}", k, v)
 
-        log.debug(f"📰 Read the news:", title)
+        log.debug("📰 Read the news:", title)
         return True
 
     def have_read(self, service, channel, url):

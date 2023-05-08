@@ -243,7 +243,7 @@ async def add_goal(event):
         return
 
     # Don't repeat yourself
-    goals = recall.list_goals(event.service, event.channel, achieved=False) or ['']
+    goals = recall.list_goals(event.service, event.channel) or ['']
     for goal in goals:
         if ratio(goal, event.goal) > 0.6:
             log.warning(f'🏅 We already have a goal like "{event.goal}", skipping.')
