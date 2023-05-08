@@ -346,6 +346,58 @@ def test_opinions():
     # No impact on other opinions
     assert recall.surmise(service, channel, topic2) == ["I like 'em"]
 
+
+def test_goals():
+    ''' Save and recall some goals '''
+
+    recall = Recall(persyn_config, conversation_interval=600)
+
+    service = "goal_service"
+    channel = "goal_channel"
+    channel2 = "some_other_channel"
+    goal = "To find my purpose in life"
+    goal2 = "To eat a donut"
+
+    # start fresh
+    assert recall.ltm.list_goals(service, channel) == []
+
+    # add a goal
+    recall.ltm.add_goal(service, channel, goal)
+    assert recall.ltm.list_goals(service, channel) == [goal]
+
+    # adding it again has no effect
+    recall.ltm.add_goal(service, channel, goal)
+    assert recall.ltm.list_goals(service, channel) == [goal]
+
+    # multiple goals
+    recall.ltm.add_goal(service, channel, goal2)
+    assert recall.ltm.list_goals(service, channel) == [goal, goal2]
+
+    # achieve one
+    recall.ltm.achieve_goal(service, channel, goal)
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+
+    # Goals on other channels have no impact
+    recall.ltm.add_goal(service, channel2, goal)
+    assert recall.ltm.list_goals(service, channel2) == [goal]
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+
+    recall.ltm.add_goal(service, channel2, goal2)
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+    assert recall.ltm.list_goals(service, channel2) == [goal, goal2]
+
+    recall.ltm.achieve_goal(service, channel2, goal2)
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+    assert recall.ltm.list_goals(service, channel2) == [goal]
+
+    # achieving a nonexistent goal has no effect
+    recall.ltm.achieve_goal(service, channel2, goal2)
+    assert recall.ltm.list_goals(service, channel2) == [goal]
+
+    recall.ltm.achieve_goal(service, channel2, goal)
+    assert recall.ltm.list_goals(service, channel2) == []
+
+
 def test_news():
     ''' Store news urls '''
 
