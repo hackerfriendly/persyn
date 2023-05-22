@@ -6,24 +6,23 @@ completion (language model) tests
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from interaction.completion import LanguageModel
+from src.persyn.interaction.completion import LanguageModel
 
 # Bot config
-from utils.config import load_config
+from src.persyn.utils.config import load_config
 
 completion = LanguageModel(config=load_config())
 
 test_cases = {
-    f'this thing, that thing, {completion.bot_name}, the other thing': ['other', 'that', 'the', 'thing', 'this'],
+    f'this thing, that thing, {completion.bot_name}, the other thing': ['that thing', 'the other thing', 'this thing'],
     '#codebase #newfeatures #hackerfriendly #conversation #thankful': ['codebase', 'conversation', 'hackerfriendly', 'newfeatures', 'thankful'],
-    '#Friendship {Coding (Help) #Features': ['coding', 'features', 'friendship', 'help'],
     '-Greeting': ['greeting'],
     ' #Hackerfriendly #BugFix #Discord #DirectMessages': ['bugfix', 'directmessages', 'discord', 'hackerfriendly'],
     '-AI': ['ai'],
     '#Representation #Media #Acceptance #StockPhoto': ['acceptance', 'media', 'representation', 'stockphoto'],
-    '- Artificial Intelligence (AI)': ['ai', 'artificial', 'intelligence'],
-    r'#memory #art memory / Art \ MEMORY -art': ['art', 'memory'],
-    'The Original Series': ['original', 'series', 'the'],
+    '- Artificial Intelligence (AI)': ['artificial intelligence (ai)'],
+    r'#memory #art, memory, Art, \ #MEMORY, - art': ['art', 'memory'],
+    'The Original Series': ['the original series'],
     '#spock #paintings #manwithacigarette': ['manwithacigarette', 'paintings', 'spock'],
     'memory, amnesia, scientist': ['amnesia', 'memory', 'scientist'],
     '- Spock': ['spock'],

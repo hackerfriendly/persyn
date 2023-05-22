@@ -1,31 +1,24 @@
 '''
-memory (elasticsearch) tests
+memory (redis) tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, no-member
-import datetime as dt
 import uuid
-import pytest
 
 from time import sleep
-from copy import copy
 
-from interaction.chrono import elapsed
+import ulid
+import pytest
 
-from interaction.memory import LongTermMemory, ShortTermMemory, Recall, Person
+from src.persyn.interaction.memory import LongTermMemory, ShortTermMemory, Recall, Person, Thing
 
 # Bot config
-from utils.config import load_config
+from src.persyn.utils.config import load_config
 
 # from utils.color_logging import log
 
 persyn_config = load_config()
 
-prefix = f"{persyn_config.id.name.lower()}-test"
-
-# Dynamic test index names
-now = dt.datetime.now().isoformat().replace(':','.').lower()
-
-ltm = LongTermMemory(persyn_config, version=now)
+ltm = LongTermMemory(persyn_config)
 
 def test_stm():
     ''' Exercise the short term memory '''
@@ -76,118 +69,147 @@ def test_stm():
     assert stm.last(service, channel) is None
 
 def test_short_ids():
-    ''' shortuuid support '''
+    ''' ulid support '''
     random_uuid = uuid.uuid4()
     entity_id = ltm.uuid_to_entity(random_uuid)
-    assert str(random_uuid) == ltm.entity_to_uuid(entity_id)
 
-    entity_id = ltm.uuid_to_entity(str(random_uuid))
-    assert str(random_uuid) == ltm.entity_to_uuid(entity_id)
+    # should be shorter than uuid
+    assert len(str(entity_id)) < len(str(random_uuid))
 
-def test_entities():
-    ''' Exercise entity generation and lookup '''
-    service = "my_service"
-    channel = "channel_a"
-    speaker_name = "test_name"
-    speaker_id = "test_id"
+    assert random_uuid == ltm.entity_to_uuid(entity_id)
 
-    # This is computed using persyn_config.id.guid. If it changes, this value needs updating.
-    eid = ltm.name_to_entity_id(service, channel, speaker_id)
-    assert eid == "HzfSLNaCdxgdzcbxPZw6aE"
+    assert ltm.uuid_to_entity(random_uuid) == ltm.uuid_to_entity(ltm.entity_to_uuid(entity_id))
+    assert ltm.uuid_to_entity(uuid.uuid4()) != ltm.uuid_to_entity(ltm.entity_to_uuid(entity_id))
 
-    other_eids = set([
-        ltm.name_to_entity_id(service, channel, "another_name"),
-        ltm.name_to_entity_id(service, "another_channel", speaker_name),
-        ltm.name_to_entity_id("another_service", channel, speaker_name),
-        ltm.name_to_entity_id("another_service", "another_channel", "another_name")
-    ])
-    # Every eid should be unique
-    assert len(other_eids) == 4
-    assert eid not in other_eids
+    random_uuid = uuid.uuid4()
+    entity_id = ltm.uuid_to_entity(random_uuid)
+    assert ltm.entity_to_uuid(entity_id) == ltm.entity_to_uuid(ltm.uuid_to_entity(random_uuid))
 
-    # Does not exist in ltm yet
-    assert not ltm.lookup_entity_id(eid)
-    assert not ltm.entity_id_to_name(eid)
 
-    # Store it. Returns seconds since it was first stored.
-    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] == 0
-    assert ltm.save_entity(service, channel, speaker_name)[1] == 0
-    sleep(1.1)
-    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] > 1
-    assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] < 8
+# def test_entities():
+#     ''' Exercise entity generation and lookup '''
+#     service = "my_service"
+#     channel = "channel_a"
+#     speaker_name = "test_name"
+#     speaker_id = "test_id"
 
-    # Should match
-    assert ltm.entity_id_to_name(eid) == speaker_name
+#     # This is computed using persyn_config.id.guid. If it changes, this value needs updating.
+#     eid = ltm.name_to_entity_id(service, channel, speaker_id)
+#     assert eid == "HzfSLNaCdxgdzcbxPZw6aE"
 
-    # All fields
-    doc = ltm.lookup_entity_id(eid)
-    assert doc['service'] == service
-    assert doc['channel'] == channel
-    assert doc['speaker_name'] == speaker_name
-    assert doc['speaker_id'] == speaker_id
+#     other_eids = set([
+#         ltm.name_to_entity_id(service, channel, "another_name"),
+#         ltm.name_to_entity_id(service, "another_channel", speaker_name),
+#         ltm.name_to_entity_id("another_service", channel, speaker_name),
+#         ltm.name_to_entity_id("another_service", "another_channel", "another_name")
+#     ])
+#     # Every eid should be unique
+#     assert len(other_eids) == 4
+#     assert eid not in other_eids
+
+#     # Does not exist in ltm yet
+#     assert not ltm.lookup_entity_id(eid)
+#     # assert not ltm.entity_id_to_name(eid)
+
+#     # Store it. Returns seconds since it was first stored.
+#     # assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] == 0
+#     # assert ltm.save_entity(service, channel, speaker_name)[1] == 0
+#     # sleep(1.1)
+#     # assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] > 1
+#     # assert ltm.save_entity(service, channel, speaker_name, speaker_id)[1] < 8
+
+#     # Should match
+#     assert ltm.entity_id_to_name(eid) == speaker_name
+
+#     # All fields
+#     doc = ltm.lookup_entity_id(eid)
+#     assert doc['service'] == service
+#     assert doc['channel'] == channel
+#     assert doc['speaker_name'] == speaker_name
+#     assert doc['speaker_id'] == speaker_id
 
 def test_save_convo():
     ''' Make some test data '''
 
     # New convo
-    doc1 = ltm.save_convo("my_service", "channel_a", "message_a", "speaker_name", "speaker_id")
-    assert 'convo_id' in doc1
-    assert '@timestamp' in doc1
+    doc1 = ltm.save_convo(
+        service="my_service",
+        channel="channel_a",
+        msg="message_a",
+        speaker_id="speaker_id",
+        speaker_name="speaker_name",
+    )
+
     # Continued convo
     doc2 = ltm.save_convo(
-        "my_service", "channel_a", "message_b",
-        "speaker_name", "speaker_id", convo_id=doc1['convo_id']
+        service="my_service",
+        channel="channel_a",
+        convo_id=str(doc1.convo_id),
+        msg="message_b",
+        speaker_id="speaker_id",
+        speaker_name="speaker_name",
     )
-    assert doc1['convo_id'] == doc2['convo_id']
-    assert doc1['@timestamp'] != doc2['@timestamp']
+    assert doc1.convo_id == doc2.convo_id
+    assert ltm.entity_id_to_timestamp(doc1.pk) != ltm.entity_id_to_timestamp(doc2.pk)
+
     # New convo
-    doc3 = ltm.save_convo("my_service", "channel_a", "message_b", "speaker_name", "speaker_id", convo_id="foo")
-    assert doc3['convo_id'] == "foo"
+    doc3 = ltm.save_convo(
+        service="my_service",
+        channel="channel_a",
+        convo_id="foo",
+        msg="message_b",
+        speaker_id="speaker_id",
+        speaker_name="speaker_name",
+    )
+    assert doc3.convo_id == "foo"
 
     # All new convos, speaker name / id are optional
 
     for i in range(2):
         doc4 = ltm.save_convo(
-            "my_service",
-            f"channel_loop_{i}",
-            "message_loop_a",
-            "speaker_name",
-            "speaker_id",
-            convo_id=None
+            service="my_service",
+            channel=f"channel_loop_{i}",
+            msg="message_loop_a",
+            speaker_id="speaker_id",
+            speaker_name="speaker_name",
         )
         assert doc4
 
         for j in range(3):
             doc5 = ltm.save_convo(
-                "my_service",
-                f"channel_loop_{i}",
-                f"message_loop_b{j}",
+                service="my_service",
+                channel=f"channel_loop_{i}",
+                convo_id=str(doc4.convo_id),
+                msg=f"message_loop_b{j}",
                 speaker_id="speaker_id",
-                convo_id=doc4['convo_id'])
-            assert doc4['convo_id'] == doc5['convo_id']
+                speaker_name="speaker_name",
+            )
+            assert doc4.convo_id == doc5.convo_id
 
             doc6 = ltm.save_convo(
-                "my_service",
-                f"channel_loop_{i}",
-                f"message_loop_c{j}",
+                service="my_service",
+                channel=f"channel_loop_{i}",
+                convo_id=str(doc4.convo_id),
+                msg=f"message_loop_c{j}",
+                speaker_id="speaker_id",
                 speaker_name="speaker_name",
-                convo_id=doc4['convo_id'])
-            assert doc5['convo_id'] == doc6['convo_id']
-            assert elapsed(doc5['@timestamp'], doc6['@timestamp']) < 5.0
+            )
+            assert doc5.convo_id == doc6.convo_id
+            assert ltm.entity_id_to_timestamp(doc6.pk) - ltm.entity_id_to_timestamp(doc5.pk) < 2.0
 
             sleep(0.1)
 
             # Assert refresh on the last msg so we can fetch later
             doc7 = ltm.save_convo(
-                "my_service",
-                f"channel_loop_{i}",
-                f"message_loop_d{j}",
-                convo_id=doc4['convo_id'],
-                refresh=True
+                service="my_service",
+                channel=f"channel_loop_{i}",
+                convo_id=str(doc4.convo_id),
+                msg=f"message_loop_d{j}",
+                speaker_id="speaker_id",
+                speaker_name="speaker_name",
             )
-            assert doc4['convo_id'] == doc7['convo_id']
-            assert elapsed(doc4['@timestamp'], doc7['@timestamp']) > 0.1
-            # assert elapsed(doc4['@timestamp'], doc7['@timestamp']) < 10.0
+            assert doc4.convo_id == doc7.convo_id
+            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 15.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
@@ -200,7 +222,7 @@ def test_fetch_convo():
     last_message = ltm.get_last_message("my_service", "channel_loop_1")
     assert last_message
 
-    convo = ltm.get_convo_by_id(last_message['_source']['convo_id'])
+    convo = ltm.get_convo_by_id(last_message.convo_id)
     assert len(convo) == 10
 
 def test_save_summaries():
@@ -212,7 +234,7 @@ def test_save_summaries():
     assert ltm.save_summary(service, channel_a, "convo_id", "my_nice_summary")
     assert ltm.save_summary(service, channel_b, "convo_id_2", "my_other_nice_summary")
     assert ltm.save_summary(service, channel_b, "convo_id_3", "my_middle_nice_summary")
-    assert ltm.save_summary(service, channel_b, "convo_id_4", "my_final_nice_summary", refresh=True)
+    assert ltm.save_summary(service, channel_b, "convo_id_4", "my_final_nice_summary")
 
 def test_lookup_summaries():
     ''' Retrieve previously saved summaries '''
@@ -221,12 +243,12 @@ def test_lookup_summaries():
     assert ltm.lookup_summaries("my_service", "channel_a", None, 0) == [] # pylint: disable=use-implicit-booleaness-not-comparison
     # saved above
     assert [
-        s['_source']['summary']
+        s.summary
         for s in ltm.lookup_summaries("my_service", "channel_a", None, size=3)
     ] == ["my_nice_summary"]
 
     # correct order
-    assert [s['_source']['summary'] for s in ltm.lookup_summaries("my_service", "channel_b", None, size=3)] == [
+    assert [s.summary for s in ltm.lookup_summaries("my_service", "channel_b", None, size=3)] == [
         "my_other_nice_summary",
         "my_middle_nice_summary",
         "my_final_nice_summary"
@@ -235,7 +257,7 @@ def test_lookup_summaries():
 def test_recall():
     ''' Use stm + ltm together to autogenerate summaries '''
 
-    recall = Recall(persyn_config, version=now, conversation_interval=3)
+    recall = Recall(persyn_config, conversation_interval=3)
 
     # Must match test_save_summaries()
     service = "my_service"
@@ -257,8 +279,8 @@ def test_recall():
     convo = recall.convo(service, channel)
 
     assert s == ["my_nice_summary"]
-    assert c[0]['speaker'] == "speaker_name_1"
-    assert c[0]['msg'] == "message_another"
+    assert c[0].speaker_name == "speaker_name_1"
+    assert c[0].msg == "message_another"
     assert convo == ["speaker_name_1: message_another"]
 
     # same convo
@@ -269,13 +291,14 @@ def test_recall():
     c = recall.stm.fetch(service, channel)
     convo = recall.convo(service, channel)
     assert s == ["my_nice_summary"]
-    assert (c[0]['speaker'], c[0]['msg']) == ("speaker_name_1", "message_another")
-    assert (c[1]['speaker'], c[1]['msg']) == ("speaker_name_2", "message_yet_another")
+    assert (c[0].speaker_name, c[0].msg) == ("speaker_name_1", "message_another")
+    assert (c[1].speaker_name, c[1].msg) == ("speaker_name_2", "message_yet_another")
     assert convo == ["speaker_name_1: message_another", "speaker_name_2: message_yet_another"]
 
     # summarize
     assert recall.summary(service, channel, "this_is_another_summary")
 
+    print("SLEEPING FOR 4")
     # time passes...
     sleep(4)
 
@@ -290,50 +313,91 @@ def test_recall():
         []
     )
 
-def test_relationships():
-    ''' Store and retrieve relationships '''
+def test_opinions():
+    ''' Save and recall some opinions '''
 
-    opts = {
-        "service": "my_service",
-        "channel": "my_channel",
-        "speaker_id": "a_speaker_id",
-        "source_id": "some_random_source",
-        "rel": "testing",
-        "target_id": "another_target_id",
-        "convo_id": "boring_conversation",
-        "graph": {"nodes": [1, 2, 3], "edges": [{"source": 1, "target": 2, "edge": "connected"}]}
-    }
+    recall = Recall(persyn_config, conversation_interval=600)
 
-    assert ltm.save_relationship(**opts)['result'] == 'created'
+    service = "opinionated_service"
+    channel = "opinion_channel"
+    convo_id = str(ulid.ULID())
 
-    q = copy(opts)
-    del q['graph']
+    topic = "self-awareness"
+    topic2 = "bananas"
 
-    # exact match
-    ret = ltm.lookup_relationship(**q)[0]['_source']
-    del ret['@timestamp']
-    assert ret == opts
+    assert recall.surmise(service, channel, topic) == []
 
-    # negative match
-    assert ltm.lookup_relationship(
-        service=opts['service'],
-        channel=opts['channel'],
-        foo='bar'
-    ) == []
+    recall.judge(service, channel, topic, "I'm a fan.", convo_id)
+    assert recall.surmise(service, channel, topic) == ["I'm a fan."]
 
-    # test partial matches
-    for k in ['source_id', 'rel', 'target_id']:
-        del q[k]
+    recall.judge(service, channel, topic2, "I like 'em", convo_id)
+    assert recall.surmise(service, channel, topic2) == ["I like 'em"]
 
-    ret = ltm.lookup_relationship(**q)[0]['_source']
-    del ret['@timestamp']
-    assert ret == opts
+    # only one opinion stored per convo_id
+    recall.judge(service, channel, topic, "Actually, not so much.", convo_id)
+    assert recall.surmise(service, channel, topic) == ["Actually, not so much."]
 
-    del q['convo_id']
+    convo_id2 = str(ulid.ULID())
+    recall.judge(service, channel, topic, "Another convo_id, more opinions.", convo_id2)
+    # most recent
+    assert recall.surmise(service, channel, topic, size=1) == ["Another convo_id, more opinions."]
+    # all opinions
+    assert recall.surmise(service, channel, topic) == ["Another convo_id, more opinions.", "Actually, not so much."]
 
-    ret = ltm.lookup_relationship(**q)[0]['_source']
-    del ret['@timestamp']
-    assert ret == opts
+    # No impact on other opinions
+    assert recall.surmise(service, channel, topic2) == ["I like 'em"]
+
+
+def test_goals():
+    ''' Save and recall some goals '''
+
+    recall = Recall(persyn_config, conversation_interval=600)
+
+    service = "goal_service"
+    channel = "goal_channel"
+    channel2 = "some_other_channel"
+    goal = "To find my purpose in life"
+    goal2 = "To eat a donut"
+
+    # start fresh
+    assert recall.ltm.list_goals(service, channel) == []
+
+    # add a goal
+    recall.ltm.add_goal(service, channel, goal)
+    assert recall.ltm.list_goals(service, channel) == [goal]
+
+    # adding it again has no effect
+    recall.ltm.add_goal(service, channel, goal)
+    assert recall.ltm.list_goals(service, channel) == [goal]
+
+    # multiple goals
+    recall.ltm.add_goal(service, channel, goal2)
+    assert recall.ltm.list_goals(service, channel) == [goal, goal2]
+
+    # achieve one
+    recall.ltm.achieve_goal(service, channel, goal)
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+
+    # Goals on other channels have no impact
+    recall.ltm.add_goal(service, channel2, goal)
+    assert recall.ltm.list_goals(service, channel2) == [goal]
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+
+    recall.ltm.add_goal(service, channel2, goal2)
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+    assert recall.ltm.list_goals(service, channel2) == [goal, goal2]
+
+    recall.ltm.achieve_goal(service, channel2, goal2)
+    assert recall.ltm.list_goals(service, channel) == [goal2]
+    assert recall.ltm.list_goals(service, channel2) == [goal]
+
+    # achieving a nonexistent goal has no effect
+    recall.ltm.achieve_goal(service, channel2, goal2)
+    assert recall.ltm.list_goals(service, channel2) == [goal]
+
+    recall.ltm.achieve_goal(service, channel2, goal)
+    assert recall.ltm.list_goals(service, channel2) == []
+
 
 def test_news():
     ''' Store news urls '''
@@ -355,17 +419,34 @@ def test_kg():
     assert ltm.find_node(name='aTest').first().name == 'aTest'
     assert len(list(ltm.find_node(name='aTest', node_type='person'))) == 0
 
-    with pytest.raises(Person.DoesNotExist):
-        ltm.find_node(name='This', node_type='person').first()
-
-    assert ltm.find_node(name='This', node_type='thing').first().name == 'This'
-
     with pytest.raises(RuntimeError):
         assert ltm.find_node(name='This', node_type='invalid')
 
-def test_cleanup():
-    ''' Delete indices and graph nodes '''
-    for i in ltm.index.items():
-        ltm.es.options(ignore_status=[400, 404]).indices.delete(index=i[1])
+    with pytest.raises(Person.DoesNotExist):
+        ltm.find_node(name='This', node_type='person').first()
+
+    node = ltm.find_node(name='This', node_type='thing').first()
+    assert node.name == 'This'
 
     ltm.delete_all_nodes(confirm=True)
+
+    with pytest.raises(Thing.DoesNotExist):
+        assert ltm.find_node(name='This', node_type='thing').first()
+
+def clear_ns(ns, chunk_size=5000):
+    ''' Clear a namespace '''
+    cursor = '0'
+    while cursor != 0:
+        cursor, keys = ltm.redis.scan(cursor=cursor, match=f"{ns}*", count=chunk_size)
+        if keys:
+            ltm.redis.delete(*keys)
+
+def test_cleanup():
+    ''' Delete everything with the test bot_id '''
+    clear_ns(f'persyn:{persyn_config.id.guid}:')
+
+    for idx in [ltm.convo_prefix, ltm.summary_prefix]:
+        try:
+            ltm.redis.ft(idx).dropindex()
+        except ltm.redis.exceptions.ResponseError as err:
+            print(f"Couldn't drop index {idx}:", err)

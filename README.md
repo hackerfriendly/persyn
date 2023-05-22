@@ -4,19 +4,20 @@ Persyn makes it easy to integrate cutting-edge machine learning research project
 
 The resulting gestalt can be executed on any combination of local compute resources (CPU + GPU) and third-party APIs (OpenAI, Wikipedia, etc.)
 
-The name "Personality Syndrome" was chosen by the first proto-Persyn instance itself, @AnnaTheBot @mas.to.
+The name "Personality Syndrome" was chosen by the first proto-Persyn instance itself, https://mas.to/@annathebot
 
 Major features:
 
   * Chat with any large language model over Slack, Discord, or Mastodon
   * Maintain a consistent and arbitrarily long train of thought
   * Short-term and long-term memory
+  * Knowledge graph generation
   * Opinions
   * Auto-wikipedia
   * Auto-summarization of previous conversations over time or as the prompt size grows too long
   * Generate images on demand
   * Identify images dropped into the chat with CLIP Interrogator
-  * Optional automatic image enhancement with Prompt Parrot
+  * Optional automatic image prompt enhancement with Prompt Parrot
 
 # Installation
 
@@ -40,6 +41,19 @@ The default install only includes chat support. If you'd also like to generate a
 Image posting now requires Schuyler Erle's https://github.com/schuyler/autobus/ which must be installed manually (for now).
 
 Tmux is also highly recommended, and is required for using the bot launcher.
+
+# Redis
+
+Redis is used for long-term memory and pub/sub. It also requires the following modules:
+
+ * RedisSearch
+ * RedisJSON
+
+Best to build from scratch. TODO: Instructions needed.
+
+# Neo4j (optional but recommended)
+
+The knowledge graph is kept in Neo4j. Some day this will use RedisGraph instead, but not until it supports first-class updates of existing graphs. Until then, you'll need a separate Neo4j instance.
 
 # Configure a new bot
 
