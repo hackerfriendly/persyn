@@ -192,7 +192,7 @@ def main():
     log.info(f"🎨 Stable Diffusion server starting up")
 
     uvicorn.run(
-        'dreams.stable_diffusion:app',
+        'persyn.dreams.stable_diffusion:app',
         host=persyn_config.dreams.stable_diffusion.hostname,
         port=persyn_config.dreams.stable_diffusion.port,
         workers=persyn_config.dreams.stable_diffusion.workers,
