@@ -47,7 +47,7 @@ class Interact():
             assert re # prevent "unused import" type linting
             self.custom_filter = eval(f"lambda reply: {self.config.interact.filter}") # pylint: disable=eval-used
 
-        # Then create the Recall object using the Elasticsearch credentials.
+        # Then create the Recall object (short-term, long-term, and graph memory).
         self.recall = Recall(persyn_config)
 
     def summarize_convo(

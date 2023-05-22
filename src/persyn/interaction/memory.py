@@ -1,4 +1,4 @@
-''' memory.py: long and short term memory by Elasticsearch. '''
+''' memory.py: long and short term memory by Redis. '''
 # pylint: disable=invalid-name, no-name-in-module, abstract-method, no-member
 import uuid
 
@@ -311,7 +311,7 @@ class ShortTermMemory():
 
 # LTM object
 class LongTermMemory(): # pylint: disable=too-many-arguments
-    ''' Wrapper class for Elasticsearch conversational memory. '''
+    ''' Wrapper class for long-term conversational memory. '''
     def __init__(self, persyn_config):
         self.relationships = Relationships(persyn_config)
         self.completion = LanguageModel(persyn_config)
