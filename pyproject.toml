@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "persyn"
-version = "0.1.0"
+version = "0.1.1-dev"
 authors = [
   { name="Rob Flickenger", email="rob@hackerfriendly.com" },
 ]
@@ -36,6 +36,8 @@ dependencies = [
   "nlpcloud",
   "nltk",
   "openai",
+  "plotly",
+  "python-ulid",
   "pyyaml",
   "redis[hiredis]>=4.5.0",
   "requests",

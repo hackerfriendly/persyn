@@ -10,15 +10,18 @@ id:
 # Required: At least one long-term memory service must be defined.
 # Currently Elasticsearch is required. Neo4j is optional.
 memory:
-  elastic:
-    url: https://your-elasticsearch-instance.es.us-west-2.aws.found.io:443
-    user: elastic-bot-user
-    key: elastic-bot-password
-    index_prefix: persyn
-    verify_certs: true
+  # Location of your redis server (default)
+  # redis: redis://localhost:6379/
+  # If using a simple password with the default user:
+  # redis: redis://:secret@my.redis.server:6379/
+  # Using SSL and an ACL with a username:
+  # redis: rediss://user:secret@my.redis.server:6379/
+  # redis:
+
   # Optional, but recommended: Neo4j graph database server for knowledge graph generation.
   # neo4j:
     # url: neo4j://localhost:7687/
+    # url: bolt://localhost:7687/
     # # Or with a user and password:
     # # url: neo4j://user:password@my.neo4j.server:7687/
   # Conversations end when this many seconds pass in silence
