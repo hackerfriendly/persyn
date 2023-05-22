@@ -784,25 +784,18 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             log.error('፨ No graph server defined, cannot call triples_to_kg()')
             return
 
-        speaker_names = set()
+        speaker_names = {p.name for p in Person.nodes.all() if p.bot_id == self.bot_id}
         thing_names = set()
         speakers = {}
 
         for triple in triples:
             (s, _, o) = triple
 
-            thing_names.add(s)
-            thing_names.add(o)
+            if s not in speaker_names:
+                thing_names.add(s)
 
-            # if s not in thing_names and self.lookup_speaker_name(s):
-            #     speaker_names.add(s)
-            # else:
-            #     thing_names.add(s)
-
-            # if o not in thing_names and self.lookup_speaker_name(o):
-            #     speaker_names.add(o)
-            # else:
-            #     thing_names.add(o)
+            if o not in speaker_names:
+                thing_names.add(o)
 
         with neomodel_db.transaction:
             for name in speaker_names:
