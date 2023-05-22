@@ -48,7 +48,7 @@ dependencies = [
   "asyncio",
   "tiktoken",
   "neomodel",
-  "autobus @ git+https://github.com/hackerfriendly/autobus"
+  # "autobus @ git+https://github.com/hackerfriendly/autobus"
 ]
 
 [project.scripts]
