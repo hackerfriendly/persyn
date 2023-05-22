@@ -36,6 +36,8 @@ dependencies = [
   "nlpcloud",
   "nltk",
   "openai",
+  "plotly",
+  "python-ulid",
   "pyyaml",
   "redis[hiredis]>=4.5.0",
   "requests",
