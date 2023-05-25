@@ -36,7 +36,7 @@ def run_tmux_cmd(session, cmd, tmux, cuda=None, loc='split-pane'):
     )
 
     cuda_env = ''
-    if cuda:
+    if cuda is not None:
         cuda_env = f'CUDA_VISIBLE_DEVICES={cuda}'
 
     title = r"\e]2;" + cmd[0] + r"\a"
@@ -111,14 +111,20 @@ def main():
             run_tmux_cmd(session_name, ['dreams', args.config_file], args.tmux, loc='new-window')
 
         if hasattr(cfg.dreams, 'stable_diffusion') and hasattr(cfg.dreams.stable_diffusion, 'workers') and cfg.dreams.stable_diffusion.workers > 0:
+            gpu = None
+            if hasattr(cfg.dreams.stable_diffusion, 'gpu'):
+                gpu = cfg.dreams.stable_diffusion.gpu
             log.info("🎨 Starting stable_diffusion")
-            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux, loc='new-window')
+            run_tmux_cmd(session_name, ['stable_diffusion', args.config_file], args.tmux, gpu)
 
-        # if hasattr(cfg.dreams, 'captions') and hasattr(cfg.dreams.captions, 'workers'):
-        #     log.info("🖼  Starting interrogator")
-        #     run_tmux_cmd(session_name, ['interrogator', args.config_file], args.tmux)
+        if hasattr(cfg.dreams, 'captions') and hasattr(cfg.dreams.captions, 'workers') and cfg.dreams.captions.workers > 0:
+            gpu = None
+            if hasattr(cfg.dreams.captions, 'gpu'):
+                gpu = cfg.dreams.captions.gpu
+            log.info("🖼️  Starting captions")
+            run_tmux_cmd(session_name, ['captions', args.config_file], args.tmux, gpu)
 
-    # TODO: parrot, CLIP interrogator
+    # TODO: parrot
 
     log.info(f"\n{cfg.id.name} is running. Attach with 👉 tmux{ccmode} attach -t {session_name}")
 

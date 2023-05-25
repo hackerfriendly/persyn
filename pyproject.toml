@@ -72,6 +72,7 @@ opine = "persyn.chat.stdio.opine:main"
 add_goal = "persyn.chat.stdio.add_goal:main"
 read_url = "persyn.chat.stdio.read_url:main"
 read_rss = "persyn.chat.stdio.read_rss:main"
+captions = "persyn.dreams.BLIP.captions:main"
 
 [project.optional-dependencies]
 dev = [
@@ -98,7 +99,8 @@ all = [
   "torch",
   "torchvision",
   "tqdm",
-  "transformers"
+  "transformers",
+  "fairscale==0.4.4"
 ]
 
 [project.urls]
