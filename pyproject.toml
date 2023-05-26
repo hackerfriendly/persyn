@@ -84,7 +84,7 @@ dev = [
 all = [
   "accelerate",
   "diffusers",
-  "fairscale==0.4.4"
+  "fairscale==0.4.4",
   "safetensors",
   "scipy",
   "timm",
