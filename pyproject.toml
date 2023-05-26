@@ -78,7 +78,9 @@ captions = "persyn.dreams.BLIP.captions:main"
 dev = [
   "pytest",
   "pylint",
-  "jupyterlab"
+  "jupyterlab",
+  "jupyter_contrib_nbextensions",
+  "ipywidgets"
 ]
 
 all = [
