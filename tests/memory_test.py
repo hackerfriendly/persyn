@@ -313,6 +313,38 @@ def test_recall():
         []
     )
 
+def test_memory_selection():
+    ''' Find appropriate memories using cosine similarity '''
+
+    recall = Recall(persyn_config, conversation_interval=600)
+
+    service = "memory_selection"
+    channel = "channel_a"
+
+    # new convo
+    assert recall.save(service, "channel_a", "Why did the cow become a painter?", "Anna", "anna_id")
+    assert recall.save(service, "channel_a", "No idea.", "Rob", "rob_id")
+    assert recall.save(service, "channel_a", "Because it had a real moo-sterpiece in mind!", "Anna", "anna_id")
+    assert recall.save(service, "channel_a", "Udderly terrible.", "Rob", "rob_id")
+
+    assert recall.save(service, "channel_b", "Why was the cat sitting on the computer?", "Anna", "anna_id")
+    assert recall.save(service, "channel_b", "I give up.", "Rob", "rob_id")
+    assert recall.save(service, "channel_b", "Because it wanted to keep an eye on the mouse!", "Anna", "anna_id")
+    assert recall.save(service, "channel_b", "🙄", "Rob", "rob_id")
+
+    # not found on channel_a
+    assert len(recall.ltm.find_related_convos(service, 'channel_a', 'cat sitting', size=5, threshold=0.2, any_convo=False)) == 0
+    # found if any_convo == True
+    assert len(recall.ltm.find_related_convos(service, 'channel_a', 'cat sitting', size=5, threshold=0.2, any_convo=True)) == 1
+    # found on channel_b
+    assert len(recall.ltm.find_related_convos(service, 'channel_b', 'cat sitting', size=5, threshold=0.2)) == 1
+    # synonym found
+    assert len(recall.ltm.find_related_convos(service, 'channel_a', 'awful', size=5, threshold=0.2, any_convo=False)) == 1
+    assert recall.ltm.find_related_convos(service, 'channel_a', 'awful', size=5, threshold=0.2, any_convo=False)[0].msg == 'Udderly terrible.'
+    # not found on channel_b
+    assert len(recall.ltm.find_related_convos(service, 'channel_b', 'awful', size=5, threshold=0.2, any_convo=False)) == 0
+
+
 def test_opinions():
     ''' Save and recall some opinions '''
 
@@ -412,6 +444,7 @@ def test_news():
     assert ltm.add_news(title="The Persyn Codebase", **opts)
     assert ltm.have_read(**opts) is True
 
+
 def test_kg():
     ''' Neo4j tests '''
     ltm.triples_to_kg([("This", "isOnly", "aTest")])
@@ -435,6 +468,10 @@ def test_kg():
 
 def clear_ns(ns, chunk_size=5000):
     ''' Clear a namespace '''
+    # persyn:[guid]: == 44 chars
+    if not ns or len(ns) != 44:
+        return False
+
     cursor = '0'
     while cursor != 0:
         cursor, keys = ltm.redis.scan(cursor=cursor, match=f"{ns}*", count=chunk_size)
