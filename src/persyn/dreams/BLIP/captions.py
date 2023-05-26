@@ -67,7 +67,7 @@ model_url = 'https://storage.googleapis.com/sfr-vision-language-research/BLIP/mo
 vit = 'large'
 
 blip_model = blip_decoder(pretrained=model_url, image_size=BLIP_IMAGE_EVAL_SIZE,
-                          vit=vit, med_config='/home/rob/BLIP/configs/med_config.json')
+                          vit=vit, med_config=med_config)
 blip_model.eval()
 blip_model = blip_model.to(device)
 
@@ -88,9 +88,9 @@ def generate_caption(img_url):
         # beam search
         #caption = model.generate(image, sample=False, num_beams=3, max_length=20, min_length=5)
         # nucleus sampling
-        caption = blip_model.generate(image, sample=True, top_p=0.9, max_length=20, min_length=5)
-        log.info("🖼️ ", caption[0])
-        return caption[0]
+        cap = blip_model.generate(image, sample=True, top_p=0.9, max_length=20, min_length=5)
+        log.info("🖼️ ", cap[0])
+        return cap[0]
 
 app = FastAPI()
 
