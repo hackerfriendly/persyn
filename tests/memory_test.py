@@ -319,7 +319,6 @@ def test_memory_selection():
     recall = Recall(persyn_config, conversation_interval=600)
 
     service = "memory_selection"
-    channel = "channel_a"
 
     # new convo
     assert recall.save(service, "channel_a", "Why did the cow become a painter?", "Anna", "anna_id")
