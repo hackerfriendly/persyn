@@ -559,16 +559,21 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         query_params = {"service": service, "channel": channel, "topic": topic}
         return [doc.opinion for doc in self.redis.ft(self.opinion_prefix).search(query, query_params).docs]
 
-    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0):
+    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
         '''
         Find conversations related to convo using vector similarity
         '''
         emb = self.completion.model.get_embedding(' '.join(convo))
 
+        if any_convo:
+            service_channel = ""
+        else:
+            service_channel = "(@service:{$service}) (@channel:{$channel})"
+
         if current_convo_id is None:
             query = (
                 Query(
-                    "((@service:{$service}) (@channel:{$channel}) (@verb:{dialog}))=>[KNN " + str(size) + " @emb $emb as score]"
+                    "(" + service_channel + " (@verb:{dialog}))=>[KNN " + str(size) + " @emb $emb as score]"
                 )
                 .sort_by("score")
                 .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
@@ -581,7 +586,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             # exclude the current convo_id
             query = (
                 Query(
-                    "((@service:{$service}) (@channel:{$channel}) (@verb:{dialog}) -(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
+                    "(" + service_channel + " (@verb:{dialog}) -(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
                 )
                 .sort_by("score")
                 .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
