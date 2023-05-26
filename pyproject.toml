@@ -80,19 +80,11 @@ dev = [
   "pylint",
   "jupyterlab"
 ]
-# TODO: https://github.com/facebookresearch/xformers
-stable_diffusion = [
-  "accelerate",
-  "scipy",
-  "safetensors",
-  "transformers",
-  "diffusers",
-  "torch",
-  "torchvision"
-]
+
 all = [
   "accelerate",
   "diffusers",
+  "fairscale==0.4.4"
   "safetensors",
   "scipy",
   "timm",
@@ -100,7 +92,7 @@ all = [
   "torchvision",
   "tqdm",
   "transformers",
-  "fairscale==0.4.4"
+  "xformers",
 ]
 
 [project.urls]
