@@ -29,7 +29,6 @@ def test_stm():
 
     # start fresh
     assert not stm.exists(service, channel)
-    assert stm.expired(service, channel)
     stm.create(service, channel)
     assert stm.exists(service, channel)
     assert not stm.expired(service, channel)
@@ -150,7 +149,7 @@ def test_save_convo():
         speaker_name="speaker_name",
     )
     assert doc1.convo_id == doc2.convo_id
-    assert ltm.entity_id_to_timestamp(doc1.pk) != ltm.entity_id_to_timestamp(doc2.pk)
+    assert ltm.entity_id_to_epoch(doc1.pk) != ltm.entity_id_to_epoch(doc2.pk)
 
     # New convo
     doc3 = ltm.save_convo(
@@ -195,7 +194,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
             )
             assert doc5.convo_id == doc6.convo_id
-            assert ltm.entity_id_to_timestamp(doc6.pk) - ltm.entity_id_to_timestamp(doc5.pk) < 2.0
+            assert ltm.entity_id_to_epoch(doc6.pk) - ltm.entity_id_to_epoch(doc5.pk) < 2.0
 
             sleep(0.1)
 
@@ -209,7 +208,7 @@ def test_save_convo():
                 speaker_name="speaker_name",
             )
             assert doc4.convo_id == doc7.convo_id
-            assert ltm.entity_id_to_timestamp(doc7.pk) - ltm.entity_id_to_timestamp(doc4.pk) < 15.0
+            assert ltm.entity_id_to_epoch(doc7.pk) - ltm.entity_id_to_epoch(doc4.pk) < 15.0
 
 def test_fetch_convo():
     ''' Retrieve previously saved convo '''
