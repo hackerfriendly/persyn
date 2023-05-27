@@ -40,6 +40,8 @@ MODELS = {
     "pipeline": {
         # "name": "stabilityai/stable-diffusion-2",
         "name": "stabilityai/stable-diffusion-2-1",
+        # "name": "prompthero/openjourney",
+        # "name": "prompthero/openjourney-v4",
         "sub": ""
     },
     "safety": {
@@ -64,7 +66,7 @@ safety_checker = StableDiffusionSafetyChecker.from_pretrained(MODELS["safety"]["
 
 # Use the Euler scheduler here instead
 scheduler = EulerDiscreteScheduler.from_pretrained(MODELS["pipeline"]["name"], subfolder="scheduler")
-pipe = StableDiffusionPipeline.from_pretrained(MODELS["pipeline"]["name"], scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 def naughty(image):
@@ -93,6 +95,11 @@ def clear_cuda_mem():
     gc.collect()
     torch.cuda.empty_cache()
 
+def round_to(num, mult=8):
+    ''' Round to the nearest multiple of mult '''
+    ret = num + (mult - 1)
+    return ret - (ret % 8)
+
 def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
     ''' Generate and return an image array using the first available GPU '''
     gpu = wait_for_gpu()
@@ -104,8 +111,8 @@ def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
             negative_prompt="meme youtube 'play button' 'computer graphics' caption",
             generator=generator,
             num_inference_steps=steps,
-            height=height,
-            width=width,
+            height=round_to(height),
+            width=round_to(width),
             guidance_scale=guidance
         ).images[0]
 
