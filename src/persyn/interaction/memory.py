@@ -612,7 +612,10 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
                 log.info("👨‍👩‍👧 Related: ", doc.msg)
                 ret.append(doc)
 
-        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}")
+        if reply.docs:
+            best = f" (best: {float(reply.docs[0].score):0.3f})"
+
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}{best}")
 
         return ret
 
