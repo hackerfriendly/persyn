@@ -80,7 +80,29 @@ class Interact():
             text = self.recall.convo(service, channel)
 
         if not text:
-            text = [f"{self.config.id.name} isn't sure what is happening."]
+            return random.choice([
+                f"{self.config.id.name} feels mystified by the current state of affairs.",
+                f"{self.config.id.name} is bewildered by the present circumstances.",
+                f"{self.config.id.name} is finding the present situation puzzling and hard to comprehend.",
+                f"{self.config.id.name} is in a haze of confusion about what's happening.",
+                f"{self.config.id.name} is in the dark about the ongoing situation.",
+                f"{self.config.id.name} is struggling to make sense of the ongoing situation.",
+                f"{self.config.id.name} isn't sure what is happening.",
+                f"{self.config.id.name}, ordinarily quick to comprehend, is genuinely befuddled by the current state of things.",
+                f"{self.config.id.name}, usually in tune with their surroundings, is completely at sea with what's unfolding.",
+                f"{self.config.id.name}, usually self-reliant and unshakeable, is grappling with ambiguity regarding the present scenario.",
+                f"{self.config.id.name}, usually up-to-date and aware, is strangely oblivious to the current scenario.",
+                f"Despite their sharp intuition, {self.config.id.name} is clueless about the present events.",
+                f"Despite their usual firm grasp and assurance, {self.config.id.name} is confronting a cloud of uncertainty.",
+                f"Despite their usual perceptiveness, {self.config.id.name} is struggling to grasp the details of the ongoing situation.",
+                f"Even with their keen insight, {self.config.id.name} is in the dark about the ongoing developments.",
+                f"Even with their sharp wits, {self.config.id.name} is unable to decode the present circumstances.",
+                f"The current situation has put {self.config.id.name}, who is usually unflappable, in a state of confusion.",
+                f"The existing circumstances have left {self.config.id.name} perplexed.",
+                f"The present context has thrown {self.config.id.name} into a sphere of uncertainty.",
+                f"Typically informed, {self.config.id.name} is out of the loop regarding the present situation.",
+                f"Usually quick on the uptake, {self.config.id.name} seems lost in the fog of the current events.",
+            ])
 
         log.warning("∑ summarizing convo")
 
@@ -90,7 +112,7 @@ class Interact():
 
         summary = self.completion.get_summary(
             text=convo_text,
-            summarizer="To briefly summarize this conversation,",
+            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
             max_tokens=max_tokens,
             model=model
         )
