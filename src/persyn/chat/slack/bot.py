@@ -353,7 +353,9 @@ def main():
             return
 
         # 5% chance of random interjection later
-        if random.random() < 0.05:
+        rnd = random.random()
+        if rnd < 0.05:
+            log.info(f"⏳ say something later in {rnd}...")
             say_something_later(
                 say,
                 channel,
