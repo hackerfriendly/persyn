@@ -212,6 +212,7 @@ class ShortTermMemory():
         self.convo = {}
         self.persyn_config = persyn_config
         self.conversation_interval = conversation_interval or persyn_config.memory.conversation_interval
+        self.first_post = True
 
     def _new(self, service, channel):
         ''' Immediately initialize a new channel without sanity checking '''
@@ -243,6 +244,10 @@ class ShortTermMemory():
 
     def expired(self, service, channel):
         ''' True if time elapsed since last update is > conversation_interval, else False '''
+        if self.first_post:
+            self.first_post = False
+            return False
+
         if not self.exists(service, channel):
             return True
         return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
@@ -350,15 +355,19 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
 
     @staticmethod
-    def entity_id_to_timestamp(entity_id):
-        ''' Extract the timestamp from a ULID '''
+    def entity_id_to_epoch(entity_id):
+        ''' Extract the epoch seconds from a ULID '''
         if entity_id is None:
-            return entity_id
+            return 0
 
         if isinstance(entity_id, str):
             return ulid.ULID().from_str(entity_id).timestamp
 
         return entity_id.timestamp
+
+    def entity_id_to_timestamp(self, entity_id):
+        ''' Extract the timestamp from a ULID '''
+        return get_cur_ts(self.entity_id_to_epoch(entity_id))
 
     def get_last_timestamp(self, service, channel):
         '''
@@ -600,9 +609,11 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         for doc in reply.docs:
             # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
             if float(doc.score) < threshold:
+                log.info("👨‍👩‍👧 Related: ", doc.msg)
                 ret.append(doc)
 
         log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}")
+
         return ret
 
     def add_goal(self, service, channel, goal):
