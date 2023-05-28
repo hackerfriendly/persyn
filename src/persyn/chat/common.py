@@ -132,7 +132,10 @@ class Chat():
             self.take_a_photo(
                 channel,
                 self.get_summary(channel, max_tokens=60),
-                engine="stable-diffusion"
+                engine="stable-diffusion",
+                width=self.persyn_config.dreams.stable_diffusion.width,
+                height=self.persyn_config.dreams.stable_diffusion.height,
+                guidance=self.persyn_config.dreams.stable_diffusion.guidance
             )
 
         return reply
