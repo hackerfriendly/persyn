@@ -16,7 +16,7 @@ Major features:
   * Auto-wikipedia
   * Auto-summarization of previous conversations over time or as the prompt size grows too long
   * Generate images on demand
-  * Identify images dropped into the chat with CLIP Interrogator
+  * Identify images dropped into the chat with BLIP
   * Optional automatic image prompt enhancement with Prompt Parrot
 
 # Installation
