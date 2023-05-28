@@ -38,7 +38,7 @@ class Mastodon():
     def __init__(self, config_file):
         ''' Save state but don't log in yet '''
         self.config_file = config_file
-        self.cfg = None
+        self.persyn_config = None
         self.client = None
         self.chat = None
 
@@ -47,28 +47,28 @@ class Mastodon():
 
         # Spacy for basic parsing
         if self.valid_config():
-            self.nlp = spacy.load(self.cfg.spacy.model)
+            self.nlp = spacy.load(self.persyn_config.spacy.model)
             self.nlp.add_pipe('sentencizer')
 
     def valid_config(self):
         ''' Returns True if a masto config is present '''
-        if self.cfg is None:
-            self.cfg = load_config(self.config_file)
+        if self.persyn_config is None:
+            self.persyn_config = load_config(self.config_file)
 
         return (
-            hasattr(self.cfg, 'chat') and
-            hasattr(self.cfg.chat, 'mastodon') and
-            hasattr(self.cfg.chat.mastodon, 'instance') and
-            hasattr(self.cfg.chat.mastodon, 'secret')
+            hasattr(self.persyn_config, 'chat') and
+            hasattr(self.persyn_config.chat, 'mastodon') and
+            hasattr(self.persyn_config.chat.mastodon, 'instance') and
+            hasattr(self.persyn_config.chat.mastodon, 'secret')
         )
 
     def login(self):
         ''' Attempt to log into the Mastodon service '''
         if not self.valid_config():
-            log.info(f"No Mastodon configuration for {self.cfg.id.name}, skipping.")
+            log.info(f"No Mastodon configuration for {self.persyn_config.id.name}, skipping.")
             return False
 
-        masto_secret = Path(self.cfg.chat.mastodon.secret)
+        masto_secret = Path(self.persyn_config.chat.mastodon.secret)
         if not masto_secret.is_file():
             raise RuntimeError(
                 f"Mastodon instance specified but secret file '{masto_secret}' does not exist.\nCheck your config."
@@ -76,25 +76,17 @@ class Mastodon():
         try:
             self.client = MastoNative(
                 access_token = masto_secret,
-                api_base_url = self.cfg.chat.mastodon.instance
+                api_base_url = self.persyn_config.chat.mastodon.instance
             )
         except MastodonError:
             raise SystemExit("Invalid credentials, run masto-login.py and try again.") from MastodonError
 
         creds = self.client.account_verify_credentials()
         log.info(
-            f"Logged into Mastodon as @{creds.username}@{self.cfg.chat.mastodon.instance} ({creds.display_name})"
+            f"Logged into Mastodon as @{creds.username}@{self.persyn_config.chat.mastodon.instance} ({creds.display_name})"
         )
 
-        self.chat = Chat(
-            bot_name=self.cfg.id.name,
-            bot_id=self.cfg.id.guid,
-            service='mastodon',
-            interact_url=self.cfg.interact.url,
-            dreams_url=self.cfg.dreams.url,
-            captions_url=self.cfg.dreams.captions.url,
-            parrot_url=self.cfg.dreams.parrot.url
-        )
+        self.chat = Chat(persyn_config=self.persyn_config, service='mastodon')
 
         return True
 
@@ -120,9 +112,9 @@ class Mastodon():
             engine=engine,
             style=style,
             model=model,
-            width=704,
-            height=704,
-            guidance=15
+            width=self.persyn_config.dreams.stable_diffusion.width,
+            height=self.persyn_config.dreams.stable_diffusion.height,
+            guidance=self.persyn_config.dreams.stable_diffusion.guidance
         )
         ents = self.chat.get_entities(prompt)
         if ents:
@@ -168,8 +160,8 @@ class Mastodon():
 
     def paginate(self, text, maxlen=None):
         ''' Break a single status string into a list of toots < the posting limit. '''
-        if maxlen is None or maxlen > self.cfg.chat.mastodon.toot_length:
-            maxlen = self.cfg.chat.mastodon.toot_length
+        if maxlen is None or maxlen > self.persyn_config.chat.mastodon.toot_length:
+            maxlen = self.persyn_config.chat.mastodon.toot_length
 
         doc = self.nlp(text)
         posts = []
@@ -236,7 +228,7 @@ class Mastodon():
                     to_status=status
                 )
             else:
-                the_reply = self.chat.get_reply(channel, msg, self.cfg.id.name, self.cfg.id.guid, self.reminders)
+                the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders)
                 # get_reply() speaks for us, no need to say it again.
                 # my_response = self.toot(the_reply)
 

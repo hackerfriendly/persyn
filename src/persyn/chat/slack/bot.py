@@ -119,15 +119,7 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        service=app.client.auth_test().data['url'],
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=app.client.auth_test().data['url'])
 
     log.info(f"👖 Logged into chat.service: {chat.service}")
 
@@ -187,9 +179,9 @@ def main():
             channel,
             chat.get_summary(channel, max_tokens=60),
             engine="stable-diffusion",
-            width=704,
-            height=704,
-            guidance=15
+            width=persyn_config.dreams.stable_diffusion.width,
+            height=persyn_config.dreams.stable_diffusion.height,
+            guidance=persyn_config.dreams.stable_diffusion.guidance
         )
 
     @app.message(re.compile(r"^:art:(.+)$"))
@@ -200,7 +192,14 @@ def main():
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
-        chat.take_a_photo(channel, prompt, engine="stable-diffusion")
+        chat.take_a_photo(
+            channel,
+            prompt,
+            engine="stable-diffusion",
+            width=persyn_config.dreams.stable_diffusion.width,
+            height=persyn_config.dreams.stable_diffusion.height,
+            guidance=persyn_config.dreams.stable_diffusion.guidance
+        )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
         ents = chat.get_entities(prompt)
@@ -215,7 +214,14 @@ def main():
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
-        chat.take_a_photo(channel, prompt, engine="stable-diffusion", width=704, height=704, guidance=15)
+        chat.take_a_photo(
+            channel,
+            prompt,
+            engine="stable-diffusion",
+            width=persyn_config.dreams.stable_diffusion.width * 2,
+            height=persyn_config.dreams.stable_diffusion.height * 2,
+            guidance=persyn_config.dreams.stable_diffusion.guidance
+        )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
         ents = chat.get_entities(prompt)
@@ -232,7 +238,15 @@ def main():
 
         parrot = chat.prompt_parrot(prompt)
         log.warning(f"🦜 {parrot}")
-        chat.take_a_photo(channel, prompt, engine="stable-diffusion", style=parrot)
+        chat.take_a_photo(
+            channel,
+            prompt,
+            engine="stable-diffusion",
+            width=persyn_config.dreams.stable_diffusion.width,
+            height=persyn_config.dreams.stable_diffusion.height,
+            guidance=persyn_config.dreams.stable_diffusion.guidance,
+            style=parrot
+        )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
 

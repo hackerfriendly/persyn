@@ -78,6 +78,16 @@ def load_config(cfg=None):
                 config['dreams']['gpus'][str(gpu)]['name'] = gpus[gpu]
                 config['dreams']['gpus'][str(gpu)]['lock'] = Lock()
 
+        if 'stable_diffusion' in config['dreams']:
+            if 'model' not in config['dreams']['stable_diffusion']:
+                config['dreams']['stable_diffusion']['model'] = "stabilityai/stable-diffusion-2-1"
+            if 'width' not in config['dreams']['stable_diffusion']:
+                config['dreams']['stable_diffusion']['width'] = 1024
+            if 'height' not in config['dreams']['stable_diffusion']:
+                config['dreams']['stable_diffusion']['height'] = 512
+            if 'guidance' not in config['dreams']['stable_diffusion']:
+                config['dreams']['stable_diffusion']['guidance'] = 14
+
     if 'cns' in config and 'redis' not in config['cns']:
         config['cns']['redis'] = 'redis://localhost:6379/'
 
@@ -119,8 +129,8 @@ def load_config(cfg=None):
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('sentiment', {})
     config.setdefault('interact', {'url': None})
-    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'parrot': {'url': None}, 'stable_diffusion': {'url': None, 'model': "stabilityai/stable-diffusion-2-1"}})
     config.setdefault('web', {'default': 'body'})
+    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'parrot': {'url': None}, 'stable_diffusion': {'url': None}})
 
     # Check for required models
     persyn_config = PersynConfig(config)

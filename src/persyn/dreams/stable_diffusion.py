@@ -87,7 +87,7 @@ def round_to(num, mult=8):
     ret = num + (mult - 1)
     return ret - (ret % mult)
 
-def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
+def generate_image(prompt, seed, steps, width, height, guidance):
     ''' Generate and return an image array using the first available GPU '''
     gpu = wait_for_gpu()
 
@@ -115,7 +115,7 @@ def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
         GPUS[gpu].release()
 
 
-def safe_generate_image(prompt, seed, steps, width=704, height=704, guidance=15, safe=True):
+def safe_generate_image(prompt, seed, steps, width, height, guidance, safe=True):
     ''' Generate an image and check NSFW. Returns a FastAPI StreamingResponse. '''
 
     image = generate_image(prompt, seed, steps, width, height, guidance)
@@ -149,9 +149,9 @@ def generate(
     prompt: Optional[str] = Query(""),
     seed: Optional[int] = Query(-1),
     steps: Optional[int] = Query(ge=1, le=100, default=40),
-    width: Optional[int] = Query(704),
-    height: Optional[int] = Query(704),
-    guidance: Optional[float] = Query(15),
+    width: Optional[int] = Query(1024),
+    height: Optional[int] = Query(512),
+    guidance: Optional[float] = Query(14),
     safe: Optional[bool] = Query(True),
     ):
     ''' Generate an image with Stable Diffusion '''

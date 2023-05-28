@@ -77,47 +77,21 @@ def get_service(service):
 
 async def say_something(event):
     ''' Send a message to a service + channel '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
-
 
 async def new_idea(event):
     ''' Inject a new idea '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
     chat.inject_idea(
         channel=event.channel,
         idea=event.idea,
         verb=event.verb
     )
 
-
 async def summarize_channel(event):
     ''' Summarize the channel '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
     summary = chat.get_summary(
         channel=event.channel,
         save=True,
@@ -127,18 +101,9 @@ async def summarize_channel(event):
     )
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
-
 async def elaborate(event):
     ''' Continue the train of thought '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
     chat.get_reply(
         channel=event.channel,
         msg='...',
@@ -148,18 +113,9 @@ async def elaborate(event):
     # get_reply() speaks for us, no need to say it again.
     # services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
 
-
 async def opine(event):
     ''' Recall opinions of entities (if any) '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
 
     for entity in event.entities:
         if not entity.strip() or entity in STOP_WORDS:
@@ -187,15 +143,7 @@ async def opine(event):
 
 async def wikipedia_summary(event):
     ''' Summarize some wikipedia pages '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
 
     for entity in event.entities:
         if not entity.strip() or entity in STOP_WORDS:
@@ -274,15 +222,7 @@ async def build_knowledge_graph(event):
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
 
     for goal in event.goals:
         goal_achieved = completion.get_summary(
@@ -352,15 +292,7 @@ async def read_web(event):
         selector = 'body'
         stop = []
 
-    chat = Chat(
-        bot_name=event.bot_name,
-        bot_id=event.bot_id,
-        service=event.service,
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service=event.service)
     log.debug(text_from_url(event.url, selector))
 
     if not event.reread and recall.ltm.have_read(event.service, event.channel, event.url):
@@ -446,61 +378,73 @@ async def read_news(event):
 @autobus.subscribe(SendChat)
 async def chat_event(event):
     ''' Dispatch chat event w/ optional images. '''
+    log.debug("SendChat received", event)
     await say_something(event)
 
 @autobus.subscribe(Idea)
 async def idea_event(event):
     ''' Dispatch idea event. '''
+    log.debug("Idea received", event)
     await new_idea(event)
 
 @autobus.subscribe(Summarize)
 async def summarize_event(event):
     ''' Dispatch summarize event. '''
+    log.debug("Summarize received", event)
     await summarize_channel(event)
 
 @autobus.subscribe(Elaborate)
 async def elaborate_event(event):
     ''' Dispatch elaborate event. '''
+    log.debug("Elaborate received", event)
     await elaborate(event)
 
 @autobus.subscribe(Opine)
 async def opine_event(event):
     ''' Dispatch opine event. '''
+    log.debug("Opine received", event)
     await opine(event)
 
 @autobus.subscribe(Wikipedia)
 async def wiki_event(event):
     ''' Dispatch wikipedia event. '''
+    log.debug("Wikipedia received", event)
     await wikipedia_summary(event)
 
 @autobus.subscribe(CheckGoals)
 async def check_goals_event(event):
     ''' Dispatch CheckGoals event. '''
+    log.debug("CheckGoals received", event)
     await goals_achieved(event)
 
 @autobus.subscribe(AddGoal)
 async def goals_event(event):
     ''' Dispatch AddGoal event. '''
+    log.debug("AddGoal received", event)
     await add_goal(event)
 
 @autobus.subscribe(VibeCheck)
 async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
+    log.debug("VibeCheck received", event)
     await check_feels(event)
 
 @autobus.subscribe(KnowledgeGraph)
 async def kg_event(event):
     ''' Dispatch KnowledgeGraph event. '''
+    log.debug("KnowledgeGraph received", event)
     await build_knowledge_graph(event)
 
 @autobus.subscribe(News)
 async def news_event(event):
     ''' Dispatch News event. '''
+    log.debug("News received", event)
     await read_news(event)
 
 @autobus.subscribe(Web)
 async def web_event(event):
     ''' Dispatch Web event. '''
+    log.debug("Web received", event)
     await read_web(event)
 
 def main():

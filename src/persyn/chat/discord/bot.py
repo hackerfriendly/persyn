@@ -133,10 +133,21 @@ def say_something_later(ctx, when, what=None):
 def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None, hq=False):
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
+    width = persyn_config.dreams.stable_diffusion.width
+    height = persyn_config.dreams.stable_diffusion.height
     if hq:
-        chat.take_a_photo(channel, prompt, engine=engine, style=style, width=704, height=704, guidance=15)
-    else:
-        chat.take_a_photo(channel, prompt, engine=engine, style=style)
+        width *= 2
+        height *= 2
+
+    chat.take_a_photo(
+        channel,
+        prompt,
+        engine=engine,
+        style=style,
+        width=width,
+        height=height,
+        guidance=persyn_config.dreams.stable_diffusion.guidance
+    )
     say_something_later(ctx, when=3, what=":camera_with_flash:")
 
     ents = chat.get_entities(prompt)
@@ -219,7 +230,7 @@ async def handle_attachments(ctx):
             if not msg.strip():
                 msg = "..."
 
-            reply = chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
+            chat.get_reply(channel, msg, ctx.author.name, ctx.author.id)
             # get_reply() speaks for us, no need to say it again.
             # await ctx.channel.send(reply)
 
@@ -328,15 +339,7 @@ def main():
 
     # Chat library
     global chat
-    chat = Chat(
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        service='discord',
-        interact_url=persyn_config.interact.url,
-        dreams_url=persyn_config.dreams.url,
-        captions_url=persyn_config.dreams.captions.url,
-        parrot_url=persyn_config.dreams.parrot.url
-    )
+    chat = Chat(persyn_config=persyn_config, service='discord')
 
     # Discord client
     app.run(persyn_config.chat.discord.token)
