@@ -8,7 +8,6 @@ The central nervous system. Listen for events on the event bus and inject result
 import os
 import argparse
 
-import autobus
 import requests
 
 from spacy.lang.en.stop_words import STOP_WORDS
@@ -21,6 +20,9 @@ from wikipedia.exceptions import WikipediaException
 from bs4 import BeautifulSoup
 
 from Levenshtein import ratio
+
+# Autobus, forked from https://github.com/schuyler/autobus
+from persyn import autobus
 
 # Common chat library
 from persyn.chat.common import Chat

@@ -8,12 +8,13 @@ Add a goal to a channel via the event bus
 import argparse
 import os
 
+from persyn import autobus
+
 # Bot config
 from persyn.utils.config import load_config
 
 from persyn.interaction.messages import AddGoal
 
-import autobus
 import asyncio
 
 # Defined in main

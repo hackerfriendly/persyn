@@ -8,12 +8,13 @@ Recall some opinions using the autobus.
 import argparse
 import os
 
+from persyn import autobus
+
 # Bot config
 from persyn.utils.config import load_config
 
 from persyn.interaction.messages import Opine
 
-import autobus
 import asyncio
 
 # Defined in main

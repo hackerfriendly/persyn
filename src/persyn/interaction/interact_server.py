@@ -18,7 +18,7 @@ from fastapi.responses import RedirectResponse
 import uvicorn
 
 # The event bus
-import autobus
+from persyn import autobus
 
 # Interaction routines
 from persyn.interaction.interact import Interact

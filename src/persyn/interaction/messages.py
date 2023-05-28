@@ -4,7 +4,7 @@ CNS autobus messages
 # pylint: disable=too-few-public-methods
 
 from typing import Optional, List
-import autobus
+from persyn import autobus
 
 class SendChat(autobus.Event):
     ''' Post text or images '''
