@@ -40,9 +40,8 @@ MODELS = {
     "pipeline": {
         # "name": "stabilityai/stable-diffusion-2",
         "name": "stabilityai/stable-diffusion-2-1",
-        # "name": "prompthero/openjourney",
-        # "name": "prompthero/openjourney-v4",
-        "sub": ""
+#         "name": "prompthero/openjourney",
+        "sub": "",
     },
     "safety": {
         "name": "CompVis/stable-diffusion-safety-checker",
@@ -66,7 +65,10 @@ safety_checker = StableDiffusionSafetyChecker.from_pretrained(MODELS["safety"]["
 
 # Use the Euler scheduler here instead
 scheduler = EulerDiscreteScheduler.from_pretrained(MODELS["pipeline"]["name"], subfolder="scheduler")
-pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
+if MODELS["pipeline"]["name"] == "stabilityai/stable-diffusion-2-1":
+    pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
+else:
+    pipe = StableDiffusionPipeline.from_pretrained(MODELS["pipeline"]["name"], scheduler=scheduler)
 pipe = pipe.to("cuda")
 
 def naughty(image):
