@@ -144,10 +144,14 @@ cns:
 
 #   # Optional: Stable Diffusion image server (sdd.py) for image generation
 #   stable_diffusion:
-#     url: http://localhost:8003
-#
-#   If running locally, specify the number of local workers to launch.
-#     workers: 1
+
+  # Stable Diffusion image server (stable_diffusion.py)
+  # stable_diffusion:
+    # url: http://localhost:8003
+    ## If you're running it locally, add a worker and choose a model.
+    # workers: 1
+    # model: "stabilityai/stable-diffusion-2-1"
+    # model: "prompthero/openjourney"
 
 #   # Optional: Prompt Parrot server for 🪄 prompt enhancement (prompt-parrot.py)
 #   parrot:
@@ -156,7 +160,7 @@ cns:
 #   If running locally, specify the number of local workers to launch.
 #     workers: 1
 
-#   # Optional: CLIP Interrogator server for image recognition (interrogator.py)
+#   # Optional: BLIP server for image recognition (captions.py)
 #   captions:
 #     url: http://localhost:8005
 #

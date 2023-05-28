@@ -36,17 +36,9 @@ from persyn.utils.config import load_config
 
 app = FastAPI()
 
-MODELS = {
-    "pipeline": {
-        # "name": "stabilityai/stable-diffusion-2",
-        "name": "stabilityai/stable-diffusion-2-1",
-#         "name": "prompthero/openjourney",
-        "sub": "",
-    },
-    "safety": {
-        "name": "CompVis/stable-diffusion-safety-checker",
-    }
-}
+# defined after the config is loaded
+MODEL = None
+PIPE = None
 
 # One lock for each available GPU (only one supported for now)
 GPUS = {}
@@ -60,16 +52,9 @@ if not GPUS:
 logging.set_verbosity_error()
 
 # The CompVis safety model.
-safety_feature_extractor = AutoFeatureExtractor.from_pretrained(MODELS["safety"]["name"])
-safety_checker = StableDiffusionSafetyChecker.from_pretrained(MODELS["safety"]["name"])
+safety_feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
+safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
 
-# Use the Euler scheduler here instead
-scheduler = EulerDiscreteScheduler.from_pretrained(MODELS["pipeline"]["name"], subfolder="scheduler")
-if MODELS["pipeline"]["name"] == "stabilityai/stable-diffusion-2-1":
-    pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
-else:
-    pipe = StableDiffusionPipeline.from_pretrained(MODELS["pipeline"]["name"], scheduler=scheduler)
-pipe = pipe.to("cuda")
 
 def naughty(image):
     ''' Returns True if naughty bits are detected, else False. '''
@@ -100,7 +85,7 @@ def clear_cuda_mem():
 def round_to(num, mult=8):
     ''' Round to the nearest multiple of mult '''
     ret = num + (mult - 1)
-    return ret - (ret % 8)
+    return ret - (ret % mult)
 
 def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
     ''' Generate and return an image array using the first available GPU '''
@@ -108,7 +93,7 @@ def generate_image(prompt, seed, steps, width=704, height=704, guidance=15):
 
     try:
         generator = torch.Generator(device='cuda').manual_seed(seed)
-        return pipe(
+        return PIPE(
             prompt,
             negative_prompt="meme youtube 'play button' 'computer graphics' caption",
             generator=generator,
@@ -143,7 +128,7 @@ def safe_generate_image(prompt, seed, steps, width=704, height=704, guidance=15,
     # Set the EXIF data. See PIL.ExifTags.TAGS to map numbers to names.
     exif = image.getexif()
     exif[271] = prompt # exif: Make
-    exif[272] = MODELS["pipeline"]["name"] # exif: Model
+    exif[272] = MODEL # exif: Model
     exif[305] = f'seed={seed}, steps={steps}' # exif: Software
 
     buf = BytesIO()
@@ -198,7 +183,23 @@ def main():
 
     persyn_config = load_config(args.config_file)
 
-    log.info(f"🎨 Stable Diffusion server starting up")
+    global MODEL
+    global PIPE
+
+    MODEL = persyn_config.dreams.stable_diffusion.model
+
+    # Use the Euler scheduler here instead
+    scheduler = EulerDiscreteScheduler.from_pretrained(MODEL, subfolder="scheduler")
+
+    # use fp16 for ~3x speedup (if available)
+    if MODEL.startswith("stabilityai/stable-diffusion"):
+        PIPE = StableDiffusionPipeline.from_pretrained(MODEL, scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
+    else:
+        PIPE = StableDiffusionPipeline.from_pretrained(MODEL, scheduler=scheduler)
+
+    PIPE = PIPE.to("cuda")
+
+    log.info(f"🎨 Stable Diffusion server starting up, serving model: {MODEL}")
 
     uvicorn.run(
         'persyn.dreams.stable_diffusion:app',
