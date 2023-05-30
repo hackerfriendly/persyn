@@ -41,17 +41,19 @@ excuses = [
 
 class Chat():
     ''' Container class for common chat functions '''
-    def __init__(self, **kwargs):
-        ''' da setup '''
-        self.bot_name = kwargs['bot_name']
-        self.bot_id = kwargs['bot_id']
-        self.service = kwargs['service']
-        self.photo_triggers = kwargs.get('photo_triggers', default_photo_triggers)
+    def __init__(self, persyn_config, service):
+        ''' Container class for common chat functions. Pass the persyn config and the calling chat service. '''
+        self.persyn_config = persyn_config
+        self.service=service
 
-        self.interact_url = kwargs.get('interact_url', None)
-        self.dreams_url = kwargs.get('dreams_url', None)
-        self.captions_url = kwargs.get('captions_url', None)
-        self.parrot_url = kwargs.get('parrot_url', None)
+        self.bot_name=persyn_config.id.name
+        self.bot_id=persyn_config.id.guid
+        self.interact_url=persyn_config.interact.url
+        self.dreams_url=persyn_config.dreams.url
+        self.captions_url=persyn_config.dreams.captions.url
+        self.parrot_url=persyn_config.dreams.parrot.url
+
+        self.photo_triggers = default_photo_triggers
 
     def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
@@ -80,15 +82,14 @@ class Chat():
 
         if summary:
             if photo:
-                # HQ summaries: a little slower, but worth the wait.
                 self.take_a_photo(
                     channel,
                     summary,
                     engine="stable-diffusion",
-                    style=f"{random.choice(artists)}",
-                    width=704,
-                    height=704,
-                    guidance=15
+                    style=f"style by {random.choice(artists)}",
+                    width=self.persyn_config.dreams.stable_diffusion.width,
+                    height=self.persyn_config.dreams.stable_diffusion.height,
+                    guidance=self.persyn_config.dreams.stable_diffusion.guidance
                 )
             return summary
 
@@ -131,7 +132,10 @@ class Chat():
             self.take_a_photo(
                 channel,
                 self.get_summary(channel, max_tokens=60),
-                engine="stable-diffusion"
+                engine="stable-diffusion",
+                width=self.persyn_config.dreams.stable_diffusion.width,
+                height=self.persyn_config.dreams.stable_diffusion.height,
+                guidance=self.persyn_config.dreams.stable_diffusion.guidance
             )
 
         return reply

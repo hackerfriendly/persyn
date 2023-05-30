@@ -8,13 +8,15 @@ Continue the train of thought on a channel via the event bus
 import argparse
 import os
 
+import asyncio
+
+from persyn import autobus
+
 # Bot config
 from persyn.utils.config import load_config
 
 from persyn.interaction.messages import Elaborate
 
-import autobus
-import asyncio
 
 # Defined in main
 interact = None

@@ -212,6 +212,7 @@ class ShortTermMemory():
         self.convo = {}
         self.persyn_config = persyn_config
         self.conversation_interval = conversation_interval or persyn_config.memory.conversation_interval
+        self.first_post = True
 
     def _new(self, service, channel):
         ''' Immediately initialize a new channel without sanity checking '''
@@ -243,6 +244,10 @@ class ShortTermMemory():
 
     def expired(self, service, channel):
         ''' True if time elapsed since last update is > conversation_interval, else False '''
+        if self.first_post:
+            self.first_post = False
+            return False
+
         if not self.exists(service, channel):
             return True
         return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
@@ -350,15 +355,19 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
 
 
     @staticmethod
-    def entity_id_to_timestamp(entity_id):
-        ''' Extract the timestamp from a ULID '''
+    def entity_id_to_epoch(entity_id):
+        ''' Extract the epoch seconds from a ULID '''
         if entity_id is None:
-            return entity_id
+            return 0
 
         if isinstance(entity_id, str):
             return ulid.ULID().from_str(entity_id).timestamp
 
         return entity_id.timestamp
+
+    def entity_id_to_timestamp(self, entity_id):
+        ''' Extract the timestamp from a ULID '''
+        return get_cur_ts(self.entity_id_to_epoch(entity_id))
 
     def get_last_timestamp(self, service, channel):
         '''
@@ -559,16 +568,21 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         query_params = {"service": service, "channel": channel, "topic": topic}
         return [doc.opinion for doc in self.redis.ft(self.opinion_prefix).search(query, query_params).docs]
 
-    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0):
+    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
         '''
         Find conversations related to convo using vector similarity
         '''
         emb = self.completion.model.get_embedding(' '.join(convo))
 
+        if any_convo:
+            service_channel = ""
+        else:
+            service_channel = "(@service:{$service}) (@channel:{$channel})"
+
         if current_convo_id is None:
             query = (
                 Query(
-                    "((@service:{$service}) (@channel:{$channel}) (@verb:{dialog}))=>[KNN " + str(size) + " @emb $emb as score]"
+                    "(" + service_channel + " (@verb:{dialog}))=>[KNN " + str(size) + " @emb $emb as score]"
                 )
                 .sort_by("score")
                 .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
@@ -581,7 +595,7 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             # exclude the current convo_id
             query = (
                 Query(
-                    "((@service:{$service}) (@channel:{$channel}) (@verb:{dialog}) -(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
+                    "(" + service_channel + " (@verb:{dialog}) -(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
                 )
                 .sort_by("score")
                 .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
@@ -595,9 +609,14 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         for doc in reply.docs:
             # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
             if float(doc.score) < threshold:
+                log.info("👨‍👩‍👧 Related: ", doc.msg)
                 ret.append(doc)
 
-        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}")
+        if reply.docs:
+            best = f" (best: {float(reply.docs[0].score):0.3f})"
+
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}{best}")
+
         return ret
 
     def add_goal(self, service, channel, goal):

@@ -8,12 +8,13 @@ Read page on the web.
 import argparse
 import os
 
+from persyn import autobus
+
 # Bot config
 from persyn.utils.config import load_config
 
 from persyn.interaction.messages import Web
 
-import autobus
 import asyncio
 
 # Defined in main

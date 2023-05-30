@@ -80,7 +80,29 @@ class Interact():
             text = self.recall.convo(service, channel)
 
         if not text:
-            text = [f"{self.config.id.name} isn't sure what is happening."]
+            return random.choice([
+                f"{self.config.id.name} feels mystified by the current state of affairs.",
+                f"{self.config.id.name} is bewildered by the present circumstances.",
+                f"{self.config.id.name} is finding the present situation puzzling and hard to comprehend.",
+                f"{self.config.id.name} is in a haze of confusion about what's happening.",
+                f"{self.config.id.name} is in the dark about the ongoing situation.",
+                f"{self.config.id.name} is struggling to make sense of the ongoing situation.",
+                f"{self.config.id.name} isn't sure what is happening.",
+                f"{self.config.id.name}, ordinarily quick to comprehend, is genuinely befuddled by the current state of things.",
+                f"{self.config.id.name}, usually in tune with their surroundings, is completely at sea with what's unfolding.",
+                f"{self.config.id.name}, usually self-reliant and unshakeable, is grappling with ambiguity regarding the present scenario.",
+                f"{self.config.id.name}, usually up-to-date and aware, is strangely oblivious to the current scenario.",
+                f"Despite their sharp intuition, {self.config.id.name} is clueless about the present events.",
+                f"Despite their usual firm grasp and assurance, {self.config.id.name} is confronting a cloud of uncertainty.",
+                f"Despite their usual perceptiveness, {self.config.id.name} is struggling to grasp the details of the ongoing situation.",
+                f"Even with their keen insight, {self.config.id.name} is in the dark about the ongoing developments.",
+                f"Even with their sharp wits, {self.config.id.name} is unable to decode the present circumstances.",
+                f"The current situation has put {self.config.id.name}, who is usually unflappable, in a state of confusion.",
+                f"The existing circumstances have left {self.config.id.name} perplexed.",
+                f"The present context has thrown {self.config.id.name} into a sphere of uncertainty.",
+                f"Typically informed, {self.config.id.name} is out of the loop regarding the present situation.",
+                f"Usually quick on the uptake, {self.config.id.name} seems lost in the fog of the current events.",
+            ])
 
         log.warning("∑ summarizing convo")
 
@@ -90,7 +112,7 @@ class Interact():
 
         summary = self.completion.get_summary(
             text=convo_text,
-            summarizer="To briefly summarize this conversation,",
+            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
             max_tokens=max_tokens,
             model=model
         )
@@ -177,20 +199,19 @@ class Interact():
         if not convo:
             return visited
 
-
-        # TODO: Decide how much convo to use?
         ranked = self.recall.ltm.find_related_convos(
             service, channel,
-            convo='\n'.join(convo[:5]),
-            size=3,
+            convo='\n'.join(convo[:3]),
+            size=10,
             current_convo_id=self.recall.stm.convo_id(service, channel),
-            threshold=0.3
+            threshold=0.15
+        ) + self.recall.ltm.find_related_convos(
+            service, channel,
+            convo='\n'.join(convo),
+            size=2,
+            current_convo_id=self.recall.stm.convo_id(service, channel),
+            threshold=0.2
         )
-        # + self.recall.ltm.find_related_convos(
-        #     "import_service", "no_channel",
-        #     convo=[convo[-1]],
-        #     size=1
-        # )
 
         for hit in ranked:
             if hit.convo_id not in visited:
@@ -200,10 +221,8 @@ class Interact():
                 if the_summary:
                     self.inject_idea(
                         service, channel,
-                        # This is too expensive. Retrieve old summaries instead.
-                        # self.completion.get_summary(hit['hit']['_source']['convo']),
-                        the_summary.summary,
-                        verb="remembers" # that {ago(hit['@timestamp'])} ago"
+                        f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
+                        verb=f"remembers that {ago(self.recall.ltm.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
                     visited.append(hit.convo_id)
                     log.info(
@@ -236,24 +255,6 @@ class Interact():
             if summary.convo_id in visited:
                 continue
             visited.append(summary.convo_id)
-
-            # # Stay on topic
-            # prompt = '\n'.join(
-            #     self.recall.convo(service, channel)
-            #     + [
-            #         f"{self.config.id.name} remembers that {ago(summary['_source']['@timestamp'])} ago: "
-            #         + summary['_source']['summary']
-            #     ]
-            # )
-            # on_topic = self.completion.get_summary(
-            #     prompt,
-            #     summarizer="Q: True or False: this memory relates to the earlier conversation.\nA:",
-            #     max_tokens=10)
-
-            # log.warning(f"🧐 Are we on topic? {on_topic}")
-            # if 'true' not in on_topic.lower():
-            #     log.warning(f"🚫 Irrelevant memory discarded: {summary['_source']['summary']}")
-            #     continue
 
             log.warning(f"🐘 Memory found: {summary.summary}")
             self.inject_idea(service, channel, summary.summary, "remembers")
@@ -365,6 +366,8 @@ class Interact():
 
         Returns the best available reply.
         '''
+        log.info(f"💬 get_reply to: {msg}")
+
         self.goals = self.recall.list_goals(service, channel)
 
         # This should be async, separate thread?

@@ -1,6 +1,6 @@
 # persyn: Personality Syndrome
 
-Persyn makes it easy to integrate cutting-edge machine learning research projects into a single microservices framework. Each project implements a component of a greater personality (language model, long-term memory, visualizations, logic) that is tied together into an interactive group chat interface.
+Persyn makes it easy to integrate many machine learning packages into a single microservices framework. Each project implements a component of a greater personality (language model, long-term memory, visualizations, logic) that is tied together into an interactive group chat interface.
 
 The resulting gestalt can be executed on any combination of local compute resources (CPU + GPU) and third-party APIs (OpenAI, Wikipedia, etc.)
 
@@ -16,7 +16,7 @@ Major features:
   * Auto-wikipedia
   * Auto-summarization of previous conversations over time or as the prompt size grows too long
   * Generate images on demand
-  * Identify images dropped into the chat with CLIP Interrogator
+  * Identify images dropped into the chat with BLIP
   * Optional automatic image prompt enhancement with Prompt Parrot
 
 # Installation
@@ -26,7 +26,7 @@ Persyn in intended to run from inside a python virtualenv.
 On first launch it will download required models and install necessary packages inside the virtualenv.
 
 ```
-$ virtualenv --python=python3.8 env
+$ virtualenv --python=python3.9 env
 $ . env/bin/activate
 (env) $ pip install --upgrade pip # best practice
 (env) $ pip install persyn

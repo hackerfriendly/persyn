@@ -41,6 +41,7 @@ dependencies = [
   "pyyaml",
   "redis[hiredis]>=4.5.0",
   "requests",
+  "schedule",
   "scikit-learn==1.1.3",
   "scipy==1.9.0",
   "shortuuid",
@@ -50,7 +51,6 @@ dependencies = [
   "tiktoken",
   "uvicorn",
   "wikipedia",
-  # "autobus @ git+https://github.com/hackerfriendly/autobus"
 ]
 
 [project.scripts]
@@ -78,21 +78,15 @@ captions = "persyn.dreams.BLIP.captions:main"
 dev = [
   "pytest",
   "pylint",
-  "jupyterlab"
+  "jupyterlab",
+  "jupyter_contrib_nbextensions",
+  "ipywidgets"
 ]
-# TODO: https://github.com/facebookresearch/xformers
-stable_diffusion = [
-  "accelerate",
-  "scipy",
-  "safetensors",
-  "transformers",
-  "diffusers",
-  "torch",
-  "torchvision"
-]
+
 all = [
   "accelerate",
   "diffusers",
+  "fairscale==0.4.4",
   "safetensors",
   "scipy",
   "timm",
@@ -100,7 +94,7 @@ all = [
   "torchvision",
   "tqdm",
   "transformers",
-  "fairscale==0.4.4"
+  "xformers",
 ]
 
 [project.urls]

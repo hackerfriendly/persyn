@@ -17,7 +17,6 @@ import tempfile
 import uuid
 import argparse
 import asyncio
-import autobus
 
 from pathlib import Path
 from subprocess import run
@@ -27,6 +26,8 @@ import uvicorn
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.responses import RedirectResponse
+
+from persyn import autobus
 
 from persyn.interaction.messages import SendChat
 
