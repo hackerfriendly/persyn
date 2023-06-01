@@ -355,7 +355,7 @@ def main():
         reminders.cancel(channel)
         reminders.cancel(channel, name='summarizer')
 
-        chat.summarize_later(channel, reminders)
+        # chat.summarize_later(channel, reminders)
 
         if the_reply.endswith('…') or the_reply.endswith('...'):
             say_something_later(

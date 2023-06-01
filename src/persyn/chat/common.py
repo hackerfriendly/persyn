@@ -146,6 +146,8 @@ class Chat():
 
         Every time this executes, a new convo summary is saved. Only one
         can run at a time.
+
+        This is typically handled automatically by cns.py.
         '''
         if not when:
             when = 240 + random.randint(20,80)

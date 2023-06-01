@@ -449,6 +449,39 @@ async def web_event(event):
     log.debug("Web received", event)
     await read_web(event)
 
+##
+# recurring events
+##
+@autobus.schedule(autobus.every(10).seconds)
+def auto_summarize():
+    ''' Automatically summarize conversations when they expire. '''
+    convos = [convo.decode() for convo in recall.list_convos()]
+
+    if convos:
+        log.info("💓 Active convos:", convos)
+
+    for convo in convos:
+        (service, channel, convo_id) = convo.split('|')
+        # it should be stale and have more in it than a single line (ie. a previous summary)
+        if recall.expired(service, channel):
+            log.warning("💓 Convo expired:", convo_id)
+
+            # Remove it from the convo list
+            recall.ltm.redis.srem(f"{recall.ltm.active_convos_prefix}", convo)
+
+            if len(recall.ltm.get_convo_by_id(convo_id)) > 2:
+                log.info(f"{recall.ltm.get_convo_by_id(convo_id)}")
+
+            # event = Summarize(
+            #     bot_name=persyn_config.id.name,
+            #     bot_id=persyn_config.id.guid,
+            #     service=service,
+            #     channel=channel,
+            #     photo=True,
+            #     max_tokens=200
+            # )
+            # autobus.publish(event)
+
 def main():
     ''' Main event '''
     parser = argparse.ArgumentParser(

@@ -232,7 +232,7 @@ class Mastodon():
                 # get_reply() speaks for us, no need to say it again.
                 # my_response = self.toot(the_reply)
 
-            self.chat.summarize_later(channel, self.reminders)
+            # self.chat.summarize_later(channel, self.reminders)
 
             if the_reply.endswith('…') or the_reply.endswith('...'):
                 self.say_something_later(

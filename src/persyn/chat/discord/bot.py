@@ -197,8 +197,8 @@ async def schedule_reply(ctx):
     # await ctx.channel.send(the_reply)
 
     # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
-    if not channel.startswith('dm|'):
-        chat.summarize_later(channel, reminders)
+    # if not channel.startswith('dm|'):
+    #     chat.summarize_later(channel, reminders)
 
     if the_reply.endswith('…') or the_reply.endswith('...'):
         say_something_later(
