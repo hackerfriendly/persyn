@@ -66,272 +66,37 @@ class Bot(Person):
 
 
 class Recall():
-    ''' Total Recall: stm + ltm. '''
+    '''
+    Total Recall
+
+    Track conversations. If the conversation_interval has expired, start a new one.
+
+    Also builds the knowledge graph.
+    '''
     def __init__(self, persyn_config, conversation_interval=None):
-        self.bot_name = persyn_config.id.name
-        self.bot_id = uuid.UUID(persyn_config.id.guid)
 
-        self.stm = ShortTermMemory(persyn_config, conversation_interval)
-        self.ltm = LongTermMemory(persyn_config)
-
-    def save(self, service, channel, msg, speaker_name, speaker_id, verb=None, convo_id=None):
-        '''
-        Save to stm and ltm. Clears stm if it expired. Returns the current convo_id.
-
-        Specify a different convo_id to override the value in stm.
-        '''
-        if self.stm.expired(service, channel):
-            self.stm.clear(service, channel)
-
-        if convo_id is None:
-            convo_id = self.stm.convo_id(service, channel)
-
-        if verb is None:
-            verb = 'dialog'
-
-        self.stm.append(
-            service,
-            channel,
-            self.ltm.save_convo(
-                service=service,
-                channel=channel,
-                convo_id=convo_id,
-                msg=msg,
-                speaker_id=speaker_id,
-                speaker_name=speaker_name,
-                verb=verb
-            )
-        )
-        return convo_id
-
-    def summary(self, service, channel, summary, keywords=None):
-        ''' Save a summary. Clears stm. '''
-        if not summary:
-            return False
-
-        if keywords is None:
-            keywords = []
-
-        convo_id = self.stm.convo_id(service, channel)
-        self.stm.clear(service, channel)
-        self.ltm.save_summary(service, channel, convo_id, summary, keywords)
-        return True
-
-    def expired(self, service, channel):
-        ''' True if this conversation has expired, else False '''
-        return self.stm.expired(service, channel)
-
-    def forget(self, service, channel):
-        ''' What were we talking about? '''
-        self.stm.clear(service, channel)
-        return True
-
-    def add_goal(self, service, channel, goal):
-        ''' Add a goal to this channel. '''
-        return self.ltm.add_goal(service, channel, goal)
-
-    def achieve_goal(self, service, channel, goal):
-        ''' Achieve a goal from this channel. '''
-        return self.ltm.achieve_goal(service, channel, goal)
-
-    def get_goals(self, service, channel, goal=None, size=10):
-        ''' Return the goals for this channel, if any. '''
-        return self.ltm.get_goals(service, channel, goal, size)
-
-    def list_goals(self, service, channel, size=10):
-        ''' Return a simple list of goals for this channel, if any. '''
-        return self.ltm.list_goals(service, channel, size)
-
-    def lookup_summaries(self, service, channel, search, size=1):
-        ''' Oh right. '''
-        return self.ltm.lookup_summaries(service, channel, search, size)
-
-    def judge(self, service, channel, topic, opinion, convo_id):
-        ''' Judge not, lest ye be judged '''
-        log.warning(f"👨‍⚖️ judging {topic}")
-        return self.ltm.save_opinion(service, channel, topic, opinion, convo_id)
-
-    def surmise(self, service, channel, topic, size=10):
-        ''' Everyone's got an opinion '''
-        log.warning(f"📌 opinion on {topic}")
-        return self.ltm.lookup_opinions(service, channel, topic, size)
-
-    def dialog(self, service, channel):
-        ''' Return the dialog from stm (if any) '''
-        convo = self.stm.fetch(service, channel)
-        if convo:
-            return [
-                f"{line.speaker_name}: {line.msg}" for line in convo
-                if 'verb' not in line or line.verb == 'dialog'
-            ]
-        return []
-
-    def convo(self, service, channel, feels=False):
-        '''
-        Return the entire convo from stm (if any).
-
-        Result is a list of "speaker: msg" or "speaker (verb): msg" strings.
-        '''
-        convo = self.stm.fetch(service, channel)
-        if not convo:
-            return []
-
-        ret = []
-        for msg in convo:
-            if msg.verb in ['dialog', None]:
-                ret.append(f"{msg.speaker_name}: {msg.msg}")
-            elif feels or msg.verb != 'feels':
-                ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
-
-        return ret
-
-    def feels(self, convo_id):
-        '''
-        Return the last known feels for this channel.
-        '''
-        convo = self.ltm.get_convo_by_id(convo_id)
-        log.debug("📢", convo)
-        for doc in convo[::-1]:
-            log.debug("📢", doc)
-            if doc.verb == 'feels':
-                return doc.msg
-
-        return "nothing in particular"
-
-    def summaries(self, service, channel, size=3):
-        ''' Return the summary text from ltm (if any) '''
-        return [s.summary for s in self.ltm.lookup_summaries(service, channel, None, size=size)]
-
-    def lts(self, service, channel):
-        ''' Return the timestamp of the last message from this channel (if any) '''
-        return self.ltm.get_last_timestamp(service, channel)
-
-class ShortTermMemory():
-    ''' Wrapper class for in-process short term conversational memory. '''
-    def __init__(self, persyn_config, conversation_interval=None):
-        self.convo = {}
         self.persyn_config = persyn_config
-        self.conversation_interval = conversation_interval or persyn_config.memory.conversation_interval
-        self.first_post = True
 
-    def _new(self, service, channel):
-        ''' Immediately initialize a new channel without sanity checking '''
-        self.convo[service][channel]['ts'] = get_cur_ts()
-        self.convo[service][channel]['convo'] = []
-        self.convo[service][channel]['id'] = str(ulid.ULID())
-        self.convo[service][channel]['opinions'] = []
-        log.warning("⚠️  New convo:", self.convo[service][channel]['id'])
-        return self.convo[service][channel]
-
-    def exists(self, service, channel):
-        ''' True if a channel already exists, else False '''
-        return service in self.convo and channel in self.convo[service]
-
-    def create(self, service, channel):
-        ''' Create a new empty channel. Erases existing channel if any. '''
-        if not self.exists(service, channel):
-            if service not in self.convo:
-                self.convo[service] = {}
-            if channel not in self.convo[service]:
-                self.convo[service][channel] = {}
-        return self._new(service, channel)
-
-    def clear(self, service, channel):
-        ''' Clear a channel. '''
-        if not self.exists(service, channel):
-            return
-        self._new(service, channel)
-
-    def expired(self, service, channel):
-        ''' True if time elapsed since last update is > conversation_interval, else False '''
-        if self.first_post:
-            self.first_post = False
-            return False
-
-        if not self.exists(service, channel):
-            return True
-        return elapsed(self.convo[service][channel]['ts'], get_cur_ts()) > self.conversation_interval
-
-    def append(self, service, channel, convo_obj):
-        '''
-        Append a convo object to a channel. If the current channel expired, clear it first.
-        Returns the convo_id.
-        '''
-        if not self.exists(service, channel):
-            self.create(service, channel)
-        if self.expired(service, channel):
-            self.clear(service, channel)
-
-        self.convo[service][channel]['ts'] = get_cur_ts()
-        self.convo[service][channel]['convo'].append(convo_obj)
-
-        return self.convo_id(service, channel)
-
-    def add_bias(self, service, channel, opinion):
-        '''
-        Append a short-term opinion to a channel if it's not already there. Returns the current opinions.
-        '''
-        if not self.exists(service, channel):
-            self.create(service, channel)
-        if opinion not in self.convo[service][channel]['opinions']:
-            self.convo[service][channel]['opinions'].append(opinion)
-        return self.convo[service][channel]['opinions']
-
-    def get_bias(self, service, channel):
-        '''
-        Return all short-term opinions for a channel.
-        '''
-        if not self.exists(service, channel):
-            self.create(service, channel)
-        return self.convo[service][channel]['opinions']
-
-    def fetch(self, service, channel):
-        ''' Fetch the current convo, if any '''
-        if not self.exists(service, channel):
-            return []
-        return self.convo[service][channel]['convo']
-
-    def opinions(self, service, channel):
-        ''' Fetch the current opinions expressed in convo, if any '''
-        if not self.exists(service, channel):
-            return []
-        return self.convo[service][channel]['opinions']
-
-    def convo_id(self, service, channel):
-        ''' Return the current convo id. Make a new convo if needed. '''
-        if not self.exists(service, channel):
-            return self.create(service, channel)['id']
-        return self.convo[service][channel]['id']
-
-    def last(self, service, channel):
-        ''' Fetch the last message from this convo (if any) '''
-        if not self.exists(service, channel):
-            return None
-
-        last = self.fetch(service, channel)
-        if last:
-            return last[-1]
-
-        return None
-
-# LTM object
-class LongTermMemory(): # pylint: disable=too-many-arguments
-    ''' Wrapper class for long-term conversational memory. '''
-    def __init__(self, persyn_config):
-        self.relationships = Relationships(persyn_config)
-        self.completion = LanguageModel(persyn_config)
-        self.persyn_config = persyn_config
         self.bot_name = persyn_config.id.name
         self.bot_id = uuid.UUID(persyn_config.id.guid)
         self.bot_ulid = ulid.ULID().from_uuid(self.bot_id)
 
+        self.conversation_interval = conversation_interval or persyn_config.memory.conversation_interval
+
+        self.relationships = Relationships(persyn_config)
+        self.completion = LanguageModel(persyn_config)
+
         self.redis = redis.from_url(persyn_config.memory.redis)
 
+        # indices
         self.convo_prefix = f'persyn:{self.bot_id}:convo'
         self.summary_prefix = f'persyn:{self.bot_id}:summary'
         self.opinion_prefix = f'persyn:{self.bot_id}:opinion'
         self.goal_prefix = f'persyn:{self.bot_id}:goal'
         self.news_prefix = f'persyn:{self.bot_id}:news'
+
+        # sets
+        self.active_convos_prefix = f"{self.convo_prefix}:active_convos"
 
         for cmd in [
             f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG convo_id TAG speaker_name TEXT speaker_id TEXT msg TEXT verb TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
@@ -354,32 +119,99 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
             neomodel_config.DATABASE_URL = persyn_config.memory.neo4j.url
 
 
-    @staticmethod
-    def entity_id_to_epoch(entity_id):
-        ''' Extract the epoch seconds from a ULID '''
-        if entity_id is None:
-            return 0
+        # self.redis.sadd(self.active_convos_prefix, f"{service}|{channel}|{convo_id}")
 
-        if isinstance(entity_id, str):
-            return ulid.ULID().from_str(entity_id).timestamp
+    def forget(self, service, channel):
+        ''' What were we talking about? '''
+        log.error("Not implemented: recall.forget()")
+        return False
 
-        return entity_id.timestamp
+    def list_convos(self):
+        ''' Return the set of all active convos for all services + channels '''
+        return self.redis.smembers(self.active_convos_prefix)
 
-    def entity_id_to_timestamp(self, entity_id):
-        ''' Extract the timestamp from a ULID '''
-        return get_cur_ts(self.entity_id_to_epoch(entity_id))
+    def judge(self, service, channel, topic, opinion, convo_id):
+        ''' Judge not, lest ye be judged '''
+        log.warning(f"👨‍⚖️ judging {topic}")
+        return self.save_opinion(service, channel, topic, opinion, convo_id)
 
-    def get_last_timestamp(self, service, channel):
+    def surmise(self, service, channel, topic, size=10):
+        ''' Everyone's got an opinion '''
+        log.warning(f"📌 opinion on {topic}")
+        return self.lookup_opinions(service, channel, topic, size)
+
+    def dialog(self, service, channel):
+        ''' Return the dialog from stm (if any) '''
+        convo = self.fetch(service, channel)
+        if convo:
+            return [
+                f"{line.speaker_name}: {line.msg}" for line in convo
+                if 'verb' not in line or line.verb == 'dialog'
+            ]
+        return []
+
+    def convo(self, service, channel, convo_id=None, feels=False):
         '''
-        Get the timestamp of the last message, or the current ts if there is none.
+        Return an entire convo.
+
+        If convo_id is None, use the current convo (if any).
+
+        Result is a list of "speaker: msg" or "speaker (verb): msg" strings.
         '''
-        msg = self.get_last_message(service, channel)
-        if msg:
-            return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
+        if convo_id is None:
+            lm = self.get_last_message(service, channel)
+            if not lm:
+                # No convo? New bot.
+                return []
+            convo_id = lm.convo_id
 
-        return get_cur_ts()
+        query = (
+            Query(
+                """(@service:{$service}) (@channel:{$channel}) (@verb:{dialog})"""
+            )
+            .return_fields(
+                "speaker_name",
+                "msg",
+                "verb",
+            )
+            .sort_by("convo_id", asc=True)
+            .dialect(2)
+        )
+        query_params = {"service": service, "channel": channel}
 
-    def save_convo(
+        ret = []
+        for msg in self.redis.ft(self.convo_prefix).search(query, query_params).docs:
+            if msg.verb in ['dialog', None]:
+                ret.append(f"{msg.speaker_name}: {msg.msg}")
+            elif feels or msg.verb != 'feels':
+                ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
+
+        return ret
+
+    def feels(self, convo_id):
+        '''
+        Return the last known feels for this convo_id.
+        '''
+        query = (
+            Query(
+                """(@convo_id:{$convo_id}) (@channel:{$channel}) (@verb:{dialog})"""
+            )
+            .return_fields(
+                "msg"
+            )
+            .sort_by("convo_id", asc=False)
+            .paging(0, 1)
+            .dialect(2)
+        )
+        query_params = {"convo_id": convo_id}
+
+        ret = self.redis.ft(self.convo_prefix).search(query, query_params).docs
+        if ret:
+            return ret[0].msg
+
+        return "nothing in particular"
+
+    def save_convo_line(
         self,
         service,
         channel,
@@ -390,7 +222,12 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         verb='dialog'
     ):
         '''
-        Save a line of conversation. Returns the Convo object.
+        Save a line of conversation.
+        If convo_id is None, a new ID is assigned.
+        All convo lines have a ULID primary key, embedding the timestamp of each message.
+        The redis key is:
+          persyn:[bot uuid]:convo:[convo id]:[pk]
+        Returns the Convo object.
         '''
         # Save speaker entity
         if speaker_id is None:
@@ -425,6 +262,61 @@ class LongTermMemory(): # pylint: disable=too-many-arguments
         log.debug(f"💾 Convo line saved for {key}:", ret['pk'])
 
         return DotWiz(ret)
+
+
+    def new_convo(self, service, channel):
+        ''' Start a new conversation. Returns the convo_id. '''
+
+        ret = self.save_convo_line(
+            service,
+            channel,
+            speaker_name=self.bot_name,
+            msg="new_convo",
+            convo_id=None,
+            speaker_id=str(self.bot_ulid),
+            verb="new_convo"
+        )
+
+        log.warning("⚠️  New convo:", ret.convo_id)
+        return ret.convo_id
+
+    def expired(self, service, channel):
+        ''' True if time elapsed since the last convo line is > conversation_interval, else False '''
+        return elapsed(self.get_last_timestamp(service, channel), get_cur_ts()) > self.conversation_interval
+
+    def convo_id(self, service, channel):
+        ''' Return the current convo id. Make a new convo if needed. '''
+
+        if self.expired(service, channel):
+            return self.new_convo(service, channel)
+
+        return self.get_last_message(service, channel).convo_id
+
+    @staticmethod
+    def entity_id_to_epoch(entity_id):
+        ''' Extract the epoch seconds from a ULID '''
+        if entity_id is None:
+            return 0
+
+        if isinstance(entity_id, str):
+            return ulid.ULID().from_str(entity_id).timestamp
+
+        return entity_id.timestamp
+
+    def entity_id_to_timestamp(self, entity_id):
+        ''' Extract the timestamp from a ULID '''
+        return get_cur_ts(self.entity_id_to_epoch(entity_id))
+
+    def get_last_timestamp(self, service, channel):
+        '''
+        Get the timestamp of the last message, or the current ts if there is none.
+        '''
+        msg = self.get_last_message(service, channel)
+        if msg:
+            return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
+
+        return get_cur_ts()
+
 
     def save_summary(self, service, channel, convo_id, summary, keywords=None):
         '''

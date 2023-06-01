@@ -32,9 +32,6 @@ class Interact():
     def __init__(self, persyn_config):
         self.config = persyn_config
 
-        # What are we doing with our life?
-        self.goals = []
-
         # Pick a language model for completion
         self.completion = LanguageModel(config=persyn_config)
 
@@ -309,14 +306,14 @@ class Interact():
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
-        self.goals = self.recall.list_goals(service, channel)
+        goals = self.recall.list_goals(service, channel)
 
-        if self.goals:
+        if goals:
             req = {
                 "service": service,
                 "channel": channel,
                 "convo": '\n'.join(convo),
-                "goals": self.goals
+                "goals": goals
             }
 
             try:
@@ -368,11 +365,7 @@ class Interact():
         '''
         log.info(f"💬 get_reply to: {msg}")
 
-        self.goals = self.recall.list_goals(service, channel)
-
-        # This should be async, separate thread?
-        if self.recall.expired(service, channel):
-            self.summarize_convo(service, channel, save=True, context_lines=2)
+        # goals = self.recall.list_goals(service, channel)
 
         if msg != '...':
             self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
@@ -441,7 +434,7 @@ class Interact():
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        reply = self.choose_response(prompt, convo, service, channel, self.goals)
+        reply = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel))
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -468,8 +461,11 @@ class Interact():
             getattr(self.config.interact, "character", ""),
             f"{self.config.id.name} is feeling {self.recall.feels(self.recall.stm.convo_id(service, channel))}.",
         ]
-        if self.goals:
-            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(self.goals)}")
+        goals = self.recall.list_goals(service, channel)
+        if goals:
+            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(goals)}")
+        else:
+            log.warning(f"🙅‍♀️ No goal yet for {service} | {channel}")
         return '\n'.join(ret)
 
     def generate_prompt(self, summaries, convo, service, channel, lts=None):
@@ -532,9 +528,6 @@ class Interact():
         if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel)):
             log.warning("🤌  Already had this idea, skipping:", idea)
             return
-
-        if self.recall.expired(service, channel):
-            self.summarize_convo(service, channel, save=True, context_lines=2)
 
         self.recall.save(service, channel, idea, self.config.id.name, self.config.id.guid, verb)
 

@@ -436,7 +436,7 @@ async def main():
     global interact
     interact = Interact(persyn_config)
 
-    log.info(f"💃 {persyn_config.id.name}'s interact server starting up")
+    log.info(f"💃🕺 {persyn_config.id.name}'s interact server starting up")
 
     uvicorn_config = uvicorn.Config(
         'persyn.interaction.interact_server:app',
