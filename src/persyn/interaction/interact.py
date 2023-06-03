@@ -67,12 +67,12 @@ class Interact():
 
         Returns the text summary.
         '''
-        convo_id = self.recall.stm.convo_id(service, channel)
+        convo_id = self.recall.convo_id(service, channel)
         if not convo_id:
             return ""
 
         if dialog_only:
-            text = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
+            text = self.recall.convo(service, channel, verb='dialog') or self.recall.lookup_summaries(service, channel, size=3)
         else:
             text = self.recall.convo(service, channel)
 
@@ -116,7 +116,7 @@ class Interact():
         keywords = self.completion.get_keywords(summary)
 
         if save:
-            self.recall.summary(service, channel, summary, keywords)
+            self.recall.save_summary(service, channel, convo_id, summary, keywords)
             self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
@@ -196,17 +196,17 @@ class Interact():
         if not convo:
             return visited
 
-        ranked = self.recall.ltm.find_related_convos(
+        ranked = self.recall.find_related_convos(
             service, channel,
             convo='\n'.join(convo[:3]),
             size=10,
-            current_convo_id=self.recall.stm.convo_id(service, channel),
+            current_convo_id=self.recall.convo_id(service, channel),
             threshold=0.15
-        ) + self.recall.ltm.find_related_convos(
+        ) + self.recall.find_related_convos(
             service, channel,
             convo='\n'.join(convo),
             size=2,
-            current_convo_id=self.recall.stm.convo_id(service, channel),
+            current_convo_id=self.recall.convo_id(service, channel),
             threshold=0.2
         )
 
@@ -214,12 +214,12 @@ class Interact():
             if hit.convo_id not in visited:
                 if hit.service == 'import_service':
                     log.info("📚 Hit found from import:", hit.channel)
-                the_summary = self.recall.ltm.get_summary_by_id(hit.convo_id)
+                the_summary = self.recall.get_summary_by_id(hit.convo_id)
                 if the_summary:
                     self.inject_idea(
                         service, channel,
                         f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
-                        verb=f"remembers that {ago(self.recall.ltm.entity_id_to_timestamp(hit.convo_id))} ago"
+                        verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
                     visited.append(hit.convo_id)
                     log.info(
@@ -367,8 +367,18 @@ class Interact():
 
         # goals = self.recall.list_goals(service, channel)
 
+        convo_id = self.recall.convo_id(service, channel)
+
         if msg != '...':
-            self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
+            self.recall.save_convo_line(
+                service,
+                channel,
+                msg,
+                speaker_name,
+                speaker_id,
+                convo_id=convo_id,
+                verb='dialog'
+            )
 
         convo = self.recall.convo(service, channel)
         last_sentence = None
@@ -379,7 +389,7 @@ class Interact():
         # This should be async, separate thread?
         # Save the knowledge graph every 5 lines
         if convo and len(convo) % 5 == 0:
-            self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
+            self.save_knowledge_graph(service, channel, convo_id, convo)
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -412,7 +422,7 @@ class Interact():
                 summaries.append(summary.summary)
                 visited.append(summary.convo_id)
 
-        lts = self.recall.lts(service, channel)
+        lts = self.recall.get_last_timestamp(service, channel)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
@@ -445,7 +455,7 @@ class Interact():
         self.send_chat(service, channel, reply)
 
         # Sentiment analysis via the autobus
-        self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
+        self.get_feels(service, channel, convo_id, f'{prompt} {reply}')
 
         if 'http' in msg:
             # Regex chosen by GPT-4. 😵‍💫
@@ -459,7 +469,7 @@ class Interact():
         ret = [
             f"It is {natural_time()} on {today()}.",
             getattr(self.config.interact, "character", ""),
-            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.stm.convo_id(service, channel))}.",
+            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
         ]
         goals = self.recall.list_goals(service, channel)
         if goals:
@@ -479,7 +489,7 @@ class Interact():
         graph_summary = ''
         convo_text = '\n'.join(convo)
         for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
-            for triple in self.recall.ltm.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+            for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
                 triples.add(triple)
         if triples:
             graph_summary = self.completion.model.triples_to_text(list(triples))
@@ -494,7 +504,7 @@ class Interact():
     def get_status(self, service, channel):
         ''' status report '''
         return self.generate_prompt(
-            self.recall.summaries(service, channel, size=2),
+            self.recall.lookup_summaries(service, channel, size=2),
             self.recall.convo(service, channel),
             service,
             channel
@@ -529,7 +539,15 @@ class Interact():
             log.warning("🤌  Already had this idea, skipping:", idea)
             return
 
-        self.recall.save(service, channel, idea, self.config.id.name, self.config.id.guid, verb)
+        self.recall.save_convo_line(
+            service,
+            channel,
+            msg=idea,
+            speaker_name=self.config.id.name,
+            speaker_id=self.config.id.guid,
+            convo_id=self.recall.convo_id(service, channel),
+            verb=verb
+        )
 
         log.warning(f"🤔 {verb}:", idea)
         return

@@ -212,7 +212,7 @@ class Recall():
         '''
         query = (
             Query(
-                """(@convo_id:{$convo_id}) (@channel:{$channel}) (@verb:{dialog})"""
+                """(@convo_id:{$convo_id}) (@verb:{dialog})"""
             )
             .return_fields(
                 "msg"
@@ -331,6 +331,7 @@ class Recall():
         '''
         msg = self.get_last_message(service, channel)
         if msg:
+            log.warning(msg)
             return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
 
         return get_cur_ts()
