@@ -140,51 +140,69 @@ class Recall():
         log.warning(f"📌 opinion on {topic}")
         return self.lookup_opinions(service, channel, topic, size)
 
-    def dialog(self, service, channel):
-        ''' Return the dialog from stm (if any) '''
-        convo = self.fetch(service, channel)
-        if convo:
-            return [
-                f"{line.speaker_name}: {line.msg}" for line in convo
-                if 'verb' not in line or line.verb == 'dialog'
-            ]
-        return []
-
-    def convo(self, service, channel, convo_id=None, feels=False):
+    def convo(self, service, channel, convo_id=None, feels=False, verb=None, raw=False):
         '''
         Return an entire convo.
 
         If convo_id is None, use the current convo (if any).
 
-        Result is a list of "speaker: msg" or "speaker (verb): msg" strings.
+        If feels is True, also include feelings.
+
+        If verb is not None, filter to only include messages with a matching verb.
+
+        If raw is true, return convo objects. Otherwise return a list of strings.
         '''
         if convo_id is None:
             lm = self.get_last_message(service, channel)
             if not lm:
-                # No convo? New bot.
                 return []
             convo_id = lm.convo_id
 
-        query = (
-            Query(
-                """(@service:{$service}) (@channel:{$channel}) (@verb:{dialog})"""
+        if verb:
+            query = (
+                Query(
+                    """(@service:{$service}) (@channel:{$channel}) (@convo_id:{$convo_id}) (@verb:{$verb})"""
+                )
+                .return_fields(
+                    "speaker_name",
+                    "msg",
+                    "verb",
+                    "convo_id"
+                )
+                .sort_by("convo_id", asc=True)
+                .dialect(2)
             )
-            .return_fields(
-                "speaker_name",
-                "msg",
-                "verb",
+            query_params = {"service": service, "channel": channel, "convo_id": convo_id, "verb": verb}
+        else:
+            query = (
+                Query(
+                    """(@service:{$service}) (@channel:{$channel}) (@convo_id:{$convo_id})"""
+                )
+                .return_fields(
+                    "speaker_name",
+                    "msg",
+                    "verb",
+                    "convo_id"
+                )
+                .sort_by("convo_id", asc=True)
+                .dialect(2)
             )
-            .sort_by("convo_id", asc=True)
-            .dialect(2)
-        )
-        query_params = {"service": service, "channel": channel}
+            query_params = {"service": service, "channel": channel, "convo_id": convo_id}
 
         ret = []
         for msg in self.redis.ft(self.convo_prefix).search(query, query_params).docs:
-            if msg.verb in ['dialog', None]:
-                ret.append(f"{msg.speaker_name}: {msg.msg}")
+            if msg.verb == 'new_convo':
+                continue
+            if msg.verb == 'dialog':
+                if raw:
+                    ret.append(msg)
+                else:
+                    ret.append(f"{msg.speaker_name}: {msg.msg}")
             elif feels or msg.verb != 'feels':
-                ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
+                if raw:
+                    ret.append(msg)
+                else:
+                    ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
 
         return ret
 
@@ -215,10 +233,10 @@ class Recall():
         self,
         service,
         channel,
-        speaker_name,
         msg,
-        convo_id=None,
+        speaker_name,
         speaker_id=None,
+        convo_id=None,
         verb='dialog'
     ):
         '''
@@ -320,7 +338,8 @@ class Recall():
 
     def save_summary(self, service, channel, convo_id, summary, keywords=None):
         '''
-        Save a conversation summary to memory. Returns the Summary object.
+        Save a conversation summary to memory. This also ends the current convo.
+        Returns the Summary object.
         '''
         if keywords is None:
             keywords = []
@@ -339,6 +358,8 @@ class Recall():
         for k, v in ret.items():
             self.redis.hset(f"{self.summary_prefix}:{convo_id}", k, v)
 
+        self.new_convo(service, channel)
+
         return DotWiz(ret)
 
 
@@ -346,7 +367,7 @@ class Recall():
         ''' Return the last message seen on this channel '''
         query = (
             Query(
-                """(@service:{$service}) (@channel:{$channel}) (@verb:{dialog})"""
+                """(@service:{$service}) (@channel:{$channel})"""
             )
             .return_fields(
                 "service",
@@ -365,10 +386,11 @@ class Recall():
         )
         query_params = {"service": service, "channel": channel}
 
-        try:
-            return self.redis.ft(self.convo_prefix).search(query, query_params).docs[0]
-        except IndexError:
+        ret = self.redis.ft(self.convo_prefix).search(query, query_params).docs
+        if not ret:
             return None
+
+        return ret[0]
 
     def get_convo_by_id(self, convo_id):
         ''' Return all Convo objects matching convo_id in chronological order '''

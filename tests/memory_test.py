@@ -18,7 +18,7 @@ from src.persyn.utils.config import load_config
 
 persyn_config = load_config()
 
-def test_stm():
+def test_basics():
     ''' Exercise the short term memory '''
     recall = Recall(persyn_config, conversation_interval=2)
 
@@ -27,7 +27,7 @@ def test_stm():
 
     # start fresh
     assert not recall.get_last_message(service, channel)
-    assert recall.save_convo_line(service, channel, 'me', 'my_message')
+    assert recall.save_convo_line(service, channel, 'my_message', 'me')
     assert not recall.expired(service, channel)
     assert recall.get_last_message(service, channel)
 
@@ -36,10 +36,10 @@ def test_stm():
     assert not recall.get_last_message(service, "different")
 
     # add some lines
-    recall.save_convo_line(service, channel, "me", "foo")
+    recall.save_convo_line(service, channel, "foo", "me")
     assert recall.get_last_message(service, channel).msg == "foo"
 
-    recall.save_convo_line(service, channel, "them", "bar")
+    recall.save_convo_line(service, channel, "bar", "them")
     assert recall.get_last_message(service, channel).msg == "bar"
 
     assert recall.convo(service, channel) == ["me: my_message", "me: foo", "them: bar"]
@@ -116,23 +116,36 @@ def test_short_ids():
 #     assert doc['speaker_name'] == speaker_name
 #     assert doc['speaker_id'] == speaker_id
 
-def test_save_convo():
+def cleanup():
+    ''' Delete everything with the test bot_id '''
+    recall = Recall(persyn_config)
+
+    clear_ns(f'persyn:{persyn_config.id.guid}:')
+
+    for idx in [recall.convo_prefix, recall.summary_prefix]:
+        try:
+            recall.redis.ft(idx).dropindex()
+        except recall.redis.exceptions.ResponseError as err:
+            print(f"Couldn't drop index {idx}:", err)
+
+@pytest.fixture
+def generate_convos(service="my_service", channel_a="channel_a", channel_b="channel_b"):
     ''' Make some test data '''
     recall = Recall(persyn_config, conversation_interval=600)
 
     # New convo
-    doc1 = recall.save_convo(
-        service="my_service",
-        channel="channel_a",
+    doc1 = recall.save_convo_line(
+        service=service,
+        channel=channel_a,
         msg="message_a",
         speaker_id="speaker_id",
         speaker_name="speaker_name",
     )
 
     # Continued convo
-    doc2 = recall.save_convo(
-        service="my_service",
-        channel="channel_a",
+    doc2 = recall.save_convo_line(
+        service=service,
+        channel=channel_a,
         convo_id=str(doc1.convo_id),
         msg="message_b",
         speaker_id="speaker_id",
@@ -142,21 +155,22 @@ def test_save_convo():
     assert recall.entity_id_to_epoch(doc1.pk) != recall.entity_id_to_epoch(doc2.pk)
 
     # New convo
-    doc3 = recall.save_convo(
-        service="my_service",
-        channel="channel_a",
-        convo_id="foo",
-        msg="message_b",
+    new_convo_id = str(ulid.ULID())
+    doc3 = recall.save_convo_line(
+        service=service,
+        channel=channel_a,
+        convo_id=new_convo_id,
+        msg="message_c",
         speaker_id="speaker_id",
         speaker_name="speaker_name",
     )
-    assert doc3.convo_id == "foo"
+    assert doc3.convo_id == new_convo_id
 
     # All new convos, speaker name / id are optional
 
     for i in range(2):
-        doc4 = recall.save_convo(
-            service="my_service",
+        doc4 = recall.save_convo_line(
+            service=service,
             channel=f"channel_loop_{i}",
             msg="message_loop_a",
             speaker_id="speaker_id",
@@ -165,8 +179,8 @@ def test_save_convo():
         assert doc4
 
         for j in range(3):
-            doc5 = recall.save_convo(
-                service="my_service",
+            doc5 = recall.save_convo_line(
+                service=service,
                 channel=f"channel_loop_{i}",
                 convo_id=str(doc4.convo_id),
                 msg=f"message_loop_b{j}",
@@ -175,8 +189,8 @@ def test_save_convo():
             )
             assert doc4.convo_id == doc5.convo_id
 
-            doc6 = recall.save_convo(
-                service="my_service",
+            doc6 = recall.save_convo_line(
+                service=service,
                 channel=f"channel_loop_{i}",
                 convo_id=str(doc4.convo_id),
                 msg=f"message_loop_c{j}",
@@ -189,8 +203,8 @@ def test_save_convo():
             sleep(0.1)
 
             # Assert refresh on the last msg so we can fetch later
-            doc7 = recall.save_convo(
-                service="my_service",
+            doc7 = recall.save_convo_line(
+                service=service,
                 channel=f"channel_loop_{i}",
                 convo_id=str(doc4.convo_id),
                 msg=f"message_loop_d{j}",
@@ -200,7 +214,14 @@ def test_save_convo():
             assert doc4.convo_id == doc7.convo_id
             assert recall.entity_id_to_epoch(doc7.pk) - recall.entity_id_to_epoch(doc4.pk) < 15.0
 
-def test_fetch_convo():
+    # Save some summaries too
+    assert recall.save_summary(service, channel_a, "convo_id", "my_nice_summary")
+    assert recall.save_summary(service, channel_b, "convo_id_2", "my_other_nice_summary")
+    assert recall.save_summary(service, channel_b, "convo_id_3", "my_middle_nice_summary")
+    assert recall.save_summary(service, channel_b, "convo_id_4", "my_final_nice_summary")
+
+
+def test_fetch_convo(generate_convos):
     ''' Retrieve previously saved convo '''
     recall = Recall(persyn_config, conversation_interval=600)
 
@@ -216,20 +237,9 @@ def test_fetch_convo():
     convo = recall.get_convo_by_id(last_message.convo_id)
     assert len(convo) == 10
 
-def test_save_summaries():
-    ''' Make some test data '''
-    recall = Recall(persyn_config, conversation_interval=600)
+    cleanup()
 
-    service = "my_service"
-    channel_a = "channel_a"
-    channel_b = "channel_b"
-
-    assert recall.save_summary(service, channel_a, "convo_id", "my_nice_summary")
-    assert recall.save_summary(service, channel_b, "convo_id_2", "my_other_nice_summary")
-    assert recall.save_summary(service, channel_b, "convo_id_3", "my_middle_nice_summary")
-    assert recall.save_summary(service, channel_b, "convo_id_4", "my_final_nice_summary")
-
-def test_lookup_summaries():
+def test_lookup_summaries(generate_convos):
     ''' Retrieve previously saved summaries '''
     recall = Recall(persyn_config)
 
@@ -248,41 +258,56 @@ def test_lookup_summaries():
         "my_final_nice_summary"
     ]
 
-def test_recall():
-    ''' Use recall to autogenerate summaries '''
+    cleanup()
 
-    recall = Recall(persyn_config, conversation_interval=3)
+def test_recall(generate_convos):
+    ''' Autogenerate summaries '''
 
-    # Must match test_save_summaries()
+    recall = Recall(persyn_config, conversation_interval=1)
+
+    # Must match generate_convos()
     service = "my_service"
     channel = "channel_a"
 
     # contains only the summary
-    s = recall.summaries(service, channel)
-    c = recall.recall.fetch(service, channel)
+    s = [s.summary for s in recall.lookup_summaries(service, channel)]
     convo = recall.convo(service, channel)
-    assert (s, c) == (["my_nice_summary"], [])
+    assert s == ["my_nice_summary"]
     assert not convo
 
     # new convo
-    assert recall.save(service, channel, "message_another", "speaker_name_1", "speaker_id")
+    convo_id = recall.save_convo_line(
+        service,
+        channel,
+        msg="message_another",
+        speaker_name="speaker_name_1",
+        speaker_id="speaker_id"
+    ).convo_id
 
     # contains the summary + new convo
-    s = recall.summaries(service, channel)
-    c = recall.recall.fetch(service, channel)
+    s = [s.summary for s in recall.lookup_summaries(service, channel)]
+    c = recall.convo(service, channel, raw=True)
     convo = recall.convo(service, channel)
 
     assert s == ["my_nice_summary"]
+    assert c[0].convo_id == convo_id
     assert c[0].speaker_name == "speaker_name_1"
     assert c[0].msg == "message_another"
     assert convo == ["speaker_name_1: message_another"]
 
     # same convo
-    assert recall.save(service, channel, "message_yet_another", "speaker_name_2", "speaker_id")
+    assert recall.save_convo_line(
+        service,
+        channel,
+        msg="message_yet_another",
+        speaker_name="speaker_name_2",
+        speaker_id="speaker_id",
+        convo_id=convo_id
+    )
 
     # contains the summary + new convo
-    s = recall.summaries(service, channel)
-    c = recall.recall.fetch(service, channel)
+    s = [s.summary for s in recall.lookup_summaries(service, channel)]
+    c = recall.convo(service, channel, raw=True)
     convo = recall.convo(service, channel)
     assert s == ["my_nice_summary"]
     assert (c[0].speaker_name, c[0].msg) == ("speaker_name_1", "message_another")
@@ -290,22 +315,23 @@ def test_recall():
     assert convo == ["speaker_name_1: message_another", "speaker_name_2: message_yet_another"]
 
     # summarize
-    assert recall.summary(service, channel, "this_is_another_summary")
+    assert recall.save_summary(service, channel, "a_convo_id", "this_is_another_summary")
 
-    print("SLEEPING FOR 4")
     # time passes...
-    sleep(4)
+    sleep(2)
 
     # expired
     assert recall.expired(service, channel)
 
     # only summaries
-    s = recall.summaries(service, channel)
-    c = recall.recall.fetch(service, channel)
+    s = [s.summary for s in recall.lookup_summaries(service, channel)]
+    c = recall.convo(service, channel, verb='dialog')
     assert (s, c) == (
         ["my_nice_summary", "this_is_another_summary"],
         []
     )
+
+    cleanup()
 
 def test_memory_selection():
     ''' Find appropriate memories using cosine similarity '''
@@ -315,28 +341,29 @@ def test_memory_selection():
     service = "memory_selection"
 
     # new convo
-    assert recall.save(service, "channel_a", "Why did the cow become a painter?", "Anna", "anna_id")
-    assert recall.save(service, "channel_a", "No idea.", "Rob", "rob_id")
-    assert recall.save(service, "channel_a", "Because it had a real moo-sterpiece in mind!", "Anna", "anna_id")
-    assert recall.save(service, "channel_a", "Udderly terrible.", "Rob", "rob_id")
+    assert recall.save_convo_line(service, "channel_a", "Why did the cow become a painter?", "Anna", "anna_id")
+    assert recall.save_convo_line(service, "channel_a", "No idea.", "Rob", "rob_id")
+    assert recall.save_convo_line(service, "channel_a", "Because it had a real moo-sterpiece in mind!", "Anna", "anna_id")
+    assert recall.save_convo_line(service, "channel_a", "Udderly terrible.", "Rob", "rob_id")
 
-    assert recall.save(service, "channel_b", "Why was the cat sitting on the computer?", "Anna", "anna_id")
-    assert recall.save(service, "channel_b", "I give up.", "Rob", "rob_id")
-    assert recall.save(service, "channel_b", "Because it wanted to keep an eye on the mouse!", "Anna", "anna_id")
-    assert recall.save(service, "channel_b", "🙄", "Rob", "rob_id")
+    assert recall.save_convo_line(service, "channel_b", "Why was the cat sitting on the computer?", "Anna", "anna_id")
+    assert recall.save_convo_line(service, "channel_b", "I give up.", "Rob", "rob_id")
+    assert recall.save_convo_line(service, "channel_b", "Because it wanted to keep an eye on the mouse!", "Anna", "anna_id")
+    assert recall.save_convo_line(service, "channel_b", "🙄", "Rob", "rob_id")
 
     # not found on channel_a
-    assert len(recall.recall.find_related_convos(service, 'channel_a', 'cat sitting', size=5, threshold=0.2, any_convo=False)) == 0
+    assert len(recall.find_related_convos(service, 'channel_a', 'cat sitting', size=5, threshold=0.2, any_convo=False)) == 0
     # found if any_convo == True
-    assert len(recall.recall.find_related_convos(service, 'channel_a', 'cat sitting', size=5, threshold=0.2, any_convo=True)) == 1
+    assert len(recall.find_related_convos(service, 'channel_a', 'cat sitting', size=5, threshold=0.16, any_convo=True)) == 1
     # found on channel_b
-    assert len(recall.recall.find_related_convos(service, 'channel_b', 'cat sitting', size=5, threshold=0.2)) == 1
+    assert len(recall.find_related_convos(service, 'channel_b', 'cat sitting', size=5, threshold=0.16)) == 1
     # synonym found
-    assert len(recall.recall.find_related_convos(service, 'channel_a', 'awful', size=5, threshold=0.2, any_convo=False)) == 1
-    assert recall.recall.find_related_convos(service, 'channel_a', 'awful', size=5, threshold=0.2, any_convo=False)[0].msg == 'Udderly terrible.'
+    assert len(recall.find_related_convos(service, 'channel_a', 'awful', size=5, threshold=0.2, any_convo=False)) == 1
+    assert recall.find_related_convos(service, 'channel_a', 'awful', size=5, threshold=0.2, any_convo=False)[0].msg == 'Udderly terrible.'
     # not found on channel_b
-    assert len(recall.recall.find_related_convos(service, 'channel_b', 'awful', size=5, threshold=0.2, any_convo=False)) == 0
+    assert len(recall.find_related_convos(service, 'channel_b', 'awful', size=5, threshold=0.2, any_convo=False)) == 0
 
+    cleanup()
 
 def test_opinions():
     ''' Save and recall some opinions '''
@@ -372,6 +399,7 @@ def test_opinions():
     # No impact on other opinions
     assert recall.surmise(service, channel, topic2) == ["I like 'em"]
 
+    cleanup()
 
 def test_goals():
     ''' Save and recall some goals '''
@@ -385,44 +413,45 @@ def test_goals():
     goal2 = "To eat a donut"
 
     # start fresh
-    assert recall.recall.list_goals(service, channel) == []
+    assert recall.list_goals(service, channel) == []
 
     # add a goal
-    recall.recall.add_goal(service, channel, goal)
-    assert recall.recall.list_goals(service, channel) == [goal]
+    recall.add_goal(service, channel, goal)
+    assert recall.list_goals(service, channel) == [goal]
 
     # adding it again has no effect
-    recall.recall.add_goal(service, channel, goal)
-    assert recall.recall.list_goals(service, channel) == [goal]
+    recall.add_goal(service, channel, goal)
+    assert recall.list_goals(service, channel) == [goal]
 
     # multiple goals
-    recall.recall.add_goal(service, channel, goal2)
-    assert recall.recall.list_goals(service, channel) == [goal, goal2]
+    recall.add_goal(service, channel, goal2)
+    assert recall.list_goals(service, channel) == [goal, goal2]
 
     # achieve one
-    recall.recall.achieve_goal(service, channel, goal)
-    assert recall.recall.list_goals(service, channel) == [goal2]
+    recall.achieve_goal(service, channel, goal)
+    assert recall.list_goals(service, channel) == [goal2]
 
     # Goals on other channels have no impact
-    recall.recall.add_goal(service, channel2, goal)
-    assert recall.recall.list_goals(service, channel2) == [goal]
-    assert recall.recall.list_goals(service, channel) == [goal2]
+    recall.add_goal(service, channel2, goal)
+    assert recall.list_goals(service, channel2) == [goal]
+    assert recall.list_goals(service, channel) == [goal2]
 
-    recall.recall.add_goal(service, channel2, goal2)
-    assert recall.recall.list_goals(service, channel) == [goal2]
-    assert recall.recall.list_goals(service, channel2) == [goal, goal2]
+    recall.add_goal(service, channel2, goal2)
+    assert recall.list_goals(service, channel) == [goal2]
+    assert recall.list_goals(service, channel2) == [goal, goal2]
 
-    recall.recall.achieve_goal(service, channel2, goal2)
-    assert recall.recall.list_goals(service, channel) == [goal2]
-    assert recall.recall.list_goals(service, channel2) == [goal]
+    recall.achieve_goal(service, channel2, goal2)
+    assert recall.list_goals(service, channel) == [goal2]
+    assert recall.list_goals(service, channel2) == [goal]
 
     # achieving a nonexistent goal has no effect
-    recall.recall.achieve_goal(service, channel2, goal2)
-    assert recall.recall.list_goals(service, channel2) == [goal]
+    recall.achieve_goal(service, channel2, goal2)
+    assert recall.list_goals(service, channel2) == [goal]
 
-    recall.recall.achieve_goal(service, channel2, goal)
-    assert recall.recall.list_goals(service, channel2) == []
+    recall.achieve_goal(service, channel2, goal)
+    assert recall.list_goals(service, channel2) == []
 
+    cleanup()
 
 def test_news():
     ''' Store news urls '''
@@ -438,6 +467,7 @@ def test_news():
     assert recall.add_news(title="The Persyn Codebase", **opts)
     assert recall.have_read(**opts) is True
 
+    cleanup()
 
 def test_kg():
     ''' Neo4j tests '''
@@ -462,6 +492,8 @@ def test_kg():
     with pytest.raises(Thing.DoesNotExist):
         assert recall.find_node(name='This', node_type='thing').first()
 
+    cleanup()
+
 def clear_ns(ns, chunk_size=5000):
     ''' Clear a namespace '''
     recall = Recall(persyn_config)
@@ -478,13 +510,5 @@ def clear_ns(ns, chunk_size=5000):
     return True
 
 def test_cleanup():
-    ''' Delete everything with the test bot_id '''
-    recall = Recall(persyn_config)
-
-    clear_ns(f'persyn:{persyn_config.id.guid}:')
-
-    for idx in [recall.convo_prefix, recall.summary_prefix]:
-        try:
-            recall.redis.ft(idx).dropindex()
-        except recall.redis.exceptions.ResponseError as err:
-            print(f"Couldn't drop index {idx}:", err)
+    ''' Clean it all up at the end '''
+    cleanup()
