@@ -327,25 +327,6 @@ class Chat():
 
         return []
 
-    def forget_it(self, channel):
-        ''' There is no antimemetics division. '''
-        if not self.interact_url:
-            log.error("🤯 forget_it() called with no URL defined, skipping.")
-            return "⁉️"
-
-        req = {
-            "service": self.service,
-            "channel": channel,
-        }
-        try:
-            response = requests.post(f"{self.interact_url}/amnesia/", params=req, timeout=10)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not forget_it(): {err}")
-            return " :jigsaw: :interrobang: "
-
-        return " :exploding_head: "
-
     def prompt_parrot(self, prompt):
         ''' Fetch a prompt from the parrot '''
         if not self.parrot_url:

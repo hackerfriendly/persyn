@@ -467,18 +467,15 @@ def auto_summarize():
             # Remove it from the convo list
             recall.redis.srem(f"{recall.active_convos_prefix}", convo)
 
-            if len(recall.get_convo_by_id(convo_id)) > 2:
-                log.info(f"{recall.get_convo_by_id(convo_id)}")
-
-            # event = Summarize(
-            #     bot_name=persyn_config.id.name,
-            #     bot_id=persyn_config.id.guid,
-            #     service=service,
-            #     channel=channel,
-            #     photo=True,
-            #     max_tokens=200
-            # )
-            # autobus.publish(event)
+            event = Summarize(
+                bot_name=persyn_config.id.name,
+                bot_id=persyn_config.id.guid,
+                service=service,
+                channel=channel,
+                photo=True,
+                max_tokens=200
+            )
+            autobus.publish(event)
 
 def main():
     ''' Main event '''

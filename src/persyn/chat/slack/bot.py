@@ -414,8 +414,6 @@ def main():
                         if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                             log.warning("🎺 Not posting:", {msg['reactions'][0]['name']})
                             return
-                        log.warning("🤯 All is forgotten.")
-                        chat.forget_it(channel)
                         return
                     try:
                         req = { "service": chat.service, "channel": channel }

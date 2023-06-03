@@ -72,7 +72,7 @@ class Interact():
             return ""
 
         if dialog_only:
-            text = self.recall.convo(service, channel, verb='dialog') or self.recall.lookup_summaries(service, channel, size=3)
+            text = self.recall.convo(service, channel, verb='dialog') or self.recall.summaries(service, channel, size=3)
         else:
             text = self.recall.convo(service, channel)
 
@@ -248,7 +248,7 @@ class Interact():
         search_term = ' '.join(entities)
         log.warning(f"ℹ️  look up '{search_term}' in memories")
 
-        for summary in self.recall.lookup_summaries(service, channel, search_term, size=10):
+        for summary in self.recall.summaries(service, channel, search_term, size=10, raw=True):
             if summary.convo_id in visited:
                 continue
             visited.append(summary.convo_id)
@@ -417,7 +417,7 @@ class Interact():
             convo.append(last_sentence)
 
         summaries = []
-        for summary in self.recall.lookup_summaries(service, channel, None, size=5):
+        for summary in self.recall.summaries(service, channel, None, size=5, raw=True):
             if summary.convo_id not in visited and summary.summary not in summaries:
                 summaries.append(summary.summary)
                 visited.append(summary.convo_id)
@@ -504,15 +504,11 @@ class Interact():
     def get_status(self, service, channel):
         ''' status report '''
         return self.generate_prompt(
-            self.recall.lookup_summaries(service, channel, size=2),
+            self.recall.summaries(service, channel, size=2),
             self.recall.convo(service, channel),
             service,
             channel
         )
-
-    def amnesia(self, service, channel):
-        ''' forget it '''
-        return self.recall.forget(service, channel)
 
     def extract_nouns(self, text):
         ''' return a list of all nouns (except pronouns) in text '''

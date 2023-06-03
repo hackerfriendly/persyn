@@ -119,13 +119,6 @@ class Recall():
             neomodel_config.DATABASE_URL = persyn_config.memory.neo4j.url
 
 
-        # self.redis.sadd(self.active_convos_prefix, f"{service}|{channel}|{convo_id}")
-
-    def forget(self, service, channel):
-        ''' What were we talking about? '''
-        log.error("Not implemented: recall.forget()")
-        return False
-
     def list_convos(self):
         ''' Return the set of all active convos for all services + channels '''
         return self.redis.smembers(self.active_convos_prefix)
@@ -295,6 +288,9 @@ class Recall():
             verb="new_convo"
         )
 
+        # No need to remove the previous conversation. It will be removed when cns summarizes it.
+        self.redis.sadd(self.active_convos_prefix, f"{service}|{channel}|{ret.convo_id}")
+
         log.warning("⚠️  New convo:", ret.convo_id)
         return ret.convo_id
 
@@ -331,7 +327,6 @@ class Recall():
         '''
         msg = self.get_last_message(service, channel)
         if msg:
-            log.warning(msg)
             return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
 
         return get_cur_ts()
@@ -408,21 +403,28 @@ class Recall():
         except IndexError:
             return None
 
-    def lookup_summaries(self, service, channel, search=None, size=3):
+    def summaries(self, service, channel, search=None, size=3, raw=False):
         '''
         Return a list of summaries matching the search term for this channel.
+
+        If raw is False, return a list of strings.
+        If raw is True, return the summary objects.
         '''
-        log.warning(f"lookup_summaries(): {service} {channel} {search} {size}")
+        log.warning(f"summaries(): {service} {channel} {search} {size}")
 
         if search is None:
             query = Query("(@service:{$service}) (@channel:{$channel})").paging(0, size).dialect(2)
             query_params = {"service": service, "channel": channel}
-            return self.redis.ft(self.summary_prefix).search(query, query_params).docs
+            if raw:
+                return self.redis.ft(self.summary_prefix).search(query, query_params).docs
+            return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs]
 
         # summary is a text field, so tokenization and stemming apply.
         query = Query('(@service:{$service}) (@channel:{$channel}) (@summary:$summary)').paging(0, size).dialect(2)
         query_params = {"service": service, "channel": channel, "summary": search}
-        return self.redis.ft(self.summary_prefix).search(query, query_params).docs
+        if raw:
+            return self.redis.ft(self.summary_prefix).search(query, query_params).docs
+        return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs]
 
     @staticmethod
     def entity_key(service, channel, name):
