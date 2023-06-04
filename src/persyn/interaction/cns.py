@@ -96,12 +96,14 @@ async def summarize_channel(event):
     chat = Chat(persyn_config=persyn_config, service=event.service)
     summary = chat.get_summary(
         channel=event.channel,
+        convo_id=event.convo_id,
         save=True,
         photo=event.photo,
         max_tokens=event.max_tokens,
         model=persyn_config.completion.summary_model
     )
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
+    if event.send_chat:
+        services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
 async def elaborate(event):
     ''' Continue the train of thought '''
@@ -112,8 +114,6 @@ async def elaborate(event):
         speaker_name=event.bot_name,
         speaker_id=event.bot_id
     )
-    # get_reply() speaks for us, no need to say it again.
-    # services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
 
 async def opine(event):
     ''' Recall opinions of entities (if any) '''
@@ -451,31 +451,35 @@ async def web_event(event):
 # recurring events
 ##
 @autobus.schedule(autobus.every(10).seconds)
-def auto_summarize():
+async def auto_summarize():
     ''' Automatically summarize conversations when they expire. '''
     convos = [convo.decode() for convo in recall.list_convos()]
 
     if convos:
         log.info("💓 Active convos:", convos)
 
-    for convo in convos:
-        (service, channel, convo_id) = convo.split('|')
-        # it should be stale and have more in it than a single line (ie. a previous summary)
-        if recall.expired(service, channel):
-            log.warning("💓 Convo expired:", convo_id)
+    for key in convos:
+        (service, channel, convo_id) = key.split('|')
+        # it should be stale and have more in it than a new_convo marker
+        if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
+            log.warning("💓 Convo expired:", key)
 
             # Remove it from the convo list
-            recall.redis.srem(f"{recall.active_convos_prefix}", convo)
+            recall.redis.srem(f"{recall.active_convos_prefix}", key)
 
-            event = Summarize(
-                bot_name=persyn_config.id.name,
-                bot_id=persyn_config.id.guid,
-                service=service,
-                channel=channel,
-                photo=True,
-                max_tokens=200
-            )
-            autobus.publish(event)
+            if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
+                log.info("💓 Summarizing:", convo_id)
+                event = Summarize(
+                    bot_name=persyn_config.id.name,
+                    bot_id=persyn_config.id.guid,
+                    service=service,
+                    channel=channel,
+                    convo_id=convo_id,
+                    photo=True,
+                    max_tokens=200,
+                    send_chat=False
+                )
+                autobus.publish(event)
 
 def main():
     ''' Main event '''

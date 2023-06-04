@@ -346,9 +346,8 @@ def main():
             if random.random() < 0.95:
                 return
 
-        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id, reminders)
+        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id, reminders, send_chat=True)
 
-        # get_reply() speaks for us, no need to say it again.
         # say(the_reply)
 
         # Interrupt any rejoinder in progress
@@ -366,16 +365,16 @@ def main():
             )
             return
 
-        # 5% chance of random interjection later
-        rnd = random.random()
-        if rnd < 0.05:
-            log.info(f"⏳ say something later in {rnd}...")
-            say_something_later(
-                say,
-                channel,
-                context,
-                when=random.randint(2, 5)
-            )
+        # # 5% chance of random interjection later
+        # rnd = random.random()
+        # if rnd < 0.05:
+        #     log.info(f"⏳ say something later in {rnd}...")
+        #     say_something_later(
+        #         say,
+        #         channel,
+        #         context,
+        #         when=random.randint(2, 5)
+        #     )
 
 
     @app.event("app_mention")
@@ -386,8 +385,7 @@ def main():
         speaker_name = get_display_name(speaker_id)
         msg = substitute_names(body['event']['text'])
 
-        # get_reply() speaks for us, no need to say it again.
-        chat.get_reply(channel, msg, speaker_name, speaker_id)
+        chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -410,19 +408,6 @@ def main():
             for msg in result.get('messages', []):
                 # only post on the first reaction
                 if 'reactions' in msg and len(msg['reactions']) == 1:
-                    if msg['reactions'][0]['name'] in ['-1', 'hankey', 'no_entry', 'no_entry_sign', 'hand']:
-                        if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
-                            log.warning("🎺 Not posting:", {msg['reactions'][0]['name']})
-                            return
-                        return
-                    try:
-                        req = { "service": chat.service, "channel": channel }
-                        response = requests.post(f"{persyn_config.interact.url}/amnesia/", params=req, timeout=10)
-                        response.raise_for_status()
-                    except requests.exceptions.RequestException as err:
-                        log.critical(f"🤖 Could not post /amnesia/ to interact: {err}")
-                        return
-
                     if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                         blk = msg['blocks'][0]
                         try:
@@ -494,8 +479,7 @@ def main():
                 if not msg.strip():
                     msg = "..."
 
-                # get_reply() speaks for us, no need to say it again.
-                chat.get_reply(channel, msg, speaker_name, speaker_id)
+                chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
 
             else:
                 say(

@@ -55,7 +55,7 @@ class Chat():
 
         self.photo_triggers = default_photo_triggers
 
-    def get_summary(self, channel, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
+    def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
             log.error("∑ get_summary() called with no URL defined, skipping.")
@@ -64,6 +64,7 @@ class Chat():
         req = {
             "service": self.service,
             "channel": channel,
+            "convo_id": convo_id,
             "save": save,
             "max_tokens": max_tokens,
             "include_keywords": include_keywords,
@@ -95,7 +96,7 @@ class Chat():
 
         return " :spiral_note_pad: :interrobang: "
 
-    def get_reply(self, channel, msg, speaker_name, speaker_id, reminders=None):
+    def get_reply(self, channel, msg, speaker_name, speaker_id, reminders=None, send_chat=True):
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
             log.error("💬 get_reply() called with no URL defined, skipping.")
@@ -112,7 +113,8 @@ class Chat():
             "channel": channel,
             "msg": msg,
             "speaker_name": speaker_name,
-            "speaker_id": speaker_id
+            "speaker_id": speaker_id,
+            "send_chat": send_chat
         }
         try:
             response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=60)

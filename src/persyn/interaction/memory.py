@@ -98,6 +98,10 @@ class Recall():
         # sets
         self.active_convos_prefix = f"{self.convo_prefix}:active_convos"
 
+        # clear any active convos
+        self.redis.delete(self.active_convos_prefix)
+
+        # Create indices
         for cmd in [
             f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG convo_id TAG speaker_name TEXT speaker_id TEXT msg TEXT verb TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.summary_prefix} on HASH PREFIX 1 {self.summary_prefix}: SCHEMA service TAG channel TAG convo_id TAG summary TEXT keywords TAG emb VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
@@ -288,10 +292,11 @@ class Recall():
             verb="new_convo"
         )
 
+        log.warning("⚠️  New convo:", ret.convo_id)
+
         # No need to remove the previous conversation. It will be removed when cns summarizes it.
         self.redis.sadd(self.active_convos_prefix, f"{service}|{channel}|{ret.convo_id}")
 
-        log.warning("⚠️  New convo:", ret.convo_id)
         return ret.convo_id
 
     def expired(self, service, channel):

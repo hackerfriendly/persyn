@@ -56,7 +56,8 @@ class Interact():
         include_keywords=False,
         context_lines=0,
         dialog_only=True,
-        model=None
+        model=None,
+        convo_id=None
         ):
         '''
         Generate a summary of the current conversation for this channel.
@@ -67,7 +68,8 @@ class Interact():
 
         Returns the text summary.
         '''
-        convo_id = self.recall.convo_id(service, channel)
+        if convo_id is None:
+            convo_id = self.recall.convo_id(service, channel)
         if not convo_id:
             return ""
 
@@ -77,29 +79,7 @@ class Interact():
             text = self.recall.convo(service, channel)
 
         if not text:
-            return random.choice([
-                f"{self.config.id.name} feels mystified by the current state of affairs.",
-                f"{self.config.id.name} is bewildered by the present circumstances.",
-                f"{self.config.id.name} is finding the present situation puzzling and hard to comprehend.",
-                f"{self.config.id.name} is in a haze of confusion about what's happening.",
-                f"{self.config.id.name} is in the dark about the ongoing situation.",
-                f"{self.config.id.name} is struggling to make sense of the ongoing situation.",
-                f"{self.config.id.name} isn't sure what is happening.",
-                f"{self.config.id.name}, ordinarily quick to comprehend, is genuinely befuddled by the current state of things.",
-                f"{self.config.id.name}, usually in tune with their surroundings, is completely at sea with what's unfolding.",
-                f"{self.config.id.name}, usually self-reliant and unshakeable, is grappling with ambiguity regarding the present scenario.",
-                f"{self.config.id.name}, usually up-to-date and aware, is strangely oblivious to the current scenario.",
-                f"Despite their sharp intuition, {self.config.id.name} is clueless about the present events.",
-                f"Despite their usual firm grasp and assurance, {self.config.id.name} is confronting a cloud of uncertainty.",
-                f"Despite their usual perceptiveness, {self.config.id.name} is struggling to grasp the details of the ongoing situation.",
-                f"Even with their keen insight, {self.config.id.name} is in the dark about the ongoing developments.",
-                f"Even with their sharp wits, {self.config.id.name} is unable to decode the present circumstances.",
-                f"The current situation has put {self.config.id.name}, who is usually unflappable, in a state of confusion.",
-                f"The existing circumstances have left {self.config.id.name} perplexed.",
-                f"The present context has thrown {self.config.id.name} into a sphere of uncertainty.",
-                f"Typically informed, {self.config.id.name} is out of the loop regarding the present situation.",
-                f"Usually quick on the uptake, {self.config.id.name} seems lost in the fog of the current events.",
-            ])
+            return ""
 
         log.warning("∑ summarizing convo")
 
@@ -357,15 +337,13 @@ class Interact():
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
     # Need to instrument this. It takes far too long and isn't async.
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id):  # pylint: disable=too-many-locals
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
-        Returns the best available reply.
+        Returns the best available reply. If send_chat is True, also send it to chat.
         '''
         log.info(f"💬 get_reply to: {msg}")
-
-        # goals = self.recall.list_goals(service, channel)
 
         convo_id = self.recall.convo_id(service, channel)
 
@@ -386,7 +364,7 @@ class Interact():
         if convo:
             last_sentence = convo.pop()
 
-        # This should be async, separate thread?
+        # TODO: Move this to CNS
         # Save the knowledge graph every 5 lines
         if convo and len(convo) % 5 == 0:
             self.save_knowledge_graph(service, channel, convo_id, convo)
@@ -406,8 +384,7 @@ class Interact():
         # Facts and opinions
         self.gather_facts(service, channel, entities)
 
-        # This should be async, separate thread?
-        # Also, where did the goals go? Haven't seen a trophy in ages.
+        # TODO: Move this to CNS
         # Goals. Don't give out _too_ many trophies.
         if random.random() < 0.5:
             self.check_goals(service, channel, convo)
@@ -417,10 +394,10 @@ class Interact():
             convo.append(last_sentence)
 
         summaries = []
-        for summary in self.recall.summaries(service, channel, None, size=5, raw=True):
-            if summary.convo_id not in visited and summary.summary not in summaries:
-                summaries.append(summary.summary)
-                visited.append(summary.convo_id)
+        for doc in self.recall.summaries(service, channel, None, size=5, raw=True):
+            if doc.convo_id not in visited and doc.summary not in summaries:
+                summaries.append(doc.summary)
+                visited.append(doc.convo_id)
 
         lts = self.recall.get_last_timestamp(service, channel)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
@@ -452,8 +429,11 @@ class Interact():
                 log.warning(f"🤮 Custom filter failed: {err}")
 
         # Say it!
-        self.send_chat(service, channel, reply)
+        if send_chat:
+            self.send_chat(service, channel, reply)
 
+
+        ## TODO: move these to CNS
         # Sentiment analysis via the autobus
         self.get_feels(service, channel, convo_id, f'{prompt} {reply}')
 
