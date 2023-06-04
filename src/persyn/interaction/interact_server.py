@@ -85,7 +85,7 @@ async def handle_summary(
     context_lines: Optional[int] = Query(0),
     dialog_only: Optional[bool] = Query(False),
     model: Optional[str] = Query(None, min_length=1, max_length=64),
-    convo_id: Optional[str] = Query(..., min_length=1, max_length=255)
+    convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
 ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
