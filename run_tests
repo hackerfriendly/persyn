@@ -1,8 +1,8 @@
 #!/bin/bash
 if [ "${DEBUG}" ]; then
-  DBG="--log-cli-level=DEBUG -v -s"
+  DBG="--log-cli-level=DEBUG -vv -s"
 else
-  DBG=""
+  DBG="-vv"
 fi
 
 PYTHONPATH=src/ PERSYN_CONFIG=config/test.yaml pytest ${DBG} $*
