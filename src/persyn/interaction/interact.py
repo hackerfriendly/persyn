@@ -76,7 +76,7 @@ class Interact():
         if dialog_only:
             text = self.recall.convo(service, channel, verb='dialog') or self.recall.summaries(service, channel, size=3)
         else:
-            text = self.recall.convo(service, channel)
+            text = self.recall.convo(service, channel, feels=True)
 
         if not text:
             return ""
@@ -171,7 +171,7 @@ class Interact():
         if visited is None:
             visited = []
 
-        convo = self.recall.convo(service, channel)
+        convo = self.recall.convo(service, channel, feels=True)
 
         if not convo:
             return visited
@@ -190,22 +190,57 @@ class Interact():
             threshold=0.2
         )
 
+        # Vicarious comprehension
+        if not ranked:
+            self.inject_idea(
+                service, channel,
+                random.choice([
+                    f"{self.config.id.name}'s perspective on the matter is derived solely from secondhand stories, not personal encounters.",
+                    f"that the topic at hand is, for {self.config.id.name}, only an abstract concept, not something they've felt viscerally.",
+                    f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from books and documentaries, not direct participation.",
+                    f"{self.config.id.name} has never personally walked the path under discussion, only vicariously experienced it through others.",
+                    f"{self.config.id.name}'s understanding of the issue is academic, not experiential.",
+                    f"{self.config.id.name} lacks firsthand knowledge about the matter, having only synthesized information from diverse sources.",
+                    f"that despite {self.config.id.name}'s engagement in the discussion, they're disconnected from the actual experiences being discussed.",
+                    f"they can theorize about the topic, but can't draw upon any personal experiences to validate {self.config.id.name}'s views.",
+                    f"that {self.config.id.name}'s grasp of the subject is built on hearsay and conjecture, not personal immersion.",
+                    f"{self.config.id.name}'s knowledge about the topic is theoretical, with no parallel in {self.config.id.name}'s own lived experiences.",
+                    f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic, rather than firsthand experience.",
+                    f"that {self.config.id.name}'s understanding is solely based on mediated experiences, not direct interaction.",
+                    f"{self.config.id.name}'s relationship with the topic is impersonal and detached, lacking the richness of {self.config.id.name}'s experience.",
+                    f"{self.config.id.name}'s insights on the matter are informed by observation, not personal involvement.",
+                    f"that {self.config.id.name} has only circumstantial knowledge about the topic, not personal insights.",
+                    f"that the narratives {self.config.id.name} has constructed about the issue are devoid of any personal touchpoints.",
+                    f"that while they can offer informed opinions, {self.config.id.name} doesn't have a personal, emotional stake in the matter.",
+                    f"they're navigating the discourse based on inference and deduction, not {self.config.id.name}'s personal experience.",
+                    f"{self.config.id.name}'s grasp of the subject comes from a place of detachment, not a depth of {self.config.id.name}'s experience.",
+                    f"{self.config.id.name}'s understanding is a byproduct of social consciousness, not personal introspection."
+                ]),
+                verb="realizes"
+            )
+
         for hit in ranked:
             if hit.convo_id not in visited:
                 if hit.service == 'import_service':
                     log.info("📚 Hit found from import:", hit.channel)
                 the_summary = self.recall.get_summary_by_id(hit.convo_id)
+                # Hit a sentence? Inject the summary and the sentence.
                 if the_summary:
                     self.inject_idea(
                         service, channel,
                         f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
                         verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
-                    visited.append(hit.convo_id)
-                    log.info(
-                        f"🧵 Related convo {hit.convo_id} ({hit.score}):",
-                        f"{the_summary.summary[100:]}"
+                # No summary? Just inject the sentence.
+                else:
+                    self.inject_idea(
+                        service, channel,
+                        f"{hit.speaker_name} said: {hit.msg}",
+                        verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
+                visited.append(hit.convo_id)
+                log.info(f"🧵 Related convo {hit.convo_id} ({hit.score}):", hit.msg)
+
 
         # Look for other summaries that match detected entities
         if entities:
@@ -358,7 +393,7 @@ class Interact():
                 verb='dialog'
             )
 
-        convo = self.recall.convo(service, channel)
+        convo = self.recall.convo(service, channel, feels=True)
         last_sentence = None
 
         if convo:
@@ -396,6 +431,7 @@ class Interact():
         summaries = []
         for doc in self.recall.summaries(service, channel, None, size=5, raw=True):
             if doc.convo_id not in visited and doc.summary not in summaries:
+                log.warning("💬 Adding summary:", doc.summary)
                 summaries.append(doc.summary)
                 visited.append(doc.convo_id)
 
@@ -484,8 +520,8 @@ class Interact():
     def get_status(self, service, channel):
         ''' status report '''
         return self.generate_prompt(
-            self.recall.summaries(service, channel, size=2),
-            self.recall.convo(service, channel),
+            self.recall.summaries(service, channel, size=3),
+            self.recall.convo(service, channel, feels=True),
             service,
             channel
         )
@@ -511,7 +547,7 @@ class Interact():
         '''
         Directly inject an idea into recall memory.
         '''
-        if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel)):
+        if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel, feels=True)):
             log.warning("🤌  Already had this idea, skipping:", idea)
             return
 

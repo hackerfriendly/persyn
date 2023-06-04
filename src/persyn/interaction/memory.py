@@ -209,7 +209,7 @@ class Recall():
         '''
         query = (
             Query(
-                """(@convo_id:{$convo_id}) (@verb:{dialog})"""
+                """(@convo_id:{$convo_id}) (@verb:{feels})"""
             )
             .return_fields(
                 "msg"
@@ -415,14 +415,21 @@ class Recall():
         If raw is False, return a list of strings.
         If raw is True, return the summary objects.
         '''
-        log.warning(f"summaries(): {service} {channel} {search} {size}")
+        log.debug(f"recall.summaries(): {service} {channel} {search} {size}")
 
         if search is None:
-            query = Query("(@service:{$service}) (@channel:{$channel})").paging(0, size).dialect(2)
+            query = (
+                Query(
+                    "(@service:{$service}) (@channel:{$channel})"
+                )
+                .sort_by("convo_id", asc=False)
+                .paging(0, size)
+                .dialect(2)
+            )
             query_params = {"service": service, "channel": channel}
             if raw:
-                return self.redis.ft(self.summary_prefix).search(query, query_params).docs
-            return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs]
+                return self.redis.ft(self.summary_prefix).search(query, query_params).docs[::-1]
+            return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs][::-1]
 
         # summary is a text field, so tokenization and stemming apply.
         query = Query('(@service:{$service}) (@channel:{$channel}) (@summary:$summary)').paging(0, size).dialect(2)
