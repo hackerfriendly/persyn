@@ -96,12 +96,14 @@ async def summarize_channel(event):
     chat = Chat(persyn_config=persyn_config, service=event.service)
     summary = chat.get_summary(
         channel=event.channel,
+        convo_id=event.convo_id,
         save=True,
         photo=event.photo,
         max_tokens=event.max_tokens,
         model=persyn_config.completion.summary_model
     )
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
+    if event.send_chat:
+        services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
 async def elaborate(event):
     ''' Continue the train of thought '''
@@ -112,8 +114,6 @@ async def elaborate(event):
         speaker_name=event.bot_name,
         speaker_id=event.bot_id
     )
-    # get_reply() speaks for us, no need to say it again.
-    # services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
 
 async def opine(event):
     ''' Recall opinions of entities (if any) '''
@@ -135,13 +135,11 @@ async def opine(event):
                     max_tokens=75
                 )).text
 
-            if opinion not in recall.stm.get_bias(event.service, event.channel):
-                recall.stm.add_bias(event.service, event.channel, opinion)
-                chat.inject_idea(
-                    channel=event.channel,
-                    idea=opinion,
-                    verb=f"thinks about {entity}"
-                )
+            chat.inject_idea(
+                channel=event.channel,
+                idea=opinion,
+                verb=f"thinks about {entity}"
+            )
 
 async def wikipedia_summary(event):
     ''' Summarize some wikipedia pages '''
@@ -205,14 +203,14 @@ async def add_goal(event):
 async def check_feels(event):
     ''' Run sentiment analysis on ourselves. '''
     feels = completion.get_feels(event.room)
-    recall.save(
-        event.service,
-        event.channel,
-        feels,
-        event.bot_name,
-        event.bot_id,
-        verb='feels',
-        convo_id=event.convo_id
+    recall.save_convo_line(
+        service=event.service,
+        channel=event.channel,
+        msg=feels,
+        speaker_name=event.bot_name,
+        speaker_id=event.bot_id,
+        convo_id=event.convo_id,
+        verb='feels'
     )
     log.warning("😄 Feeling:", feels)
 
@@ -220,7 +218,7 @@ async def build_knowledge_graph(event):
     ''' Build the knowledge graph. '''
     triples = completion.model.generate_triples(event.convo)
     log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
-    recall.ltm.triples_to_kg(triples)
+    recall.triples_to_kg(triples)
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
@@ -297,7 +295,7 @@ async def read_web(event):
     chat = Chat(persyn_config=persyn_config, service=event.service)
     log.debug(text_from_url(event.url, selector))
 
-    if not event.reread and recall.ltm.have_read(event.service, event.channel, event.url):
+    if not event.reread and recall.have_read(event.service, event.channel, event.url):
         log.info("🕸️ Already read:", event.url)
         chat.inject_idea(
             channel=event.channel,
@@ -313,7 +311,7 @@ async def read_web(event):
         services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
         return
 
-    recall.ltm.add_news(event.service, event.channel, event.url, "web page")
+    recall.add_news(event.service, event.channel, event.url, "web page")
 
     body = text_from_url(event.url, selector)
 
@@ -361,7 +359,7 @@ async def read_news(event):
     feed = BeautifulSoup(page.text, "xml")
     for item in feed.find_all('item'):
         item_url = item.find('link').text
-        if recall.ltm.have_read(event.service, event.channel, item_url):
+        if recall.have_read(event.service, event.channel, item_url):
             log.info("🗞️  Already read:", item_url)
             continue
 
@@ -448,6 +446,40 @@ async def web_event(event):
     ''' Dispatch Web event. '''
     log.debug("Web received", event)
     await read_web(event)
+
+##
+# recurring events
+##
+@autobus.schedule(autobus.every(10).seconds)
+async def auto_summarize():
+    ''' Automatically summarize conversations when they expire. '''
+    convos = [convo.decode() for convo in recall.list_convos()]
+
+    if convos:
+        log.info("💓 Active convos:", convos)
+
+    for key in convos:
+        (service, channel, convo_id) = key.split('|')
+        # it should be stale and have more in it than a new_convo marker
+        if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
+            log.warning("💓 Convo expired:", key)
+
+            # Remove it from the convo list
+            recall.redis.srem(f"{recall.active_convos_prefix}", key)
+
+            if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
+                log.info("💓 Summarizing:", convo_id)
+                event = Summarize(
+                    bot_name=persyn_config.id.name,
+                    bot_id=persyn_config.id.guid,
+                    service=service,
+                    channel=channel,
+                    convo_id=convo_id,
+                    photo=True,
+                    max_tokens=200,
+                    send_chat=False
+                )
+                autobus.publish(event)
 
 def main():
     ''' Main event '''

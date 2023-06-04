@@ -30,10 +30,12 @@ class Summarize(autobus.Event):
     ''' Summarize the current channel immediately. '''
     service: str
     channel: str
+    convo_id: Optional[str]
     bot_name: str
     bot_id: str
     photo: bool
     max_tokens: int
+    send_chat: Optional[bool] = True
 
 
 class Elaborate(autobus.Event):

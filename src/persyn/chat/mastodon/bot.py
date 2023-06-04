@@ -228,11 +228,9 @@ class Mastodon():
                     to_status=status
                 )
             else:
-                the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders)
-                # get_reply() speaks for us, no need to say it again.
-                # my_response = self.toot(the_reply)
+                the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders, send_chat=True)
 
-            self.chat.summarize_later(channel, self.reminders)
+            # self.chat.summarize_later(channel, self.reminders)
 
             if the_reply.endswith('…') or the_reply.endswith('...'):
                 self.say_something_later(

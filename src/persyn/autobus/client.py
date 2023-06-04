@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 import aioredis
 import asyncio, json, logging, inspect
 
@@ -36,7 +38,7 @@ class Client:
         listeners = self.listeners.setdefault(event_type, set())
         listeners.add(fn)
         return fn
-    
+
     def unsubscribe(self, cls, fn):
         event_type = cls.__name__
         listeners = self.listeners.get(event_type)
@@ -59,7 +61,7 @@ class Client:
     def every(self, *args):
         return self.scheduler.every(*args)
 
-    def _channel(self, name): 
+    def _channel(self, name):
         return ":".join(("autobus", self.namespace, name))
 
     def _load(self, blob):
@@ -173,7 +175,9 @@ class Client:
         self.output = asyncio.Queue()
         self.clean_up_ready = asyncio.Queue()
         self.state_changed = asyncio.Condition()
-        logger.info("Starting autobus (%s)", self.redis_url)
+        # Don't print the password!
+        url = urlparse(self.redis_url)
+        logger.info(f"Starting autobus ({url.scheme}://{url.netloc.split('@')[-1]}/)")
         redis = aioredis.from_url(self.redis_url, decode_responses=True)
         self.tasks.update((
             asyncio.create_task(self._transmit(redis), name="autobus_transmit"),

@@ -58,6 +58,7 @@ async def handle_reply(
     msg: str = Query(..., min_length=1, max_length=5000),
     speaker_id: str = Query(..., min_length=1, max_length=255),
     speaker_name: str = Query(..., min_length=1, max_length=255),
+    send_chat: Optional[bool] = Query(True)
     ):
     ''' Return the reply '''
 
@@ -68,7 +69,7 @@ async def handle_reply(
         )
 
     ret = await asyncio.gather(in_thread(
-        interact.get_reply, [service, channel, msg, speaker_name, speaker_id]
+        interact.get_reply, [service, channel, msg, speaker_name, speaker_id, send_chat]
     ))
     return {
         "reply": ret[0]
@@ -82,11 +83,13 @@ async def handle_summary(
     max_tokens: Optional[int] = Query(200),
     include_keywords: Optional[bool] = Query(False),
     context_lines: Optional[int] = Query(0),
-    model: Optional[str] = Query(None, min_length=1, max_length=64)
+    dialog_only: Optional[bool] = Query(False),
+    model: Optional[str] = Query(None, min_length=1, max_length=64),
+    convo_id: Optional[str] = Query(..., min_length=1, max_length=255)
 ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, max_tokens, include_keywords, context_lines, model]
+        interact.summarize_convo, [service, channel, save, max_tokens, include_keywords, context_lines, dialog_only, model, convo_id]
     ))
     return {
         "summary": ret[0]
@@ -103,19 +106,6 @@ async def handle_status(
     ))
     return {
         "status": ret[0]
-    }
-
-@app.post("/amnesia/")
-async def handle_amnesia(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    ):
-    ''' Return the reply '''
-    ret = await asyncio.gather(in_thread(
-        interact.amnesia, [service, channel]
-    ))
-    return {
-        "amnesia": ret[0]
     }
 
 @app.post("/nouns/")
@@ -436,7 +426,7 @@ async def main():
     global interact
     interact = Interact(persyn_config)
 
-    log.info(f"💃 {persyn_config.id.name}'s interact server starting up")
+    log.info(f"💃🕺 {persyn_config.id.name}'s interact server starting up")
 
     uvicorn_config = uvicorn.Config(
         'persyn.interaction.interact_server:app',

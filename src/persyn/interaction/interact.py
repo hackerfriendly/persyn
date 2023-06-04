@@ -32,9 +32,6 @@ class Interact():
     def __init__(self, persyn_config):
         self.config = persyn_config
 
-        # What are we doing with our life?
-        self.goals = []
-
         # Pick a language model for completion
         self.completion = LanguageModel(config=persyn_config)
 
@@ -59,7 +56,8 @@ class Interact():
         include_keywords=False,
         context_lines=0,
         dialog_only=True,
-        model=None
+        model=None,
+        convo_id=None
         ):
         '''
         Generate a summary of the current conversation for this channel.
@@ -70,39 +68,18 @@ class Interact():
 
         Returns the text summary.
         '''
-        convo_id = self.recall.stm.convo_id(service, channel)
+        if convo_id is None:
+            convo_id = self.recall.convo_id(service, channel)
         if not convo_id:
             return ""
 
         if dialog_only:
-            text = self.recall.dialog(service, channel) or self.recall.summaries(service, channel, size=3)
+            text = self.recall.convo(service, channel, verb='dialog') or self.recall.summaries(service, channel, size=3)
         else:
             text = self.recall.convo(service, channel)
 
         if not text:
-            return random.choice([
-                f"{self.config.id.name} feels mystified by the current state of affairs.",
-                f"{self.config.id.name} is bewildered by the present circumstances.",
-                f"{self.config.id.name} is finding the present situation puzzling and hard to comprehend.",
-                f"{self.config.id.name} is in a haze of confusion about what's happening.",
-                f"{self.config.id.name} is in the dark about the ongoing situation.",
-                f"{self.config.id.name} is struggling to make sense of the ongoing situation.",
-                f"{self.config.id.name} isn't sure what is happening.",
-                f"{self.config.id.name}, ordinarily quick to comprehend, is genuinely befuddled by the current state of things.",
-                f"{self.config.id.name}, usually in tune with their surroundings, is completely at sea with what's unfolding.",
-                f"{self.config.id.name}, usually self-reliant and unshakeable, is grappling with ambiguity regarding the present scenario.",
-                f"{self.config.id.name}, usually up-to-date and aware, is strangely oblivious to the current scenario.",
-                f"Despite their sharp intuition, {self.config.id.name} is clueless about the present events.",
-                f"Despite their usual firm grasp and assurance, {self.config.id.name} is confronting a cloud of uncertainty.",
-                f"Despite their usual perceptiveness, {self.config.id.name} is struggling to grasp the details of the ongoing situation.",
-                f"Even with their keen insight, {self.config.id.name} is in the dark about the ongoing developments.",
-                f"Even with their sharp wits, {self.config.id.name} is unable to decode the present circumstances.",
-                f"The current situation has put {self.config.id.name}, who is usually unflappable, in a state of confusion.",
-                f"The existing circumstances have left {self.config.id.name} perplexed.",
-                f"The present context has thrown {self.config.id.name} into a sphere of uncertainty.",
-                f"Typically informed, {self.config.id.name} is out of the loop regarding the present situation.",
-                f"Usually quick on the uptake, {self.config.id.name} seems lost in the fog of the current events.",
-            ])
+            return ""
 
         log.warning("∑ summarizing convo")
 
@@ -119,7 +96,7 @@ class Interact():
         keywords = self.completion.get_keywords(summary)
 
         if save:
-            self.recall.summary(service, channel, summary, keywords)
+            self.recall.save_summary(service, channel, convo_id, summary, keywords)
             self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
@@ -199,17 +176,17 @@ class Interact():
         if not convo:
             return visited
 
-        ranked = self.recall.ltm.find_related_convos(
+        ranked = self.recall.find_related_convos(
             service, channel,
             convo='\n'.join(convo[:3]),
             size=10,
-            current_convo_id=self.recall.stm.convo_id(service, channel),
+            current_convo_id=self.recall.convo_id(service, channel),
             threshold=0.15
-        ) + self.recall.ltm.find_related_convos(
+        ) + self.recall.find_related_convos(
             service, channel,
             convo='\n'.join(convo),
             size=2,
-            current_convo_id=self.recall.stm.convo_id(service, channel),
+            current_convo_id=self.recall.convo_id(service, channel),
             threshold=0.2
         )
 
@@ -217,12 +194,12 @@ class Interact():
             if hit.convo_id not in visited:
                 if hit.service == 'import_service':
                     log.info("📚 Hit found from import:", hit.channel)
-                the_summary = self.recall.ltm.get_summary_by_id(hit.convo_id)
+                the_summary = self.recall.get_summary_by_id(hit.convo_id)
                 if the_summary:
                     self.inject_idea(
                         service, channel,
                         f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
-                        verb=f"remembers that {ago(self.recall.ltm.entity_id_to_timestamp(hit.convo_id))} ago"
+                        verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
                     visited.append(hit.convo_id)
                     log.info(
@@ -251,7 +228,7 @@ class Interact():
         search_term = ' '.join(entities)
         log.warning(f"ℹ️  look up '{search_term}' in memories")
 
-        for summary in self.recall.lookup_summaries(service, channel, search_term, size=10):
+        for summary in self.recall.summaries(service, channel, search_term, size=10, raw=True):
             if summary.convo_id in visited:
                 continue
             visited.append(summary.convo_id)
@@ -309,14 +286,14 @@ class Interact():
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
-        self.goals = self.recall.list_goals(service, channel)
+        goals = self.recall.list_goals(service, channel)
 
-        if self.goals:
+        if goals:
             req = {
                 "service": service,
                 "channel": channel,
                 "convo": '\n'.join(convo),
-                "goals": self.goals
+                "goals": goals
             }
 
             try:
@@ -360,22 +337,26 @@ class Interact():
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
     # Need to instrument this. It takes far too long and isn't async.
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id):  # pylint: disable=too-many-locals
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
-        Returns the best available reply.
+        Returns the best available reply. If send_chat is True, also send it to chat.
         '''
         log.info(f"💬 get_reply to: {msg}")
 
-        self.goals = self.recall.list_goals(service, channel)
-
-        # This should be async, separate thread?
-        if self.recall.expired(service, channel):
-            self.summarize_convo(service, channel, save=True, context_lines=2)
+        convo_id = self.recall.convo_id(service, channel)
 
         if msg != '...':
-            self.recall.save(service, channel, msg, speaker_name, speaker_id, verb='dialog')
+            self.recall.save_convo_line(
+                service,
+                channel,
+                msg,
+                speaker_name,
+                speaker_id,
+                convo_id=convo_id,
+                verb='dialog'
+            )
 
         convo = self.recall.convo(service, channel)
         last_sentence = None
@@ -383,10 +364,10 @@ class Interact():
         if convo:
             last_sentence = convo.pop()
 
-        # This should be async, separate thread?
+        # TODO: Move this to CNS
         # Save the knowledge graph every 5 lines
         if convo and len(convo) % 5 == 0:
-            self.save_knowledge_graph(service, channel, self.recall.stm.convo_id(service, channel), convo)
+            self.save_knowledge_graph(service, channel, convo_id, convo)
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -403,8 +384,7 @@ class Interact():
         # Facts and opinions
         self.gather_facts(service, channel, entities)
 
-        # This should be async, separate thread?
-        # Also, where did the goals go? Haven't seen a trophy in ages.
+        # TODO: Move this to CNS
         # Goals. Don't give out _too_ many trophies.
         if random.random() < 0.5:
             self.check_goals(service, channel, convo)
@@ -414,12 +394,12 @@ class Interact():
             convo.append(last_sentence)
 
         summaries = []
-        for summary in self.recall.lookup_summaries(service, channel, None, size=5):
-            if summary.convo_id not in visited and summary.summary not in summaries:
-                summaries.append(summary.summary)
-                visited.append(summary.convo_id)
+        for doc in self.recall.summaries(service, channel, None, size=5, raw=True):
+            if doc.convo_id not in visited and doc.summary not in summaries:
+                summaries.append(doc.summary)
+                visited.append(doc.convo_id)
 
-        lts = self.recall.lts(service, channel)
+        lts = self.recall.get_last_timestamp(service, channel)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
@@ -441,7 +421,7 @@ class Interact():
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        reply = self.choose_response(prompt, convo, service, channel, self.goals)
+        reply = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel))
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -449,10 +429,13 @@ class Interact():
                 log.warning(f"🤮 Custom filter failed: {err}")
 
         # Say it!
-        self.send_chat(service, channel, reply)
+        if send_chat:
+            self.send_chat(service, channel, reply)
 
+
+        ## TODO: move these to CNS
         # Sentiment analysis via the autobus
-        self.get_feels(service, channel, self.recall.stm.convo_id(service, channel), f'{prompt} {reply}')
+        self.get_feels(service, channel, convo_id, f'{prompt} {reply}')
 
         if 'http' in msg:
             # Regex chosen by GPT-4. 😵‍💫
@@ -466,10 +449,13 @@ class Interact():
         ret = [
             f"It is {natural_time()} on {today()}.",
             getattr(self.config.interact, "character", ""),
-            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.stm.convo_id(service, channel))}.",
+            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
         ]
-        if self.goals:
-            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(self.goals)}")
+        goals = self.recall.list_goals(service, channel)
+        if goals:
+            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(goals)}")
+        else:
+            log.warning(f"🙅‍♀️ No goal yet for {service} | {channel}")
         return '\n'.join(ret)
 
     def generate_prompt(self, summaries, convo, service, channel, lts=None):
@@ -483,7 +469,7 @@ class Interact():
         graph_summary = ''
         convo_text = '\n'.join(convo)
         for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
-            for triple in self.recall.ltm.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+            for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
                 triples.add(triple)
         if triples:
             graph_summary = self.completion.model.triples_to_text(list(triples))
@@ -503,10 +489,6 @@ class Interact():
             service,
             channel
         )
-
-    def amnesia(self, service, channel):
-        ''' forget it '''
-        return self.recall.forget(service, channel)
 
     def extract_nouns(self, text):
         ''' return a list of all nouns (except pronouns) in text '''
@@ -533,10 +515,15 @@ class Interact():
             log.warning("🤌  Already had this idea, skipping:", idea)
             return
 
-        if self.recall.expired(service, channel):
-            self.summarize_convo(service, channel, save=True, context_lines=2)
-
-        self.recall.save(service, channel, idea, self.config.id.name, self.config.id.guid, verb)
+        self.recall.save_convo_line(
+            service,
+            channel,
+            msg=idea,
+            speaker_name=self.config.id.name,
+            speaker_id=self.config.id.guid,
+            convo_id=self.recall.convo_id(service, channel),
+            verb=verb
+        )
 
         log.warning(f"🤔 {verb}:", idea)
         return
