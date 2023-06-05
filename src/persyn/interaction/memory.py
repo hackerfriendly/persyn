@@ -137,7 +137,7 @@ class Recall():
         log.warning(f"📌 opinion on {topic}")
         return self.lookup_opinions(service, channel, topic, size)
 
-    def convo(self, service, channel, convo_id=None, feels=False, verb=None, raw=False):
+    def convo(self, service, channel, convo_id=None, feels=False, verb=None, raw=False, size=1000):
         '''
         Return an entire convo.
 
@@ -167,6 +167,7 @@ class Recall():
                     "convo_id"
                 )
                 .sort_by("convo_id", asc=True)
+                .paging(0, size)
                 .dialect(2)
             )
             query_params = {"service": service, "channel": channel, "convo_id": convo_id, "verb": verb}
@@ -182,6 +183,7 @@ class Recall():
                     "convo_id"
                 )
                 .sort_by("convo_id", asc=True)
+                .paging(0, size)
                 .dialect(2)
             )
             query_params = {"service": service, "channel": channel, "convo_id": convo_id}
@@ -393,18 +395,18 @@ class Recall():
 
         return ret[0]
 
-    def get_convo_by_id(self, convo_id):
+    def get_convo_by_id(self, convo_id, size=1000):
         ''' Return all Convo objects matching convo_id in chronological order '''
-        query = Query("(@convo_id:{$convo_id})").dialect(2)
+        query = Query("(@convo_id:{$convo_id})").sort_by("convo_id").paging(0, size).dialect(2)
         query_params = {"convo_id": convo_id}
         return self.redis.ft(self.convo_prefix).search(query, query_params).docs
 
     def get_summary_by_id(self, convo_id):
         ''' Return the last summary for this convo_id '''
-        query = Query("(@convo_id:{$convo_id})").dialect(2)
+        query = Query("(@convo_id:{$convo_id})").sort_by("convo_id", asc=False).paging(0, 1).dialect(2)
         query_params = {"convo_id": convo_id}
         try:
-            return self.redis.ft(self.summary_prefix).search(query, query_params).docs[-1]
+            return self.redis.ft(self.summary_prefix).search(query, query_params).docs[0]
         except IndexError:
             return None
 
@@ -511,14 +513,14 @@ class Recall():
         emb = self.completion.model.get_embedding(' '.join(convo))
 
         if any_convo:
-            service_channel = ""
+            service_channel = "()"
         else:
-            service_channel = "(@service:{$service}) (@channel:{$channel})"
+            service_channel = "((@service:{$service}) (@channel:{$channel}))"
 
         if current_convo_id is None:
             query = (
                 Query(
-                    "(" + service_channel + " (@verb:{dialog}))=>[KNN " + str(size) + " @emb $emb as score]"
+                    f"{service_channel}=>[KNN " + str(size) + " @emb $emb as score]"
                 )
                 .sort_by("score")
                 .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
@@ -531,7 +533,7 @@ class Recall():
             # exclude the current convo_id
             query = (
                 Query(
-                    "(" + service_channel + " (@verb:{dialog}) -(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
+                   "(" + service_channel + "-(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
                 )
                 .sort_by("score")
                 .return_fields("service", "channel", "convo_id", "msg", "speaker_name", "pk", "score")
@@ -548,6 +550,7 @@ class Recall():
                 log.info("👨‍👩‍👧 Related: ", doc.msg)
                 ret.append(doc)
 
+        best = ""
         if reply.docs:
             best = f" (best: {float(reply.docs[0].score):0.3f})"
 
