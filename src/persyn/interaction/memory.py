@@ -432,11 +432,18 @@ class Recall():
             return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs][::-1]
 
         # summary is a text field, so tokenization and stemming apply.
-        query = Query('(@service:{$service}) (@channel:{$channel}) (@summary:$summary)').paging(0, size).dialect(2)
+        query = (
+            Query(
+                '(@service:{$service}) (@channel:{$channel}) (@summary:$summary)'
+            )
+            .sort_by("convo_id", asc=False)
+            .paging(0, size)
+            .dialect(2)
+        )
         query_params = {"service": service, "channel": channel, "summary": search}
         if raw:
-            return self.redis.ft(self.summary_prefix).search(query, query_params).docs
-        return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs]
+            return self.redis.ft(self.summary_prefix).search(query, query_params).docs[::-1]
+        return [doc.summary for doc in self.redis.ft(self.summary_prefix).search(query, query_params).docs][::-1]
 
     @staticmethod
     def entity_key(service, channel, name):

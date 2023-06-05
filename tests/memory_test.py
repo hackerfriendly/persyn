@@ -215,10 +215,10 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
             assert recall.entity_id_to_epoch(doc7.pk) - recall.entity_id_to_epoch(doc4.pk) < 15.0
 
     # Save some summaries too
-    assert recall.save_summary(service, channel_a, "convo_id", "my_nice_summary")
-    assert recall.save_summary(service, channel_b, "convo_id_2", "my_other_nice_summary")
-    assert recall.save_summary(service, channel_b, "convo_id_3", "my_middle_nice_summary")
-    assert recall.save_summary(service, channel_b, "convo_id_4", "my_final_nice_summary")
+    assert recall.save_summary(service, channel_a, str(ulid.ULID()), "my_nice_summary")
+    assert recall.save_summary(service, channel_b, str(ulid.ULID()), "my_other_nice_summary")
+    assert recall.save_summary(service, channel_b, str(ulid.ULID()), "my_middle_nice_summary")
+    assert recall.save_summary(service, channel_b, str(ulid.ULID()), "my_final_nice_summary")
 
 
 def test_fetch_convo():
@@ -310,7 +310,7 @@ def test_recall():
     assert convo == ["speaker_name_1: message_another", "speaker_name_2: message_yet_another"]
 
     # summarize
-    assert recall.save_summary(service, channel, "a_convo_id", "this_is_another_summary")
+    assert recall.save_summary(service, channel, c[0].convo_id, "this_is_another_summary")
 
     # time passes...
     sleep(2)
