@@ -57,7 +57,8 @@ class Interact():
         context_lines=0,
         dialog_only=True,
         model=None,
-        convo_id=None
+        convo_id=None,
+        save_kg=True
         ):
         '''
         Generate a summary of the current conversation for this channel.
@@ -97,6 +98,8 @@ class Interact():
 
         if save:
             self.recall.save_summary(service, channel, convo_id, summary, keywords)
+
+        if save_kg:
             self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         for topic in random.sample(keywords, k=min(3, len(keywords))):
@@ -187,7 +190,8 @@ class Interact():
             convo='\n'.join(convo),
             size=2,
             current_convo_id=self.recall.convo_id(service, channel),
-            threshold=0.2
+            threshold=0.2,
+            any_convo=True
         )
 
         # Vicarious comprehension
