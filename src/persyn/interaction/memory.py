@@ -513,7 +513,7 @@ class Recall():
         emb = self.completion.model.get_embedding(' '.join(convo))
 
         if any_convo:
-            service_channel = "()"
+            service_channel = "((@service:{$service}))"
         else:
             service_channel = "((@service:{$service}) (@channel:{$channel}))"
 
