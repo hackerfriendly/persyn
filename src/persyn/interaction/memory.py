@@ -510,7 +510,8 @@ class Recall():
         '''
         Find conversations related to convo using vector similarity
         '''
-        emb = self.completion.model.get_embedding(' '.join(convo))
+        # TODO: truncate to 8191 tokens HERE.
+        emb = self.completion.model.get_embedding(convo)
 
         if any_convo:
             service_channel = "((@service:{$service}))"
