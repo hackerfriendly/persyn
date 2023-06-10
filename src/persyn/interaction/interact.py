@@ -119,7 +119,7 @@ class Interact():
 
         return summary
 
-    def choose_response(self, prompt, convo, service, channel, goals):
+    def choose_response(self, prompt, convo, service, channel, goals, max_tokens=150):
         ''' Choose the best completion response from a list of possibilities '''
         if not convo:
             convo = []
@@ -130,7 +130,8 @@ class Interact():
             convo=convo,
             goals=goals,
             model=self.config.completion.summary_model,
-            n=3
+            n=3,
+            max_tokens=max_tokens
         )
 
         if not scored:
@@ -141,7 +142,8 @@ class Interact():
                 convo=convo,
                 goals=goals,
                 model=self.config.completion.chat_model or self.config.completion.completion_model,
-                n=2
+                n=2,
+                max_tokens=max_tokens
             )
 
         # Uh-oh. Just ignore whatever was last said.
@@ -150,7 +152,8 @@ class Interact():
             scored = self.completion.get_replies(
                 prompt=self.generate_prompt([], convo[:-1], service, channel),
                 convo=convo,
-                goals=goals
+                goals=goals,
+                max_tokens=max_tokens
             )
 
         if not scored:
@@ -179,9 +182,10 @@ class Interact():
         if not convo:
             return visited
 
+        log.info("last 3")
         ranked = self.recall.find_related_convos(
             service, channel,
-            convo='\n'.join(convo[:3]),
+            convo='\n'.join(convo[:5]),
             size=10,
             current_convo_id=self.recall.convo_id(service, channel),
             threshold=0.15
@@ -194,8 +198,8 @@ class Interact():
             any_convo=True
         )
 
-        # Vicarious comprehension
         if not ranked:
+            log.warning("💁‍♂️ Vicarious comprehension")
             self.inject_idea(
                 service, channel,
                 random.choice([
@@ -244,7 +248,6 @@ class Interact():
                     )
                 visited.append(hit.convo_id)
                 log.info(f"🧵 Related convo {hit.convo_id} ({hit.score}):", hit.msg)
-
 
         # Look for other summaries that match detected entities
         if entities:
@@ -376,7 +379,7 @@ class Interact():
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
     # Need to instrument this. It takes far too long and isn't async.
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True, max_tokens=150):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
@@ -443,7 +446,7 @@ class Interact():
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
-        if self.completion.toklen(prompt) > self.completion.max_prompt_length():
+        if (self.completion.toklen(prompt) + max_tokens) > self.completion.max_prompt_length():
             # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             req = {
@@ -461,7 +464,7 @@ class Interact():
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        reply = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel))
+        reply = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
