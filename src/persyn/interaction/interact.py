@@ -182,7 +182,6 @@ class Interact():
         if not convo:
             return visited
 
-        log.info("last 3")
         ranked = self.recall.find_related_convos(
             service, channel,
             convo='\n'.join(convo[:5]),
@@ -247,7 +246,7 @@ class Interact():
                         verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
                 visited.append(hit.convo_id)
-                log.info(f"🧵 Related convo {hit.convo_id} ({hit.score}):", hit.msg)
+                log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg)
 
         # Look for other summaries that match detected entities
         if entities:
