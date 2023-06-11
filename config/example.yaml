@@ -27,6 +27,9 @@ memory:
   # Conversations end when this many seconds pass in silence
   conversation_interval: 600
 
+  # Treshold for retrieving relevant memories. 0 = perfect match, 1 = random
+  relevance: 0.06
+
 # Required: Prompt completion options. Enable one of these.
 #
 #   openai: https://beta.openai.com/account/api-keys
