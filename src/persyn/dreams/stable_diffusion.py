@@ -42,8 +42,7 @@ PIPE = None
 
 # One lock for each available GPU (only one supported for now)
 GPUS = {}
-for i in range(torch.cuda.device_count()):
-    GPUS[i] = Lock()
+GPUS[0] = Lock()
 
 if not GPUS:
     raise RuntimeError("No GPUs detected. Check your config and try again.")
