@@ -159,16 +159,17 @@ class Interact():
         if not scored:
             log.warning("😩 No surviving replies, I give up.")
             log.info("🤷‍♀️ Choice: none available")
-            return ":shrug:"
+            return (":shrug:", [])
 
         for item in sorted(scored.items()):
             log.warning(f"{item[0]:0.2f}:", item[1])
 
         idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
         reply = scored[idx]
+        del scored[idx]
         log.info(f"✅ Choice: {idx:0.2f}", reply)
 
-        return reply
+        return (reply, [item[1] for item in scored.items()])
 
     def gather_memories(self, service, channel, entities, visited=None):
         '''
@@ -468,7 +469,7 @@ class Interact():
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        reply = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
+        (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -479,6 +480,8 @@ class Interact():
         if send_chat:
             self.send_chat(service, channel, reply)
 
+        for idea in others:
+            self.inject_idea(service, channel, idea, verb="thinks")
 
         ## TODO: move these to CNS
         # Sentiment analysis via the autobus
