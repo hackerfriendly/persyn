@@ -190,6 +190,9 @@ class Recall():
 
         ret = []
         for msg in self.redis.ft(self.convo_prefix).search(query, query_params).docs:
+            if not getattr(msg, 'verb', None):
+                continue
+
             if msg.verb == 'new_convo':
                 continue
             if msg.verb == 'dialog':
@@ -334,10 +337,12 @@ class Recall():
         '''
         msg = self.get_last_message(service, channel)
         if msg:
-            return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
+            try:
+                return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
+            except AttributeError:
+                log.warning("‼️ entity_id_to_epoch(): no pk for msg:", msg)
 
         return get_cur_ts()
-
 
     def save_summary(self, service, channel, convo_id, summary, keywords=None):
         '''
