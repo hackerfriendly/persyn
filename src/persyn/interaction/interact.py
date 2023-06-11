@@ -187,15 +187,20 @@ class Interact():
             convo='\n'.join(convo[:5]),
             size=10,
             current_convo_id=self.recall.convo_id(service, channel),
-            threshold=0.15
-        ) + self.recall.find_related_convos(
-            service, channel,
-            convo='\n'.join(convo),
-            size=2,
-            current_convo_id=self.recall.convo_id(service, channel),
-            threshold=0.2,
-            any_convo=True
+            threshold=self.config.memory.relevance
         )
+
+        # No hits? Don't try so hard.
+        if not ranked:
+            log.warning("🍸 Nothing relevant. Try lateral thinking.")
+            ranked = self.recall.find_related_convos(
+                service, channel,
+                convo='\n'.join(convo),
+                size=1,
+                current_convo_id=self.recall.convo_id(service, channel),
+                threshold=self.config.memory.relevance * 1.4,
+                any_convo=True
+            )
 
         if not ranked:
             log.warning("💁‍♂️ Vicarious comprehension")

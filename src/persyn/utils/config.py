@@ -18,6 +18,7 @@ import coreferee
 from dotwiz import DotWiz # pylint: disable=no-member
 
 class PersynConfig(DotWiz):
+    ''' PersynConfig object '''
     ...
 
 def download_models(persyn_config):
@@ -109,6 +110,9 @@ def load_config(cfg=None):
     if 'memory' in config:
         if 'conversation_interval' not in config['memory']:
             config['memory']['conversation_interval'] = 600
+
+        if 'relevance' not in config['memory']:
+            config['memory']['relevance'] = 0.12
 
         if 'redis' not in config['memory']:
             config['memory']['redis'] = 'redis://localhost:6379/'

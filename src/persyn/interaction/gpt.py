@@ -394,8 +394,8 @@ Ottawa | locatedIn | Canada
         for triple in triples:
             lines.append(f"{triple[0]} | {triple[1]} | {triple[2]}")
 
+        log.info(f"☘️  {len(lines)} triples to summarize")
         kg = '\n'.join(lines)
-        log.warning(kg)
         try:
             response = openai.ChatCompletion.create(
                 model=self.chat_model,
@@ -413,7 +413,7 @@ as told from the third-person point of view of {self.bot_name}.
                 ]
             )
             text = response['choices'][0]['message']['content'].strip()
-            log.info("☘️  triples_to_text:", text)
+            log.info("☘️  graph summary:", text)
             return text
 
         except openai.error.APIConnectionError as err:
