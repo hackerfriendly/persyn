@@ -6,9 +6,10 @@ id:
   name: My Bot
   # Every bot gets its own GUID. Run uuidgen to get a fresh one.
   guid: fed828a8-64c8-4f46-a15d-93973724614c
+  # Photo used for Discord and other places
+  avatar: https://hackerfriendly.com/pub/anna/anna.png
 
-# Required: At least one long-term memory service must be defined.
-# Currently Elasticsearch is required. Neo4j is optional.
+# Required: Redis. Neo4j is optional but recommended.
 memory:
   # Location of your redis server (default)
   # redis: redis://localhost:6379/
@@ -33,8 +34,6 @@ memory:
 # Required: Prompt completion options. Enable one of these.
 #
 #   openai: https://beta.openai.com/account/api-keys
-#  gooseai: https://goose.ai/dashboard/apikeys
-# nlpcloud: https://nlpcloud.com/home/token
 
 # Currently only openai is supported, others are experimental.
 completion:
@@ -44,7 +43,7 @@ completion:
   #   https://beta.openai.com/docs/models/overview
   #   https://beta.openai.com/docs/model-index-for-researchers
   # The default completion model
-  completion_model: text-davinci-003
+  completion_model: gpt-3.5-turbo
   # The chat model is used for opinions, sentiment, knowledge graph building,
   # and other non-chat functions. Required.
   chat_model: gpt-3.5-turbo
