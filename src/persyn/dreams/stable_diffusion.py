@@ -24,6 +24,7 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import StreamingResponse, RedirectResponse
 
 from transformers import AutoFeatureExtractor, logging
+from diffusers.models import AutoencoderKL
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
@@ -38,6 +39,7 @@ app = FastAPI()
 
 # defined after the config is loaded
 MODEL = None
+
 PIPE = None
 
 # One lock for each available GPU (only one supported for now)
@@ -192,7 +194,13 @@ def main():
 
     # use fp16 for ~3x speedup (if available)
     if MODEL.startswith("stabilityai/stable-diffusion"):
-        PIPE = StableDiffusionPipeline.from_pretrained(MODEL, scheduler=scheduler, revision="fp16", torch_dtype=torch.float16)
+        PIPE = StableDiffusionPipeline.from_pretrained(
+            MODEL,
+            scheduler=scheduler,
+            revision="fp16",
+            torch_dtype=torch.float16,
+            # vae=AutoencoderKL.from_pretrained("stabilityai/sdxl-vae")
+        )
     else:
         PIPE = StableDiffusionPipeline.from_pretrained(MODEL, scheduler=scheduler)
 
