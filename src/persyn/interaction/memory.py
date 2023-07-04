@@ -560,7 +560,7 @@ class Recall():
         if reply.docs:
             best = f" (best: {float(reply.docs[0].score):0.3f})"
 
-        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}{best}")
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold:0.3f}{best}")
 
         return ret
 
