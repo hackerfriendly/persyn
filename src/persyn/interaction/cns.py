@@ -476,7 +476,7 @@ async def auto_summarize():
                     channel=channel,
                     convo_id=convo_id,
                     photo=True,
-                    max_tokens=200,
+                    max_tokens=30,
                     send_chat=False
                 )
                 autobus.publish(event)
