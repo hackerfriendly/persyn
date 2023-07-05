@@ -220,7 +220,8 @@ class GPT():
         if model is None:
             model = self.config.completion.chat_model
 
-        prompt = f'''Given the following conversation, how does {speaker} feel about {entity}?\n{context}'''
+        log.warning("🧷 get_opinions:", entity)
+        prompt = f"Briefly state {speaker}'s opinion about {entity} from {speaker}'s point of view, and convert pronouns and verbs to the first person.\n{context}"
 
         enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():

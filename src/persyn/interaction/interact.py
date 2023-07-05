@@ -102,7 +102,7 @@ class Interact():
         if save_kg:
             self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
-        for topic in random.sample(keywords, k=min(3, len(keywords))):
+        for topic in random.sample(keywords, k=min(5, len(keywords))):
             self.recall.judge(
                 service,
                 channel,
@@ -324,6 +324,7 @@ class Interact():
         }
 
         for endpoint in ('opine', 'wikipedia'):
+            log.warning(f"🧾 {endpoint} : {the_sample}")
             try:
                 reply = requests.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
                 reply.raise_for_status()

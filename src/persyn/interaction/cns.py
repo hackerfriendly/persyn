@@ -131,7 +131,7 @@ async def opine(event):
             else:
                 opinion = completion.nlp(completion.get_summary(
                     text='\n'.join(opinions),
-                    summarizer=f"{event.bot_name}'s opinion about {entity} can be briefly summarized as:",
+                    summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
                     max_tokens=75
                 )).text
 
@@ -140,6 +140,8 @@ async def opine(event):
                 idea=opinion,
                 verb=f"thinks about {entity}"
             )
+        else:
+            log.warning(f"💁‍♂️ No opinion about {entity}")
 
 async def wikipedia_summary(event):
     ''' Summarize some wikipedia pages '''
