@@ -55,7 +55,7 @@ class LanguageModel():
             stop = [".", "!", "?"]
         return self.model.get_opinions(context, entity, stop, temperature, max_tokens)
 
-    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50):
+    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=10):
         '''
         Ask the model for sentiment analysis of the current convo.
         '''

@@ -254,7 +254,7 @@ class GPT():
 
         return reply
 
-    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=50, speaker=None, model=None):
+    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=10, speaker=None, model=None):
         '''
         Ask ChatGPT for sentiment analysis of the current convo.
         '''
