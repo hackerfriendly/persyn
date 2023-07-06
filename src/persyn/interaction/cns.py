@@ -7,6 +7,7 @@ The central nervous system. Listen for events on the event bus and inject result
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
 import os
 import argparse
+import random
 
 import requests
 
@@ -116,14 +117,14 @@ async def elaborate(event):
     )
 
 async def opine(event):
-    ''' Recall opinions of entities (if any) '''
+    ''' Recall opinions of entities (if any). Form a new opinion if none is found. '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
-
+    log.info(f"🙆‍♂️ Opinion time for {len(event.entities)} entities on {event.service} | {event.channel}")
     for entity in event.entities:
         if not entity.strip() or entity in STOP_WORDS:
             continue
 
-        opinions = recall.opine(event.service, event.channel, entity)
+        opinions = recall.surmise(event.service, event.channel, entity)
         if opinions:
             log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
             if len(opinions) == 1:
@@ -131,7 +132,7 @@ async def opine(event):
             else:
                 opinion = completion.nlp(completion.get_summary(
                     text='\n'.join(opinions),
-                    summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
+                    summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.bot_name}'s point of view, and convert pronouns and verbs to the first person.",
                     max_tokens=75
                 )).text
 
@@ -140,8 +141,22 @@ async def opine(event):
                 idea=opinion,
                 verb=f"thinks about {entity}"
             )
+
         else:
-            log.warning(f"💁‍♂️ No opinion about {entity}")
+            log.warning(f"💁‍♂️ Forming an opinion about {entity}")
+            opinion = completion.get_opinions(recall.convo(event.service, event.channel), entity)
+            recall.judge(
+                event.service,
+                event.channel,
+                entity,
+                opinion,
+                recall.convo_id(event.service, event.channel)
+            )
+            chat.inject_idea(
+                channel=event.channel,
+                idea=opinion,
+                verb=f"thinks about {entity}"
+            )
 
 async def wikipedia_summary(event):
     ''' Summarize some wikipedia pages '''
@@ -216,11 +231,27 @@ async def check_feels(event):
     )
     log.warning("😄 Feeling:", feels)
 
-async def build_knowledge_graph(event):
+async def build_knowledge_graph(event, max_opinions=3):
     ''' Build the knowledge graph. '''
     triples = completion.model.generate_triples(event.convo)
     log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
     recall.triples_to_kg(triples)
+
+    # Recall any relevant opinions about subjects and predicates
+    so = set()
+    for triple in triples:
+        so.add(triple[0])
+        so.add(triple[2])
+
+    await opine(
+        Opine(
+            service=event.service,
+            channel=event.channel,
+            bot_name=event.bot_name,
+            bot_id=event.bot_id,
+            entities=random.sample(list(so), k=min(max_opinions, len(so)))
+        )
+    )
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''

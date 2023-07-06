@@ -102,15 +102,6 @@ class Interact():
         if save_kg:
             self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
-        for topic in random.sample(keywords, k=min(5, len(keywords))):
-            self.recall.judge(
-                service,
-                channel,
-                topic,
-                self.completion.get_opinions(summary, topic),
-                convo_id
-            )
-
         if include_keywords:
             return summary + f"\nKeywords: {keywords}"
 
