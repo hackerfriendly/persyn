@@ -268,7 +268,7 @@ class GPT():
         if model is None:
             model = self.config.completion.chat_model
 
-        prompt = f"Given the following text, choose three words that best describe {speaker}'s emotional state:\n{context}"
+        prompt = f"Given the following text, choose three words that best describe {speaker}'s emotional state:\n{context}\nThe three words are:"
 
         enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():
