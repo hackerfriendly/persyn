@@ -119,6 +119,11 @@ class Recall():
                     log.error(f"{err}:", cmd.split(' ')[1])
                 continue
 
+        # Convenience ids. Useful when browsing with RedisInsight.
+        self.redis.hset(f"persyn:{self.bot_id}:whoami", "bot_name", self.bot_name)
+        self.redis.hset(f"persyn:{self.bot_id}:whoami", "bot_id", str(self.bot_id))
+        self.redis.hset(f"persyn:{self.bot_id}:whoami", "bot_ulid", str(self.bot_ulid))
+
         if hasattr(persyn_config.memory, 'neo4j'):
             neomodel_config.DATABASE_URL = persyn_config.memory.neo4j.url
 
@@ -511,12 +516,12 @@ class Recall():
         query_params = {"service": service, "channel": channel, "topic": topic}
         return [doc.opinion for doc in self.redis.ft(self.opinion_prefix).search(query, query_params).docs]
 
-    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
+    def find_related_convos(self, service, channel, query, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
         '''
-        Find conversations related to convo using vector similarity
+        Find conversations related to query using vector similarity
         '''
         # TODO: truncate to 8191 tokens HERE.
-        emb = self.completion.model.get_embedding(convo)
+        emb = self.completion.model.get_embedding(query)
 
         if any_convo:
             service_channel = "((@service:{$service}))"
