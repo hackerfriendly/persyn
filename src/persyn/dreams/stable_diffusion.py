@@ -27,7 +27,7 @@ from transformers import AutoFeatureExtractor, logging
 from diffusers.models import AutoencoderKL
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
-from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
+from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler, DiffusionPipeline
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -88,7 +88,7 @@ def round_to(num, mult=8):
     ret = num + (mult - 1)
     return ret - (ret % mult)
 
-def generate_image(prompt, seed, steps, width, height, guidance):
+def generate_image(prompt, seed, steps, width, height, guidance, negative_prompt):
     ''' Generate and return an image array using the first available GPU '''
     gpu = wait_for_gpu()
 
@@ -96,7 +96,7 @@ def generate_image(prompt, seed, steps, width, height, guidance):
         generator = torch.Generator(device='cuda').manual_seed(seed)
         return PIPE(
             prompt,
-            negative_prompt="meme youtube 'play button' 'computer graphics' caption",
+            negative_prompt=negative_prompt,
             generator=generator,
             num_inference_steps=steps,
             height=round_to(height),
@@ -116,21 +116,21 @@ def generate_image(prompt, seed, steps, width, height, guidance):
         GPUS[gpu].release()
 
 
-def safe_generate_image(prompt, seed, steps, width, height, guidance, safe=True):
+def safe_generate_image(prompt, seed, steps, width, height, guidance, safe=True, negative_prompt=""):
     ''' Generate an image and check NSFW. Returns a FastAPI StreamingResponse. '''
 
-    image = generate_image(prompt, seed, steps, width, height, guidance)
+    image = generate_image(prompt, seed, steps, width, height, guidance, negative_prompt)
 
     if safe and naughty(image):
         print("🍆 detected!!!1!")
         prompt = "An adorable teddy bear running through a grassy field, early morning volumetric lighting"
-        image = generate_image(prompt, seed, steps, width, height, guidance)
+        image = generate_image(prompt, seed, steps, width, height, guidance, negative_prompt)
 
     # Set the EXIF data. See PIL.ExifTags.TAGS to map numbers to names.
     exif = image.getexif()
     exif[271] = prompt # exif: Make
     exif[272] = MODEL # exif: Model
-    exif[305] = f'seed={seed}, steps={steps}' # exif: Software
+    exif[305] = f'seed={seed}, steps={steps}, negative_prompt={negative_prompt}' # exif: Software
 
     buf = BytesIO()
     image.save(buf, format="JPEG", quality=85, exif=exif)
@@ -149,11 +149,14 @@ async def root():
 def generate(
     prompt: Optional[str] = Query(""),
     seed: Optional[int] = Query(-1),
-    steps: Optional[int] = Query(ge=1, le=100, default=40),
+    steps: Optional[int] = Query(ge=1, le=100, default=50),
     width: Optional[int] = Query(1024),
     height: Optional[int] = Query(512),
-    guidance: Optional[float] = Query(14),
+    guidance: Optional[float] = Query(ge=2, le=20, default=6),
     safe: Optional[bool] = Query(True),
+    negative_prompt: Optional[str] = Query(
+            "text, logo, words, worst quality, low quality, deformed iris, deformed pupils, bad eyes, cross eyed, poorly drawn face, cloned face, extra fingers, mutated hands, fused fingers, too many fingers, missing arms, missing legs, extra arms, extra legs, poorly drawn hands, bad anatomy, bad proportions, cropped, lowres, jpeg artifacts, signature, watermark, username, artist name, trademark, watermark, title, multiple view, Reference sheet, long neck, Out of Frame"
+        ),
     ):
     ''' Generate an image with Stable Diffusion '''
 
@@ -164,7 +167,7 @@ def generate(
 
     torch.cuda.empty_cache()
 
-    return safe_generate_image(prompt, seed, steps, width, height, guidance, safe)
+    return safe_generate_image(prompt, seed, steps, width, height, guidance, safe, negative_prompt)
 
 def main():
     ''' Main event '''
@@ -192,8 +195,18 @@ def main():
     # Use the Euler scheduler here instead
     scheduler = EulerDiscreteScheduler.from_pretrained(MODEL, subfolder="scheduler")
 
+    if MODEL.startswith("stabilityai/stable-diffusion-xl"):
+        PIPE = DiffusionPipeline.from_pretrained(
+            MODEL,
+            # scheduler=scheduler,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            variant="fp16"
+        )
+        PIPE.enable_model_cpu_offload()
+
     # use fp16 for ~3x speedup (if available)
-    if MODEL.startswith("stabilityai/stable-diffusion"):
+    elif MODEL.startswith("stabilityai/stable-diffusion"):
         PIPE = StableDiffusionPipeline.from_pretrained(
             MODEL,
             scheduler=scheduler,
@@ -201,10 +214,11 @@ def main():
             torch_dtype=torch.float16,
             # vae=AutoencoderKL.from_pretrained("stabilityai/sdxl-vae")
         )
+        PIPE = PIPE.to("cuda")
+
     else:
         PIPE = StableDiffusionPipeline.from_pretrained(MODEL, scheduler=scheduler)
-
-    PIPE = PIPE.to("cuda")
+        PIPE = PIPE.to("cuda")
 
     log.info(f"🎨 Stable Diffusion server starting up, serving model: {MODEL}")
 
