@@ -165,6 +165,8 @@ class Interact():
     def gather_memories(self, service, channel, entities, visited=None):
         '''
         Look for relevant convos and summaries using memory, relationship graphs, and entity matching.
+
+        TODO: weigh retrievals with "importance" and recency, a la Stanford Smallville
         '''
         if visited is None:
             visited = []
@@ -176,7 +178,7 @@ class Interact():
 
         ranked = self.recall.find_related_convos(
             service, channel,
-            convo='\n'.join(convo[:5]),
+            query='\n'.join(convo[:5]),
             size=10,
             current_convo_id=self.recall.convo_id(service, channel),
             threshold=self.config.memory.relevance
@@ -187,7 +189,7 @@ class Interact():
             log.warning("🍸 Nothing relevant. Try lateral thinking.")
             ranked = self.recall.find_related_convos(
                 service, channel,
-                convo='\n'.join(convo),
+                query='\n'.join(convo),
                 size=1,
                 current_convo_id=self.recall.convo_id(service, channel),
                 threshold=self.config.memory.relevance * 1.4,
