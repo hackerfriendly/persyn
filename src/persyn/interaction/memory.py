@@ -569,6 +569,59 @@ class Recall():
 
         return ret
 
+    def find_related_summaries(self, service, channel, query, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
+        '''
+        Find summaries related to query using vector similarity
+        '''
+        # TODO: truncate to 8191 tokens HERE.
+        emb = self.completion.model.get_embedding(query)
+
+        if any_convo:
+            service_channel = "((@service:{$service}))"
+        else:
+            service_channel = "((@service:{$service}) (@channel:{$channel}))"
+
+        if current_convo_id is None:
+            query = (
+                Query(
+                    f"{service_channel}=>[KNN " + str(size) + " @emb $emb as score]"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "summary", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb}
+
+        else:
+            # exclude the current convo_id
+            query = (
+                Query(
+                   "(" + service_channel + "-(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "summary", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb, "convo_id": current_convo_id}
+
+        reply = self.redis.ft(self.summary_prefix).search(query, query_params)
+        ret = []
+        for doc in reply.docs:
+            # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
+            if float(doc.score) < threshold:
+                log.info("👨‍👩‍👧 Related: ", doc.summary)
+                ret.append(doc)
+
+        best = ""
+        if reply.docs:
+            best = f" (best: {float(reply.docs[0].score):0.3f})"
+
+        log.info("👨‍👩‍👧‍👦 find_related_summaries():", f"{reply.total} matches, {len(ret)} < {threshold:0.3f}{best}")
+
+        return ret
+
     def add_goal(self, service, channel, goal):
         '''
         Add a goal to a channel.
