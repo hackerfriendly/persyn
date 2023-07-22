@@ -408,6 +408,20 @@ async def read_news(event):
         # only one at a time
         return
 
+async def reflect_on(event):
+    ''' Reflect on the channel '''
+
+    return
+
+    # convo = recall.convo(event.service, event.channel, feels=True)
+    # TODO: use LangChain to implement a Stanford Smallville reflection agent.
+
+    # "Given only the information above, what are three most salient high-level questions we can answer about the subjects in the statements?"
+    # Then answer each question, supplemented by relevant memories.
+    # Inject (a summary of?) that interaction as an idea, verb="reflection".
+
+
+
 @autobus.subscribe(SendChat)
 async def chat_event(event):
     ''' Dispatch chat event w/ optional images. '''
@@ -480,6 +494,12 @@ async def web_event(event):
     log.debug("Web received", event)
     await read_web(event)
 
+@autobus.subscribe(Reflect)
+async def reflect_event(event):
+    ''' Dispatch Reflect event. '''
+    log.debug("Reflect received", event)
+    await reflect_on(event)
+
 ##
 # recurring events
 ##
@@ -513,6 +533,22 @@ async def auto_summarize():
                     send_chat=False
                 )
                 autobus.publish(event)
+
+                log.info("🪩 Reflecting:", convo_id)
+                event = Reflect(
+                    bot_name=persyn_config.id.name,
+                    bot_id=persyn_config.id.guid,
+                    service=service,
+                    channel=channel,
+                    send_chat=True
+                )
+                autobus.publish(event)
+
+@autobus.schedule(autobus.every(6).hours)
+async def plan_your_day():
+    ''' Make a schedule of actions for the next part of the day '''
+    log.info("📅 Time to make a schedule")
+    # TODO: use LangChain to decide on the actions to take for the next interval, and inject as an idea.
 
 def main():
     ''' Main event '''
