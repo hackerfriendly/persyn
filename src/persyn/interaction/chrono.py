@@ -18,6 +18,10 @@ def ago(since):
     ''' Return a human friendly estimate of elapsed time since ts '''
     return humanize.naturaldelta(dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(since))
 
+def exact_time():
+    ''' Precise time of day '''
+    return f"{dt.datetime.now().hour}:{dt.datetime.now().minute:02}"
+
 def natural_time(hour=None):
     ''' Natural time of the day '''
     if hour is None:
