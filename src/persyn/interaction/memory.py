@@ -319,7 +319,10 @@ class Recall():
         if self.expired(service, channel):
             return self.new_convo(service, channel)
 
-        return self.get_last_message(service, channel).convo_id
+        ret = self.get_last_message(service, channel)
+        if ret:
+            return ret.convo_id
+        return None
 
     @staticmethod
     def entity_id_to_epoch(entity_id):
