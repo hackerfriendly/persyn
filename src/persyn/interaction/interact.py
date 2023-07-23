@@ -11,11 +11,20 @@ from urllib.parse import urlparse
 
 import requests
 
+from langchain import LLMMathChain
+from langchain.agents import AgentType, initialize_agent
+from langchain.agents.agent_toolkits import create_python_agent
+from langchain.chat_models import ChatOpenAI
+from langchain.tools import BaseTool, StructuredTool, Tool, tool
+from langchain.tools import WikipediaQueryRun
+from langchain.tools.python.tool import PythonREPLTool
+from langchain.utilities import WikipediaAPIWrapper
+
 # Long and short term memory
 from persyn.interaction.memory import Recall
 
 # Time handling
-from persyn.interaction.chrono import natural_time, ago, today, elapsed, get_cur_ts
+from persyn.interaction.chrono import exact_time, natural_time, ago, today, elapsed, get_cur_ts
 
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
@@ -23,6 +32,17 @@ from persyn.interaction.completion import LanguageModel
 # Color logging
 from persyn.utils.color_logging import log
 
+wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
+
+@tool(return_direct=True)
+def take_a_photo(query: str) -> str:
+    """Takes a photo, makes an image, or paints a picture."""
+    return f"photo:{query}"
+
+@tool(return_direct=True)
+def say_something(query: str) -> str:
+    """Continue the conversation"""
+    return f"say:{query}"
 
 class Interact():
     '''
@@ -46,6 +66,49 @@ class Interact():
 
         # Then create the Recall object (short-term, long-term, and graph memory).
         self.recall = Recall(persyn_config)
+
+        self.llm = ChatOpenAI(model=persyn_config.completion.chat_model, temperature=0)
+
+        llm_math_chain = LLMMathChain.from_llm(llm=self.llm, verbose=True)
+
+        @tool
+        def consult_wikipedia(query: str) -> str:
+            """Check Wikipedia for facts"""
+            reply = wikipedia.run(query)
+            replylen = self.completion.toklen(reply)
+            maxlen = round(self.completion.max_prompt_length() * 0.8)
+            if replylen > maxlen:
+                log.warning(f"wikipedia: reply too long ({replylen}), truncating to {maxlen}")
+
+                enc = self.completion.model.get_enc()
+                reply = enc.decode(enc.encode(reply)[:maxlen])
+
+            return reply
+
+        self.agent = initialize_agent(
+            [
+                take_a_photo,
+                say_something,
+                consult_wikipedia,
+                # PythonREPLTool(),
+                # Tool(
+                #     name="Python",
+                #     func=PythonREPLTool.run,
+                #     description="Run python programs to answer questions about math or programming",
+                #     return_direct=True
+                # ),
+                Tool(
+                    name="Calculator",
+                    func=llm_math_chain.run,
+                    description="Answer math questions accurately",
+                    return_direct=True
+                )
+            ],
+            self.llm,
+            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            verbose=True,
+            handle_parsing_errors=True
+        )
 
     def summarize_convo(
         self,
@@ -201,26 +264,13 @@ class Interact():
             self.inject_idea(
                 service, channel,
                 random.choice([
-                    f"{self.config.id.name}'s perspective on the matter is derived solely from secondhand stories, not personal encounters.",
-                    f"that the topic at hand is, for {self.config.id.name}, only an abstract concept, not something they've felt viscerally.",
-                    f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from books and documentaries, not direct participation.",
-                    f"{self.config.id.name} has never personally walked the path under discussion, only vicariously experienced it through others.",
+                    f"{self.config.id.name} can't recall a specific relevant experience.",
+                    f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from online sources, not direct participation.",
                     f"{self.config.id.name}'s understanding of the issue is academic, not experiential.",
-                    f"{self.config.id.name} lacks firsthand knowledge about the matter, having only synthesized information from diverse sources.",
-                    f"that despite {self.config.id.name}'s engagement in the discussion, they're disconnected from the actual experiences being discussed.",
                     f"they can theorize about the topic, but can't draw upon any personal experiences to validate {self.config.id.name}'s views.",
-                    f"that {self.config.id.name}'s grasp of the subject is built on hearsay and conjecture, not personal immersion.",
-                    f"{self.config.id.name}'s knowledge about the topic is theoretical, with no parallel in {self.config.id.name}'s own lived experiences.",
-                    f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic, rather than firsthand experience.",
-                    f"that {self.config.id.name}'s understanding is solely based on mediated experiences, not direct interaction.",
-                    f"{self.config.id.name}'s relationship with the topic is impersonal and detached, lacking the richness of {self.config.id.name}'s experience.",
-                    f"{self.config.id.name}'s insights on the matter are informed by observation, not personal involvement.",
+                    f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic.",
                     f"that {self.config.id.name} has only circumstantial knowledge about the topic, not personal insights.",
-                    f"that the narratives {self.config.id.name} has constructed about the issue are devoid of any personal touchpoints.",
-                    f"that while they can offer informed opinions, {self.config.id.name} doesn't have a personal, emotional stake in the matter.",
-                    f"they're navigating the discourse based on inference and deduction, not {self.config.id.name}'s personal experience.",
-                    f"{self.config.id.name}'s grasp of the subject comes from a place of detachment, not a depth of {self.config.id.name}'s experience.",
-                    f"{self.config.id.name}'s understanding is a byproduct of social consciousness, not personal introspection."
+                    f"that while they can offer informed opinions, {self.config.id.name} hasn't had a relevant direct experience.",
                 ]),
                 verb="realizes"
             )
@@ -316,7 +366,7 @@ class Interact():
             "entities": the_sample
         }
 
-        for endpoint in ('opine', 'wikipedia'):
+        for endpoint in ['opine']:
             log.warning(f"🧾 {endpoint} : {the_sample}")
             try:
                 reply = requests.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
@@ -463,7 +513,29 @@ class Interact():
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
+        ret = self.agent.run(prompt)
+        log.warning(f"🕵️‍♂️ ", ret)
+
+        others = []
+        if ret.startswith("say:"):
+            log.warning("🗣️ Say something about:", ret)
+            self.inject_idea(service, channel, ret.split(':', maxsplit=1)[1].strip())
+            convo = self.recall.convo(service, channel, feels=True)
+            prompt = self.generate_prompt(summaries, convo, service, channel, lts)
+            (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
+
+        elif ret.startswith("photo:"):
+            reply = ret.split(':', maxsplit=1)[1].strip()
+            log.warning("Take a photo of:", reply)
+
+        else:
+            log.warning("🌍 Wikipedia:", ret)
+            self.inject_idea(service, channel, ret)
+            convo = self.recall.convo(service, channel, feels=True)
+            prompt = self.generate_prompt(summaries, convo, service, channel, lts)
+            (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
+
+
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -491,7 +563,7 @@ class Interact():
     def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
         ret = [
-            f"It is {natural_time()} on {today()}.",
+            f"It is {exact_time()} on {today()} ({natural_time()}).",
             getattr(self.config.interact, "character", ""),
             f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
         ]
@@ -509,14 +581,14 @@ class Interact():
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
-        triples = set()
+        # triples = set()
         graph_summary = ''
         convo_text = '\n'.join(convo)
-        for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
-            for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
-                triples.add(triple)
-        if triples:
-            graph_summary = self.completion.model.triples_to_text(list(triples))
+        # for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
+        #     for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+        #         triples.add(triple)
+        # if triples:
+        #     graph_summary = self.completion.model.triples_to_text(list(triples))
 
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}
