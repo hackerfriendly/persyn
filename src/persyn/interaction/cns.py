@@ -573,7 +573,7 @@ def main():
         raise SystemExit('cns not defined in config, exiting.')
 
     # enable logging to disk
-    if getattr(persyn_config.id, "logdir"):
+    if hasattr(persyn_config.id, "logdir"):
         logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-cns.log"))
 
     global mastodon

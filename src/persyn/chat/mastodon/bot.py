@@ -318,7 +318,7 @@ def main():
     log.info(f"🎺 Logged in as: {mastodon.client.me().url}")
 
     # enable logging to disk
-    if getattr(mastodon.persyn_config.id, "logdir"):
+    if hasattr(mastodon.persyn_config.id, "logdir"):
         logging.getLogger().addHandler(logging.FileHandler(f"{mastodon.persyn_config.id.logdir}/{mastodon.persyn_config.id.name}-mastodon.log"))
 
     listener = TheListener(mastodon)

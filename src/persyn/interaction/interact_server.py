@@ -428,7 +428,7 @@ async def main():
     interact = Interact(persyn_config)
 
     # enable logging to disk
-    if getattr(persyn_config.id, "logdir"):
+    if hasattr(persyn_config.id, "logdir"):
         logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-interact.log"))
 
     log.info(f"💃🕺 {persyn_config.id.name}'s interact server starting up")

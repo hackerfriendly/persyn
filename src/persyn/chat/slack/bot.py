@@ -110,7 +110,7 @@ def main():
     persyn_config = load_config(args.config_file)
 
     # enable logging to disk
-    if getattr(persyn_config.id, "logdir"):
+    if hasattr(persyn_config.id, "logdir"):
         logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-slack.log"))
 
     # Slack bolt App
