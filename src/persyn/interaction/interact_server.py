@@ -5,9 +5,10 @@ interact_server.py
 A REST API for the limbic system.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
-import os
 import argparse
 import asyncio
+import logging
+import os
 
 from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor
@@ -425,6 +426,10 @@ async def main():
     persyn_config = load_config(args.config_file)
     global interact
     interact = Interact(persyn_config)
+
+    # enable logging to disk
+    if getattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-interact.log"))
 
     log.info(f"💃🕺 {persyn_config.id.name}'s interact server starting up")
 

@@ -11,6 +11,7 @@ import random
 import re
 import tempfile
 import uuid
+import logging
 
 from hashlib import sha256
 
@@ -107,6 +108,10 @@ def main():
     args = parser.parse_args()
     global persyn_config
     persyn_config = load_config(args.config_file)
+
+    # enable logging to disk
+    if getattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-slack.log"))
 
     # Slack bolt App
     global app

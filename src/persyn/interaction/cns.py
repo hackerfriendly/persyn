@@ -5,8 +5,9 @@ cns.py
 The central nervous system. Listen for events on the event bus and inject results into interact.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
-import os
 import argparse
+import logging
+import os
 import random
 
 import requests
@@ -570,6 +571,10 @@ def main():
 
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')
+
+    # enable logging to disk
+    if getattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-cns.log"))
 
     global mastodon
     mastodon = Mastodon(args.config_file)

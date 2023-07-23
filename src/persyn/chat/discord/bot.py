@@ -6,6 +6,7 @@ Chat with your persyn on Discord.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
+import logging
 import os
 import random
 import tempfile
@@ -326,6 +327,10 @@ def main():
 
     global persyn_config
     persyn_config = load_config(args.config_file)
+
+    # enable logging to disk
+    if getattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-discord.log"))
 
     # Mastodon support
     global mastodon

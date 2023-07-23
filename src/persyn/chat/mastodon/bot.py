@@ -6,6 +6,7 @@ Chat with your persyn on Mastodon.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
+import logging
 import os
 import random
 import tempfile
@@ -315,6 +316,10 @@ def main():
         raise SystemExit("Invalid credentials, run masto-login.py and try again.")
 
     log.info(f"🎺 Logged in as: {mastodon.client.me().url}")
+
+    # enable logging to disk
+    if getattr(mastodon.persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{mastodon.persyn_config.id.logdir}/{mastodon.persyn_config.id.name}-mastodon.log"))
 
     listener = TheListener(mastodon)
 
