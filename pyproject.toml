@@ -32,7 +32,7 @@ dependencies = [
   "flair",
   "ftfy==6.1.1",
   "humanize",
-  "langchain",
+  "langchain>=0.0.240",
   "Levenshtein",
   "Mastodon.py",
   "neomodel",
