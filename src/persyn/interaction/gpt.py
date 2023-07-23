@@ -51,7 +51,7 @@ class GPT():
         openai.api_base = config.completion.api_base
         openai.organization = config.completion.openai_org
 
-    def get_enc(self, model):
+    def get_enc(self, model=None):
         ''' Return the encoder for model_name '''
         if model is None:
             model = self.completion_model
@@ -268,7 +268,7 @@ class GPT():
         if model is None:
             model = self.config.completion.chat_model
 
-        prompt = f"Given the following text, choose three words that best describe {speaker}'s emotional state:\n{context}\nThe three words are:"
+        prompt = f"{context}\nIn the preceding text, these three comma separated words best describe {speaker}'s emotional state:"
 
         enc = self.get_enc(model)
         if self.toklen(prompt) > self.max_prompt_length():
