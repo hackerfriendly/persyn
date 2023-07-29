@@ -23,7 +23,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
 from langchain import LLMChain
 
-from persyn.interaction.feels import Sentiment, closest_emoji
+from persyn.interaction.feels import closest_emoji
 
 # Color logging
 from persyn.utils.color_logging import ColorLog
@@ -48,8 +48,6 @@ class GPT():
         self.nlp = spacy.load(config.spacy.model)
 
         self.stats = Counter()
-        self.sentiment = Sentiment(getattr(config.sentiment, "engine", "flair"),
-                                   getattr(config.sentiment, "model", None))
 
         openai.api_key = config.completion.api_key
         openai.api_base = config.completion.api_base
@@ -414,92 +412,6 @@ as told from the third-person point of view of {self.bot_name}.
         except TypeError:
             log.error(f"🔥 Invalid text for validate_choice(): {text}")
             return None
-
-    def score_choices(self, choices, convo, goals):
-        '''
-        Filter potential responses for quality, sentiment and profanity.
-        Rank the remaining choices by sentiment and return the ranked list of possible choices.
-        '''
-        scored = {}
-
-        nouns_in_convo = {word.lemma_ for word in self.nlp(' '.join(convo)) if word.pos_ == "NOUN"}
-        nouns_in_goals = {word.lemma_ for word in self.nlp(' '.join(goals)) if word.pos_ == "NOUN"}
-
-        for choice in choices:
-            if not choice:
-                continue
-
-            if self.completion_model.startswith('gpt-3.5') or self.completion_model.startswith('gpt-4'):
-                text = self.validate_choice(choice, convo)
-            else:
-                text = self.validate_choice(self.truncate(choice), convo)
-
-            if not text:
-                continue
-
-            if re.match(r'^\w+:', text):
-                self.stats.update(['putting words in my mouth'])
-                continue
-
-            log.debug(f"text: {text}")
-            log.debug(f"convo: {convo}")
-
-            # Fix unbalanced symbols
-            for symbol in ['()', r'{}', '[]', '<>']:
-                if text.count(symbol[0]) != text.count(symbol[1]):
-                    text = text.replace(symbol[0], '')
-                    text = text.replace(symbol[1], '')
-
-            # Now for sentiment analysis. This uses the entire raw response to see where it's leading.
-
-            # Potentially on-topic gets a bonus
-            nouns_in_reply = [word.lemma_ for word in self.nlp(choice) if word.pos_ == "NOUN"]
-
-            if nouns_in_convo:
-                topic_bonus = len(nouns_in_convo.intersection(nouns_in_reply)) / float(len(nouns_in_convo))
-            else:
-                topic_bonus = 0.0
-
-            if nouns_in_reply:
-                goal_bonus = len(nouns_in_goals.intersection(nouns_in_reply)) / float(len(nouns_in_reply))
-            else:
-                goal_bonus = 0.0
-
-            all_scores = {
-                "flair": self.sentiment.get_sentiment_score(choice),
-                "profanity": self.sentiment.get_profanity_score(choice),
-                "topic_bonus": topic_bonus,
-                "goal_bonus": goal_bonus
-            }
-
-            # Sum the sentiments, emotional heuristic, offensive quotient, and topic / goal bonuses
-            score = sum(all_scores.values()) + topic_bonus + goal_bonus
-            all_scores['total'] = score
-            log.warning(
-                ', '.join([f"{the_score[0]}: {the_score[1]:0.2f}" for the_score in all_scores.items()]),
-                "❌" if (score < self.min_score or all_scores['profanity'] < -1.0) else f"👍 {text}"
-            )
-
-            if score < self.min_score:
-                self.stats.update(['poor quality'])
-                continue
-
-            if all_scores['profanity'] < -1.0:
-                self.stats.update(['profanity'])
-                continue
-
-            scored[score] = text
-
-        if not scored:
-            return {}
-
-        # weights are assumed to be positive. 0 == no chance, so add 1.
-        min_score = abs(min(list(scored))) + 1
-        adjusted = {}
-        for item in scored.items():
-            adjusted[item[0] + min_score] = item[1]
-
-        return adjusted
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50, model=None):
         ''' Ask ChatGPT for a summary'''

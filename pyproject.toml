@@ -18,7 +18,6 @@ classifiers = [
 ]
 dependencies = [
   "aioredis",
-  "alt-profanity-check==1.1.3",
   "arxiv",
   "asyncio",
   "beautifulsoup4",
@@ -29,7 +28,6 @@ dependencies = [
   "dotwiz",
   "duckduckgo-search",
   "fastapi[all]",
-  "flair",
   "ftfy==6.1.1",
   "humanize",
   "langchain>=0.0.240",
