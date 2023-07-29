@@ -1,7 +1,7 @@
 ''' Generic completion engine wrapper '''
 from collections import Counter
 
-from persyn.interaction import gpt  # , nlp_cloud
+from persyn.interaction import gpt
 
 class LanguageModel():
     ''' Container for language model completion requests '''
@@ -24,15 +24,6 @@ class LanguageModel():
             self.max_prompt_length = self.model.max_prompt_length
             self.toklen = self.model.toklen
             self.paginate = self.model.paginate
-
-        # elif self.engine == 'nlpcloud':
-        #     model_name = getattr(config.completion, 'model', 'finetuned-gpt-neox-20b')
-
-        #     self.model = nlp_cloud.NLPCLOUD(
-        #         config=config
-        #     )
-        #     self.max_prompt_length = self.model.max_prompt_length
-        #     self.toklen = self.model.toklen
 
         else:
             raise RuntimeError(f'Unknown engine: {self.engine}')
