@@ -16,8 +16,8 @@ from langchain.agents import AgentType, initialize_agent
 from langchain.agents.agent_toolkits import create_python_agent
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import BaseTool, StructuredTool, Tool, tool
-from langchain.tools import WikipediaQueryRun
-from langchain.tools.python.tool import PythonREPLTool
+from langchain.tools import WikipediaQueryRun, PubmedQueryRun
+# from langchain.tools.python.tool import PythonREPLTool # unsafe without a sandbox!
 from langchain.utilities import WikipediaAPIWrapper
 
 # Long and short term memory
@@ -36,13 +36,8 @@ wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
 
 @tool(return_direct=True)
 def take_a_photo(query: str) -> str:
-    """Takes a photo, makes an image, or paints a picture."""
+    """ Think of anything and instantly take a photo of whatever you imagine. """
     return f"photo:{query}"
-
-@tool(return_direct=True)
-def say_something(query: str) -> str:
-    """Continue the conversation"""
-    return f"say:{query}"
 
 class Interact():
     '''
@@ -88,8 +83,8 @@ class Interact():
         self.agent = initialize_agent(
             [
                 take_a_photo,
-                say_something,
                 consult_wikipedia,
+                PubmedQueryRun(),
                 # PythonREPLTool(),
                 # Tool(
                 #     name="Python",
@@ -102,7 +97,13 @@ class Interact():
                     func=llm_math_chain.run,
                     description="Answer math questions accurately",
                     return_direct=True
-                )
+                ),
+                Tool(
+                    name="Say something",
+                    func=lambda x: f"say:{x}",
+                    description="Continue the conversation",
+                    return_direct=True
+                ),
             ],
             self.llm,
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
@@ -348,6 +349,29 @@ class Interact():
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
+    def generate_photo(self, service, channel, prompt):
+        ''' Generate a photo and send it to a channel '''
+        req = {
+            "channel": channel,
+            "service": service,
+            "prompt": prompt,
+            "width": 1024,
+            "height": 512,
+            "bot_name": self.config.id.name,
+            "bot_id": self.config.id.guid
+        }
+        try:
+            reply = requests.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
+            if reply.ok:
+                log.warning(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
+            else:
+                log.error(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
+            return reply.ok
+        except requests.exceptions.ConnectionError as err:
+            log.error(f"{self.config.dreams.url}/generate/", err)
+            return False
+
+
     def gather_facts(self, service, channel, entities):
         '''
         Gather facts (from Wikipedia) and opinions (from memory).
@@ -514,7 +538,7 @@ class Interact():
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
         ret = self.agent.run(prompt)
-        log.warning(f"🕵️‍♂️ ", ret)
+        log.warning("🕵️‍♂️ ", ret)
 
         others = []
         if ret.startswith("say:"):
@@ -525,8 +549,10 @@ class Interact():
             (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
 
         elif ret.startswith("photo:"):
-            reply = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("Take a photo of:", reply)
+            prompt = ret.split(':', maxsplit=1)[1].strip()
+            log.warning("Take a photo of:", prompt)
+            self.generate_photo(service, channel, prompt)
+            return ""
 
         else:
             log.warning("🌍 Wikipedia:", ret)

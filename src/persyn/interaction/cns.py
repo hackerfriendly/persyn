@@ -421,7 +421,10 @@ async def reflect_on(event):
     # Then answer each question, supplemented by relevant memories.
     # Inject (a summary of?) that interaction as an idea, verb="reflection".
 
-
+def generate_photo(event):
+    ''' Generate a photo '''
+    chat = Chat(persyn_config=persyn_config, service=event.service)
+    chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1])
 
 @autobus.subscribe(SendChat)
 async def chat_event(event):
@@ -500,6 +503,12 @@ async def reflect_event(event):
     ''' Dispatch Reflect event. '''
     log.debug("Reflect received", event)
     await reflect_on(event)
+
+@autobus.subscribe(Photo)
+async def photo_event(event):
+    ''' Dispatch Reflect event. '''
+    log.debug("Photo received", event)
+    await generate_photo(event)
 
 ##
 # recurring events

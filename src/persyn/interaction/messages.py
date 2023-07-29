@@ -131,3 +131,13 @@ class Reflect(autobus.Event):
     bot_name: str
     bot_id: str
     send_chat: Optional[bool] = True
+
+
+class Photo(autobus.Event):
+    ''' Generate a photo. '''
+    service: str
+    channel: str
+    prompt: str
+    size: Optional[tuple] = (1024, 512)
+    bot_name: str
+    bot_id: str
