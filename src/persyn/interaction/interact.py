@@ -66,6 +66,8 @@ class Interact():
 
         llm_math_chain = LLMMathChain.from_llm(llm=self.llm, verbose=True)
 
+        self.enc = self.completion.model.get_enc()
+
         @tool
         def consult_wikipedia(query: str) -> str:
             """Check Wikipedia for facts"""
@@ -75,8 +77,7 @@ class Interact():
             if replylen > maxlen:
                 log.warning(f"wikipedia: reply too long ({replylen}), truncating to {maxlen}")
 
-                enc = self.completion.model.get_enc()
-                reply = enc.decode(enc.encode(reply)[:maxlen])
+                reply = self.enc.decode(self.enc.encode(reply)[:maxlen])
 
             return reply
 
@@ -92,12 +93,12 @@ class Interact():
                 #     description="Run python programs to answer questions about math or programming",
                 #     return_direct=True
                 # ),
-                Tool(
-                    name="Calculator",
-                    func=llm_math_chain.run,
-                    description="Answer math questions accurately",
-                    return_direct=True
-                ),
+                # Tool(
+                #     name="Calculator",
+                #     func=llm_math_chain.run,
+                #     description="Answer simple math questions accurately. Inputs should be simple expressions, like 2+2.",
+                #     return_direct=True
+                # ),
                 Tool(
                     name="Say something",
                     func=lambda x: f"say:{x}",
@@ -173,58 +174,6 @@ class Interact():
             return "\n".join(text[-context_lines:] + [summary])
 
         return summary
-
-    def choose_response(self, prompt, convo, service, channel, goals, max_tokens=150):
-        ''' Choose the best completion response from a list of possibilities '''
-        if not convo:
-            convo = []
-
-        log.info("👍 Choosing a response with model:", self.config.completion.summary_model)
-        scored = self.completion.get_replies(
-            prompt=prompt,
-            convo=convo,
-            goals=goals,
-            model=self.config.completion.summary_model,
-            n=3,
-            max_tokens=max_tokens
-        )
-
-        if not scored:
-            log.warning("🤨 No surviving replies, try again with model:",
-                        self.config.completion.chat_model or self.config.completion.completion_model)
-            scored = self.completion.get_replies(
-                prompt=prompt,
-                convo=convo,
-                goals=goals,
-                model=self.config.completion.chat_model or self.config.completion.completion_model,
-                n=2,
-                max_tokens=max_tokens
-            )
-
-        # Uh-oh. Just ignore whatever was last said.
-        if not scored:
-            log.warning("😳 No surviving replies, one last try with model:", self.config.completion.completion_model)
-            scored = self.completion.get_replies(
-                prompt=self.generate_prompt([], convo[:-1], service, channel),
-                convo=convo,
-                goals=goals,
-                max_tokens=max_tokens
-            )
-
-        if not scored:
-            log.warning("😩 No surviving replies, I give up.")
-            log.info("🤷‍♀️ Choice: none available")
-            return (":shrug:", [])
-
-        for item in sorted(scored.items()):
-            log.warning(f"{item[0]:0.2f}:", item[1])
-
-        idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
-        reply = scored[idx]
-        del scored[idx]
-        log.info(f"✅ Choice: {idx:0.2f}", reply)
-
-        return (reply, [item[1] for item in scored.items()])
 
     def gather_memories(self, service, channel, entities, visited=None):
         '''
@@ -451,6 +400,25 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
+    def try_the_agent(self, service, channel, prompt):
+        ''' Try to take an action using the agent '''
+
+        ret = self.agent.run(prompt)
+        log.warning("🕵️‍♂️ ", ret)
+
+        if ret.startswith("say:"):
+            log.warning("🗣️ Say something about:", ret)
+            self.inject_idea(service, channel, ret.split(':', maxsplit=1)[1].strip(), verb="thinks")
+
+        elif ret.startswith("photo:"):
+            log.warning("Take a photo of:", prompt)
+            self.inject_idea(service, channel, f"to take a photo of {ret.split(':', maxsplit=1)[1].strip()}", verb="decides")
+            self.generate_photo(service, channel, ret.split(':', maxsplit=1)[1].strip())
+
+        else:
+            log.warning("🌍 Wikipedia:", ret)
+            self.inject_idea(service, channel, ret, verb="remembers")
+
     # Need to instrument this. It takes far too long and isn't async.
     def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True, max_tokens=150):  # pylint: disable=too-many-locals
         '''
@@ -537,30 +505,11 @@ class Interact():
 
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        ret = self.agent.run(prompt)
-        log.warning("🕵️‍♂️ ", ret)
+        self.try_the_agent(service, channel, prompt)
 
-        others = []
-        if ret.startswith("say:"):
-            log.warning("🗣️ Say something about:", ret)
-            self.inject_idea(service, channel, ret.split(':', maxsplit=1)[1].strip())
-            convo = self.recall.convo(service, channel, feels=True)
-            prompt = self.generate_prompt(summaries, convo, service, channel, lts)
-            (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
-
-        elif ret.startswith("photo:"):
-            prompt = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("Take a photo of:", prompt)
-            self.generate_photo(service, channel, prompt)
-            return ""
-
-        else:
-            log.warning("🌍 Wikipedia:", ret)
-            self.inject_idea(service, channel, ret)
-            convo = self.recall.convo(service, channel, feels=True)
-            prompt = self.generate_prompt(summaries, convo, service, channel, lts)
-            (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
-
+        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
+        convo = self.recall.convo(service, channel, feels=True)
+        reply = self.completion.get_reply(prompt, convo, self.recall.list_goals(service, channel))
 
         if self.custom_filter:
             try:
@@ -571,9 +520,6 @@ class Interact():
         # Say it!
         if send_chat:
             self.send_chat(service, channel, reply)
-
-        for idea in others:
-            self.inject_idea(service, channel, idea, verb="thinks")
 
         ## TODO: move these to CNS
         # Sentiment analysis via the autobus
@@ -615,6 +561,11 @@ class Interact():
         #         triples.add(triple)
         # if triples:
         #     graph_summary = self.completion.model.triples_to_text(list(triples))
+
+        # Is this just too much to think about?
+        if self.completion.toklen(convo_text + newline.join(summaries)) > self.completion.max_prompt_length():
+            log.warning("🥱 generate_prompt(): prompt too long, truncating.")
+            convo_text = self.enc.decode(self.enc.encode(convo_text)[:self.completion.max_prompt_length()])
 
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}

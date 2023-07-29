@@ -40,12 +40,11 @@ class LanguageModel():
         self.nlp = self.model.nlp
         self.sentiment = self.model.sentiment
 
-    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5, model=None):
+    def get_reply(self, prompt, convo, goals=None):
         '''
-        Given a text prompt and recent conversation, send the prompt to GPT3
-        and return a list of possible replies.
+        Given a text prompt and recent conversation, send the prompt to the LLM and return the top reply.
         '''
-        return self.model.get_replies(prompt, convo, goals, stop, temperature, max_tokens, n, model=model)
+        return self.model.get_reply(prompt, convo, goals)
 
     def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50):
         '''

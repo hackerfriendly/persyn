@@ -19,6 +19,10 @@ import numpy as np
 
 from ftfy import fix_text
 
+from langchain.chat_models import ChatOpenAI
+from langchain.llms import OpenAI
+from langchain import LLMChain
+
 from persyn.interaction.feels import Sentiment, closest_emoji
 
 # Color logging
@@ -50,6 +54,10 @@ class GPT():
         openai.api_key = config.completion.api_key
         openai.api_base = config.completion.api_base
         openai.organization = config.completion.openai_org
+
+        self.completion_llm = OpenAI(model=self.completion_model, temperature=self.config.completion.temperature, max_tokens=150)
+        self.summary_llm = ChatOpenAI(model=self.summary_model, temperature=self.config.completion.temperature, max_tokens=50)
+        self.feels_llm = ChatOpenAI(model=self.completion_model, temperature=self.config.completion.temperature, max_tokens=10)
 
     def get_enc(self, model=None):
         ''' Return the encoder for model_name '''
@@ -119,93 +127,26 @@ class GPT():
         ''' Cosine similarity for two embeddings '''
         return oai_cosine_similarity(vec1, vec2)
 
-    def get_replies(self, prompt, convo, goals=None, stop=None, temperature=0.9, max_tokens=150, n=5, retry_on_error=True, model=None):
+    def get_reply(self, prompt, convo, goals=None):
         '''
-        Given a text prompt and recent conversation, send the prompt to OpenAI
-        and return a list of possible replies.
+        Given a text prompt and recent conversation, return the top reply.
         '''
-        enc = self.get_enc(model)
+        enc = self.get_enc(self.completion_model)
         if self.toklen(prompt) > self.max_prompt_length():
-            log.warning(f"get_replies: text too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
+            log.warning(f"get_reply: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
             prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
         if goals is None:
             goals = []
 
-        if model is None:
-            model = self.completion_model
-
-        choices = []
-        if model.startswith('gpt-3.5') or model.startswith('gpt-4'):
-            try:
-                response = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": """Compose the next line of the following play:"""},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    n=n,
-                    stop=stop
-                )
-                choices = [choice['message']['content'] for choice in response['choices']]
-
-            except openai.error.APIConnectionError as err:
-                log.critical("get_replies(): OpenAI APIConnectionError:", err)
-                return None
-            except openai.error.ServiceUnavailableError as err:
-                log.critical("get_replies(): OpenAI Service Unavailable:", err)
-                return None
-            except openai.error.RateLimitError as err:
-                log.warning("get_replies(): OpenAI RateLimitError:", err)
-                if retry_on_error:
-                    log.warning("get_replies(): retrying in 1 second")
-                    sleep(1)
-                    self.get_replies(prompt, convo, goals, stop, temperature, max_tokens, n=2, retry_on_error=False, model=model)
-                return None
-
-        else:
-            try:
-                response = openai.Completion.create(
-                    engine=model,
-                    prompt=prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    n=n,
-                    frequency_penalty=1.2,
-                    presence_penalty=0.8,
-                    stop=stop
-                )
-                choices = [choice['text'] for choice in response['choices']]
-
-            except openai.error.APIConnectionError as err:
-                log.critical("get_replies(): OpenAI APIConnectionError:", err)
-                return None
-            except openai.error.ServiceUnavailableError as err:
-                log.critical("get_replies(): OpenAI Service Unavailable:", err)
-                return None
-            except openai.error.RateLimitError as err:
-                log.warning("get_replies(): OpenAI RateLimitError:", err)
-                if retry_on_error:
-                    log.warning("get_replies(): retrying in 1 second")
-                    sleep(1)
-                    self.get_replies(prompt, convo, goals, stop, temperature, max_tokens, n=2, retry_on_error=False)
-                return None
+        template = """Compose the next line of the following play:\n{prompt}"""
+        llm_chain = LLMChain.from_string(llm=self.completion_llm, template=template)
+        response = llm_chain.predict(prompt=prompt)
 
         log.info(f"🧠 Prompt: {prompt}")
         log.debug(response)
 
-        # Choose a response based on the most positive sentiment.
-        scored = self.score_choices(choices, convo, goals)
-        if not scored:
-            self.stats.update(['replies exhausted'])
-            log.error("😓 get_replies(): all replies exhausted")
-            return None
-
-        log.warning(f"📊 Stats: {self.stats}")
-
-        return scored
+        return response
 
     def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50, speaker=None, model=None):
         '''
@@ -228,29 +169,11 @@ class GPT():
             log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
             prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
-        try:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": """You are an expert at estimating opinions based on conversation."""},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stop=stop
-            )
+        # try:
+        template = """You are an expert at estimating opinions based on conversation.\n{prompt}"""
+        llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
+        reply = llm_chain.predict(prompt=prompt).strip()
 
-        except openai.error.APIConnectionError as err:
-            log.critical("OpenAI APIConnectionError:", err)
-            return ""
-        except openai.error.ServiceUnavailableError as err:
-            log.critical("OpenAI Service Unavailable:", err)
-            return ""
-        except openai.error.RateLimitError as err:
-            log.critical("OpenAI RateLimitError:", err)
-            return ""
-
-        reply = response['choices'][0]['message']['content'].strip()
         log.warning(f"☝️  opinion of {entity}: {reply}")
 
         return reply
@@ -275,28 +198,11 @@ class GPT():
             log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
             prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
 
-        try:
-            response = openai.ChatCompletion.create(
-                model=self.chat_model,
-                messages=[
-                    {"role": "system", "content": """You are an expert at determining the emotional state of people engaging in conversation."""},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stop=stop
-            )
-        except openai.error.APIConnectionError as err:
-            log.critical("OpenAI APIConnectionError:", err)
-            return ""
-        except openai.error.ServiceUnavailableError as err:
-            log.critical("OpenAI Service Unavailable:", err)
-            return ""
-        except openai.error.RateLimitError as err:
-            log.critical("OpenAI RateLimitError:", err)
-            return ""
+        # try:
+        template = """You are an expert at determining the emotional state of people engaging in conversation.\n{prompt}"""
+        llm_chain = LLMChain.from_string(llm=self.feels_llm, template=template)
+        reply = llm_chain.predict(prompt=prompt).strip().lower()
 
-        reply = response['choices'][0]['message']['content'].strip().lower()
         log.warning(f"😁 sentiment of conversation: {reply}")
 
         return reply
@@ -611,41 +517,21 @@ as told from the third-person point of view of {self.bot_name}.
             log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length(model)}")
             prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length(model)])
 
-        try:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": """You are an expert at summarizing text."""},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=max_tokens,
-                top_p=0.1,
-                frequency_penalty=0.8,
-                presence_penalty=0.0,
-                n=1
-            )
-        except openai.error.APIConnectionError as err:
-            log.critical("OpenAI APIConnectionError:", err)
-            return ""
-        except openai.error.ServiceUnavailableError as err:
-            log.critical("OpenAI Service Unavailable:", err)
-            return ""
-        except openai.error.RateLimitError as err:
-            log.critical("OpenAI RateLimitError:", err)
-            return ""
-
-        reply = response['choices'][0]['message']['content'].strip() #.split('\n')[0]
+        # try:
+        template = """You are an expert at summarizing text.\n{prompt}"""
+        llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
+        reply = llm_chain.predict(prompt=prompt).strip()
 
         # To the right of the Speaker: (if any)
         if re.match(r'^[\w\s]{1,12}:\s', reply):
             reply = reply.split(':')[1].strip()
 
-        # Too long? Ditch the last sentence fragment.
-        if response.choices[0]['finish_reason'] == "length":
-            try:
-                reply = reply[:reply.rindex('.') + 1].strip()
-            except ValueError:
-                pass
+        # # Too long? Ditch the last sentence fragment.
+        # if response.choices[0]['finish_reason'] == "length":
+        #     try:
+        #         reply = reply[:reply.rindex('.') + 1].strip()
+        #     except ValueError:
+        #         pass
 
         log.warning("gpt get_summary():", reply)
         return reply
