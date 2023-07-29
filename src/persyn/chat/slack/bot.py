@@ -416,10 +416,12 @@ def main():
                     if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                         blk = msg['blocks'][0]
                         try:
-                            if len(blk['alt_text']) > 497:
-                                toot = blk['alt_text'][:497] + '...'
+                            tags = "\n#imagesynthesis #persyn"
+                            maxlen = 497 - len(tags)
+                            if len(blk['alt_text']) > maxlen:
+                                toot = blk['alt_text'][:maxlen] + '...' + tags
                             else:
-                                toot = blk['alt_text']
+                                toot = blk['alt_text'] + tags
                             with tempfile.TemporaryDirectory() as tmpdir:
                                 media_ids = []
                                 for blk in msg['blocks']:
