@@ -4,7 +4,6 @@
 import re
 
 from collections import Counter
-from time import sleep
 
 import spacy
 import tiktoken
@@ -17,13 +16,9 @@ from openai.embeddings_utils import (
 
 import numpy as np
 
-from ftfy import fix_text
-
 from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
 from langchain import LLMChain
-
-from persyn.interaction.feels import closest_emoji
 
 # Color logging
 from persyn.utils.color_logging import ColorLog
@@ -42,9 +37,11 @@ class GPT():
         self.bot_name = config.id.name
         self.bot_id = config.id.guid
         self.min_score = config.completion.minimum_quality_score
+
         self.completion_model = config.completion.completion_model
         self.chat_model = config.completion.chat_model
         self.summary_model = config.completion.summary_model
+
         self.nlp = spacy.load(config.spacy.model)
 
         self.stats = Counter()
@@ -53,9 +50,21 @@ class GPT():
         openai.api_base = config.completion.api_base
         openai.organization = config.completion.openai_org
 
-        self.completion_llm = OpenAI(model=self.completion_model, temperature=self.config.completion.temperature, max_tokens=150)
-        self.summary_llm = ChatOpenAI(model=self.summary_model, temperature=self.config.completion.temperature, max_tokens=50)
-        self.feels_llm = ChatOpenAI(model=self.completion_model, temperature=self.config.completion.temperature, max_tokens=10)
+        self.completion_llm = ChatOpenAI(
+            model=self.completion_model,
+            temperature=self.config.completion.temperature,
+            max_tokens=150
+        )
+        self.summary_llm = ChatOpenAI(
+            model=self.summary_model,
+            temperature=self.config.completion.temperature,
+            max_tokens=50
+        )
+        self.feels_llm = ChatOpenAI(
+            model=self.completion_model,
+            temperature=self.config.completion.temperature,
+            max_tokens=10
+        )
 
     def get_enc(self, model=None):
         ''' Return the encoder for model_name '''
@@ -82,6 +91,8 @@ class GPT():
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
+        if model is None:
+            model = self.completion_model
         return len(self.get_enc(model).encode(text))
 
     def paginate(self, f, max_tokens=None, prompt=None, max_reply_length=0):
@@ -117,6 +128,29 @@ class GPT():
         if lines:
             yield ' '.join(lines)
 
+    def trim(self, text):
+        ''' Remove any dangling non-sentences from text '''
+        text = text.strip()
+        sents = list(self.nlp(text).sents)
+
+        if len(sents) < 2 or sents[-1][-1].is_punct:
+            return text
+
+        return ' '.join([sent.text for sent in sents[:-1]])
+
+    def truncate(self, text, model=None):
+        ''' Truncate text to the max_prompt_length for this model '''
+        if model is None:
+            model = self.completion_model
+
+        maxlen = self.max_prompt_length(model)
+        if self.toklen(text) <= maxlen:
+            return text
+
+        log.warning(f"truncate: text too long ({self.toklen(text)}), truncating to {maxlen}")
+        enc = self.get_enc(model)
+        return enc.decode(enc.encode(text)[:maxlen])
+
     def get_embedding(self, text, engine='text-embedding-ada-002'):
         ''' Return the embedding for text '''
         return  np.array(oai_get_embedding(text, engine=engine), dtype=np.float32).tobytes()
@@ -125,81 +159,54 @@ class GPT():
         ''' Cosine similarity for two embeddings '''
         return oai_cosine_similarity(vec1, vec2)
 
-    def get_reply(self, prompt, convo, goals=None):
+    def get_reply(self, prompt):
         '''
-        Given a text prompt and recent conversation, return the top reply.
+        Send the prompt to the LLM and return the top reply.
         '''
-        enc = self.get_enc(self.completion_model)
-        if self.toklen(prompt) > self.max_prompt_length():
-            log.warning(f"get_reply: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
-
-        if goals is None:
-            goals = []
+        prompt = self.truncate(prompt)
 
         template = """Compose the next line of the following play:\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.completion_llm, template=template)
-        response = llm_chain.predict(prompt=prompt)
+        response = self.trim(llm_chain.predict(prompt=prompt))
 
         log.info(f"🧠 Prompt: {prompt}")
         log.debug(response)
 
         return response
 
-    def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50, speaker=None, model=None):
+    def get_opinions(self, context, entity):
         '''
-        Ask ChatGPT for its opinions of entity, given the context.
+        Ask the LLM for its opinions of entity, given the context.
         '''
-        if stop is None:
-            stop = [".", "!", "?"]
-
-        if speaker is None:
-            speaker = self.bot_name
-
         if model is None:
             model = self.config.completion.chat_model
 
         log.warning("🧷 get_opinions:", entity)
-        prompt = f"Briefly state {speaker}'s opinion about {entity} from {speaker}'s point of view, and convert pronouns and verbs to the first person.\n{context}"
+        prompt = self.truncate(
+            f"Briefly state {self.bot_name}'s opinion about {entity} from {self.bot_name}'s point of view, and convert pronouns and verbs to the first person.\n{context}",
+            model=self.summary_model
+        )
 
-        enc = self.get_enc(model)
-        if self.toklen(prompt) > self.max_prompt_length():
-            log.warning(f"get_opinions: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
-
-        # try:
         template = """You are an expert at estimating opinions based on conversation.\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
-        reply = llm_chain.predict(prompt=prompt).strip()
+        reply = self.trim(llm_chain.predict(prompt=prompt).strip())
 
         log.warning(f"☝️  opinion of {entity}: {reply}")
 
         return reply
 
-    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=10, speaker=None, model=None):
+    def get_feels(self, context):
         '''
-        Ask ChatGPT for sentiment analysis of the current convo.
+        Ask the LLM for sentiment analysis of the current convo.
         '''
-        if stop is None:
-            stop = [".", "!", "?"]
+        prompt = self.truncate(
+            f"In the following text, these three comma separated words best describe {self.bot_name}'s emotional state:\n{context}",
+            model=self.completion_model
+        )
 
-        if speaker is None:
-            speaker = self.bot_name
-
-        if model is None:
-            model = self.config.completion.chat_model
-
-        prompt = f"{context}\nIn the preceding text, these three comma separated words best describe {speaker}'s emotional state:"
-
-        enc = self.get_enc(model)
-        if self.toklen(prompt) > self.max_prompt_length():
-            log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
-
-        # try:
         template = """You are an expert at determining the emotional state of people engaging in conversation.\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.feels_llm, template=template)
-        reply = llm_chain.predict(prompt=prompt).strip().lower()
+        reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
 
         log.warning(f"😁 sentiment of conversation: {reply}")
 
@@ -221,21 +228,17 @@ class GPT():
 
     def generate_triples(self, context, temperature=0.5, model=None):
         '''
-        Ask ChatGPT to generate a knowledge graph of the current convo.
+        Ask the LLM to generate a knowledge graph of the current convo.
         Returns a list of (subject, predicate, object) triples.
         '''
-        prompt = f"Given the following text, generate a knowledge graph of all important people and facts:\n{context}"
+        prompt = self.truncate(
+            f"Given the following text, generate a knowledge graph of all important people and facts:\n{context}"
+        )
 
         if model is None:
             model = self.config.completion.chat_model
 
-        enc = self.get_enc(model)
-        if self.toklen(prompt) > self.max_prompt_length():
-            log.warning(f"get_feels: prompt too long ({len(prompt)}), truncating to {self.max_prompt_length()}")
-            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length()])
-
         try:
-
             response = openai.ChatCompletion.create(
                 model=self.chat_model,
                 messages=[
@@ -290,7 +293,7 @@ Ottawa | locatedIn | Canada
 
     def triples_to_text(self, triples, temperature=0.99, preamble=''):
         '''
-        Ask ChatGPT to turn a knowledge graph back into text.
+        Ask the LLM to turn a knowledge graph back into text.
         Provide a list of (subject, predicate, object) triples.
         If provided, preamble is inserted in the prompt before graph generation.
         Returns a plain text summary.
@@ -331,119 +334,21 @@ as told from the third-person point of view of {self.bot_name}.
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-    def truncate(self, text):
-        '''
-        Extract the first few "sentences" from OpenAI's messy output.
-        ftfy.fix_text() fixes encoding issues and replaces fancy quotes with ascii.
-        spacy parses sentence structure.
-        '''
-        doc = self.nlp(fix_text(text))
-        sents = list(doc.sents)
-        if not sents:
-            return [':shrug:']
-        # Always take the first "sentence"
-        reply = [cleanup(sents[0].text)]
-        # Possibly add more
-        try:
-            for sent in sents[1:4]:
-                if ':' in sent.text:
-                    return ' '.join(reply)
-                re.search('[a-zA-Z]', sent.text)
-                if not any(c.isalpha() for c in sent.text):
-                    continue
-
-                reply.append(cleanup(sent.text))
-
-        except TypeError:
-            pass
-
-        return ' '.join(reply)
-
-    def validate_choice(self, text, convo):
-        '''
-        Filter or fix low quality OpenAI responses
-        '''
-        try:
-            # No whitespace or surrounding quotes
-            text = text.strip().strip('"')
-            # Skip blanks
-            if not text:
-                self.stats.update(['blank'])
-                return None
-            # Putting words Rob: In people's mouths
-            match = re.search(r'^(.*)?\s+([\w\s]{1,12}: .*)', text)
-            if match:
-                text = match.group(1)
-            # Fix bad emoji
-            for match in re.findall(r'(:\S+:)', text):
-                closest = closest_emoji(match)
-                if match != closest:
-                    log.warning(f"😜 {match} > {closest}")
-                    text = text.replace(match, closest)
-            if '/r/' in text:
-                self.stats.update(['Reddit'])
-                return None
-            if text in ['…', '...', '..', '.']:
-                self.stats.update(['…'])
-                return None
-            if self.has_forbidden(text):
-                self.stats.update(['forbidden'])
-                return None
-            # Skip prompt bleed-through
-            if self.bleed_through(text):
-                self.stats.update(['prompt bleed-through'])
-                return None
-            # Don't repeat yourself
-            if text in ' '.join(convo):
-                self.stats.update(['pure repetition'])
-                return None
-            # Semantic or substring similarity
-            choice = self.nlp(text)
-            for line in convo:
-                if choice.similarity(self.nlp(line)) > 0.97:
-                    self.stats.update(['semantic repetition'])
-                    return None
-                if len(text) > 32 and text.lower() in line.lower():
-                    self.stats.update(['simple repetition'])
-                    return None
-
-            return text
-
-        except TypeError:
-            log.error(f"🔥 Invalid text for validate_choice(): {text}")
-            return None
-
-    def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50, model=None):
-        ''' Ask ChatGPT for a summary'''
+    def get_summary(self, text, summarizer="Sum the following up in one sentence:"):
+        ''' Ask the LLM for a summary'''
         if not text:
             log.warning('get_summary():', "No text, skipping summary.")
             return ""
 
-        prompt=f"{text}\n\n{summarizer}\n"
+        prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.summary_model)
 
-        if model is None:
-            model = self.config.completion.summary_model
-
-        enc = self.get_enc(model)
-        if self.toklen(prompt) > self.max_prompt_length(model):
-            log.warning(f"get_summary: prompt too long ({len(text)}), truncating to {self.max_prompt_length(model)}")
-            prompt = enc.decode(enc.encode(prompt)[:self.max_prompt_length(model)])
-
-        # try:
         template = """You are an expert at summarizing text.\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
-        reply = llm_chain.predict(prompt=prompt).strip()
+        reply = self.trim(llm_chain.predict(prompt=prompt).strip())
 
         # To the right of the Speaker: (if any)
         if re.match(r'^[\w\s]{1,12}:\s', reply):
             reply = reply.split(':')[1].strip()
-
-        # # Too long? Ditch the last sentence fragment.
-        # if response.choices[0]['finish_reason'] == "length":
-        #     try:
-        #         reply = reply[:reply.rindex('.') + 1].strip()
-        #     except ValueError:
-        #         pass
 
         log.warning("gpt get_summary():", reply)
         return reply
@@ -472,11 +377,10 @@ as told from the third-person point of view of {self.bot_name}.
     def get_keywords(
         self,
         text,
-        summarizer="Topics mentioned in the preceding paragraph include the following tags:",
-        max_tokens=50
+        summarizer="Topics mentioned in the preceding paragraph include the following tags:"
         ):
         ''' Ask OpenAI for keywords'''
-        keywords = self.get_summary(text, summarizer, max_tokens)
+        keywords = self.get_summary(text, summarizer)
         log.debug(f"gpt get_keywords() raw: {keywords}")
 
         reply = self.cleanup_keywords(keywords)

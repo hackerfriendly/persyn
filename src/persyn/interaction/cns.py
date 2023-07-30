@@ -133,8 +133,7 @@ async def opine(event):
             else:
                 opinion = completion.nlp(completion.get_summary(
                     text='\n'.join(opinions),
-                    summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.bot_name}'s point of view, and convert pronouns and verbs to the first person.",
-                    max_tokens=75
+                    summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.bot_name}'s point of view, and convert pronouns and verbs to the first person."
                 )).text
 
             chat.inject_idea(
@@ -188,8 +187,7 @@ async def wikipedia_summary(event):
 
                 summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipedia article:\n{wiki}",
-                    summarizer="Can be briefly summarized as: ",
-                    max_tokens=75
+                    summarizer="Can be briefly summarized as: "
                 ))
                 # 3 sentences max please.
                 wikicache[entity] = ' '.join([s.text for s in summary.sents][:3])
@@ -261,8 +259,7 @@ async def goals_achieved(event):
     for goal in event.goals:
         goal_achieved = completion.get_summary(
             event.convo,
-            summarizer=f"Q: True or False: {persyn_config.id.name} achieved the goal of {goal}.\nA:",
-            max_tokens=10
+            summarizer=f"Q: True or False: {persyn_config.id.name} achieved the goal of {goal}.\nA:"
         )
 
         log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
@@ -367,8 +364,7 @@ async def read_web(event):
 
         summary = completion.get_summary(
             text=chunk,
-            summarizer=prompt,
-            max_tokens=max_reply_length
+            summarizer=prompt
         )
 
         chat.inject_idea(

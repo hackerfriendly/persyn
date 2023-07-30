@@ -28,7 +28,6 @@ dependencies = [
   "dotwiz",
   "duckduckgo-search",
   "fastapi[all]",
-  "ftfy==6.1.1",
   "humanize",
   "langchain>=0.0.240",
   "Levenshtein",

@@ -29,39 +29,33 @@ class LanguageModel():
             raise RuntimeError(f'Unknown engine: {self.engine}')
 
         self.nlp = self.model.nlp
-        self.sentiment = self.model.sentiment
 
-    def get_reply(self, prompt, convo, goals=None):
+    def get_reply(self, prompt):
         '''
-        Given a text prompt and recent conversation, send the prompt to the LLM and return the top reply.
+        Send the prompt to the LLM and return the top reply.
         '''
-        return self.model.get_reply(prompt, convo, goals)
+        return self.model.get_reply(prompt)
 
-    def get_opinions(self, context, entity, stop=None, temperature=0.9, max_tokens=50):
+    def get_opinions(self, context, entity):
         '''
         Ask the model for its opinions of entity, given the context.
         '''
-        if stop is None:
-            stop = [".", "!", "?"]
-        return self.model.get_opinions(context, entity, stop, temperature, max_tokens)
+        return self.model.get_opinions(context, entity)
 
-    def get_feels(self, context, stop=None, temperature=0.9, max_tokens=10):
+    def get_feels(self, context):
         '''
         Ask the model for sentiment analysis of the current convo.
         '''
-        if stop is None:
-            stop = [".", "!", "?"]
-        return self.model.get_feels(context, stop, temperature, max_tokens)
+        return self.model.get_feels(context)
 
-    def get_summary(self, text, summarizer="To sum it up in one sentence:", max_tokens=50, model=None):
+    def get_summary(self, text, summarizer="To sum it up in one sentence:"):
         ''' Ask the model for a summary'''
-        return self.model.get_summary(text, summarizer, max_tokens, model)
+        return self.model.get_summary(text, summarizer)
 
     def get_keywords(
         self,
         text,
-        summarizer="Topics mentioned in the preceding paragraph include the following tags:",
-        max_tokens=50
+        summarizer="Topics mentioned in the preceding paragraph include the following tags:"
         ):
         ''' Ask the model for keywords'''
-        return self.model.get_keywords(text, summarizer, max_tokens)
+        return self.model.get_keywords(text, summarizer)

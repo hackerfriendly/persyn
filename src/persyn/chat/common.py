@@ -133,7 +133,7 @@ class Chat():
         if self.dreams_url and any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
                 channel,
-                self.get_summary(channel, max_tokens=60),
+                self.get_summary(channel),
                 engine="stable-diffusion",
                 width=self.persyn_config.dreams.stable_diffusion.width,
                 height=self.persyn_config.dreams.stable_diffusion.height,

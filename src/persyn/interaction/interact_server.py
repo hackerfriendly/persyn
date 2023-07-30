@@ -90,7 +90,7 @@ async def handle_summary(
 ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, max_tokens, include_keywords, context_lines, dialog_only, model, convo_id]
+        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, model, convo_id]
     ))
     return {
         "summary": ret[0]
@@ -170,7 +170,7 @@ async def handle_opinion(
             return { "opinions": [] }
 
         ret = await asyncio.gather(in_thread(
-            interact.completion.get_summary, ['\n'.join(opinions), "To briefly summarize,", max_tokens]
+            interact.completion.get_summary, ['\n'.join(opinions), "To briefly summarize,"]
         ))
 
         return {

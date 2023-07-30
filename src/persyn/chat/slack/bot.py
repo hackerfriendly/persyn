@@ -182,7 +182,7 @@ def main():
         channel = context['channel_id']
         chat.take_a_photo(
             channel,
-            chat.get_summary(channel, max_tokens=60),
+            chat.get_summary(channel),
             engine="stable-diffusion",
             width=persyn_config.dreams.stable_diffusion.width,
             height=persyn_config.dreams.stable_diffusion.height,

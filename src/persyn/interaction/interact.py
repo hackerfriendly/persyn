@@ -117,7 +117,6 @@ class Interact():
         service,
         channel,
         save=True,
-        max_tokens=200,
         include_keywords=False,
         context_lines=0,
         dialog_only=True,
@@ -155,9 +154,7 @@ class Interact():
 
         summary = self.completion.get_summary(
             text=convo_text,
-            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
-            max_tokens=max_tokens,
-            model=model
+            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person."
         )
         keywords = self.completion.get_keywords(summary)
 
@@ -404,23 +401,28 @@ class Interact():
         ''' Try to take an action using the agent '''
 
         ret = self.agent.run(prompt)
-        log.warning("🕵️‍♂️ ", ret)
+
+        if ret == "Agent stopped due to iteration limit or time limit.":
+            log.warning("🕵️‍♂️ ", ret)
+            return
 
         if ret.startswith("say:"):
-            log.warning("🗣️ Say something about:", ret)
-            self.inject_idea(service, channel, ret.split(':', maxsplit=1)[1].strip(), verb="thinks")
+            ret = ret.split(':', maxsplit=1)[1].strip()
+            log.warning("🕵️‍♂️ Say something about:", ret)
+            self.inject_idea(service, channel, ret, verb="thinks")
 
         elif ret.startswith("photo:"):
-            log.warning("Take a photo of:", prompt)
-            self.inject_idea(service, channel, f"to take a photo of {ret.split(':', maxsplit=1)[1].strip()}", verb="decides")
-            self.generate_photo(service, channel, ret.split(':', maxsplit=1)[1].strip())
+            ret = ret.split(':', maxsplit=1)[1].strip()
+            log.warning("🕵️‍♂️ Take a photo of:", ret)
+            self.inject_idea(service, channel, f"to take a photo of {ret}", verb="decides")
+            self.generate_photo(service, channel, ret)
 
         else:
-            log.warning("🌍 Wikipedia:", ret)
-            self.inject_idea(service, channel, ret, verb="remembers")
+            log.warning("🕵️‍♂️ Wikipedia:", ret)
+            self.inject_idea(service, channel, ret, verb="read on Wikipedia")
 
     # Need to instrument this. It takes far too long and isn't async.
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True, max_tokens=150):  # pylint: disable=too-many-locals
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
@@ -449,8 +451,8 @@ class Interact():
 
         # TODO: Move this to CNS
         # Save the knowledge graph every 5 lines
-        if convo and len(convo) % 5 == 0:
-            self.save_knowledge_graph(service, channel, convo_id, convo)
+        # if convo and len(convo) % 5 == 0:
+        #     self.save_knowledge_graph(service, channel, convo_id, convo)
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -484,17 +486,17 @@ class Interact():
                 visited.append(doc.convo_id)
 
         lts = self.recall.get_last_timestamp(service, channel)
+        convo = self.recall.convo(service, channel, feels=True)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
-        if (self.completion.toklen(prompt) + max_tokens) > self.completion.max_prompt_length():
+        if (self.completion.toklen(prompt) * 0.9) > self.completion.max_prompt_length():
             # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             req = {
                 "service": service,
                 "channel": channel,
-                "save": True,
-                "max_tokens": 100
+                "save": True
             }
             try:
                 reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=60)
@@ -503,13 +505,14 @@ class Interact():
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
                 return " :dancer: :interrobang: "
 
+            convo = self.recall.convo(service, channel, feels=True)
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
         self.try_the_agent(service, channel, prompt)
 
-        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
         convo = self.recall.convo(service, channel, feels=True)
-        reply = self.completion.get_reply(prompt, convo, self.recall.list_goals(service, channel))
+        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
+        reply = self.completion.get_reply(prompt)
 
         if self.custom_filter:
             try:
@@ -535,7 +538,7 @@ class Interact():
     def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
         ret = [
-            f"It is {exact_time()} on {today()} ({natural_time()}).",
+            f"It is {exact_time()} in the {natural_time()} on {today()}.",
             getattr(self.config.interact, "character", ""),
             f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
         ]
