@@ -20,8 +20,11 @@ from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
 from langchain import LLMChain
 
+from ftfy import fix_text
+
 # Color logging
 from persyn.utils.color_logging import ColorLog
+from persyn.interaction.feels import closest_emoji
 
 log = ColorLog()
 
@@ -128,10 +131,49 @@ class GPT():
         if lines:
             yield ' '.join(lines)
 
+    def validate_reply(self, text: str):
+        '''
+        Filter or fix low quality OpenAI responses
+        '''
+        try:
+            # No whitespace or surrounding quotes
+            text = str(text).strip().strip('"\'')
+            # Skip blanks
+            if not text:
+                return None
+            # Putting words Rob: In people's mouths
+            match = re.search(r'^(.*)?\s+([\w\s]{1,12}: .*)', text)
+            if match:
+                text = match.group(1)
+            # Fix bad emoji
+            for match in re.findall(r'(:\S+:)', text):
+                closest = closest_emoji(match)
+                if match != closest:
+                    log.warning(f"😜 {match} > {closest}")
+                    text = text.replace(match, closest)
+            if '/r/' in text:
+                return None
+            if text in ['…', '...', '..', '.']:
+                return None
+            if self.has_forbidden(text):
+                return None
+            # Skip prompt bleed-through
+            if self.bleed_through(text):
+                return None
+
+            return text
+
+        except TypeError:
+            log.error(f"🔥 Invalid text for validate_choice(): {text}")
+            return None
+
     def trim(self, text):
-        ''' Remove any dangling non-sentences from text '''
-        text = text.strip()
-        sents = list(self.nlp(text).sents)
+        ''' Remove junk and any dangling non-sentences from text '''
+        sents = []
+        for sent in list(self.nlp(fix_text(text)).sents):
+            poss = self.validate_reply(sent)
+            if poss:
+                sents.append(self.nlp(poss))
 
         if len(sents) < 2 or sents[-1][-1].is_punct:
             return text
@@ -398,11 +440,12 @@ as told from the third-person point of view of {self.bot_name}.
         for line in (
             "This is a conversation between",
             f"{self.bot_name} is feeling",
+            f"{self.bot_name} feels:",
             "I am feeling",
             "I'm feeling",
             f"{self.bot_name}:"
         ):
-            if line in text:
+            if text.startswith(line):
                 return True
 
         return False
