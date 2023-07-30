@@ -14,6 +14,7 @@ import os
 from threading import Lock
 from typing import Optional
 from io import BytesIO
+from time import sleep
 
 import torch
 import numpy as np
@@ -24,7 +25,6 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import StreamingResponse, RedirectResponse
 
 from transformers import AutoFeatureExtractor, logging
-from diffusers.models import AutoencoderKL
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler, DiffusionPipeline
@@ -59,6 +59,11 @@ safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-di
 
 def naughty(image):
     ''' Returns True if naughty bits are detected, else False. '''
+
+    # Apparently not 100% compatible with XL...?
+    if MODEL.startswith("stabilityai/stable-diffusion-xl"):
+        return False
+
     imgarray = np.asarray(image)
     safety_checker_input = safety_feature_extractor([imgarray], return_tensors="pt")
     _, has_nsfw_concept = safety_checker(images=[imgarray], clip_input=safety_checker_input.pixel_values)
@@ -77,7 +82,7 @@ def clear_cuda_mem():
         try:
             if torch.is_tensor(obj) and obj.is_cuda:
                 del obj
-        except Exception as e:
+        except Exception: # pylint: disable=broad-exception-caught
             pass
 
     gc.collect()
@@ -104,12 +109,12 @@ def generate_image(prompt, seed, steps, width, height, guidance, negative_prompt
             guidance_scale=guidance
         ).images[0]
 
-    except RuntimeError:
+    except RuntimeError as ex:
         # print(torch.cuda.memory_summary(device=None, abbreviated=False))
         raise HTTPException(
             status_code=507,
             detail="Out of CUDA memory. Try smaller values for width and height."
-        )
+        ) from ex
 
     finally:
         clear_cuda_mem()
@@ -124,6 +129,7 @@ def safe_generate_image(prompt, seed, steps, width, height, guidance, safe=True,
     if safe and naughty(image):
         print("🍆 detected!!!1!")
         prompt = "An adorable teddy bear running through a grassy field, early morning volumetric lighting"
+        sleep(1)
         image = generate_image(prompt, seed, steps, width, height, guidance, negative_prompt)
 
     # Set the EXIF data. See PIL.ExifTags.TAGS to map numbers to names.
@@ -155,7 +161,12 @@ def generate(
     guidance: Optional[float] = Query(ge=2, le=20, default=6),
     safe: Optional[bool] = Query(True),
     negative_prompt: Optional[str] = Query(
-            "text, logo, words, worst quality, low quality, deformed iris, deformed pupils, bad eyes, cross eyed, poorly drawn face, cloned face, extra fingers, mutated hands, fused fingers, too many fingers, missing arms, missing legs, extra arms, extra legs, poorly drawn hands, bad anatomy, bad proportions, cropped, lowres, jpeg artifacts, signature, watermark, username, artist name, trademark, watermark, title, multiple view, Reference sheet, long neck, Out of Frame"
+            """text, logo, words, meme, worst quality, low quality, deformed iris, deformed pupils,
+            bad eyes, cross eyed, poorly drawn face, cloned face, extra fingers, mutated hands,
+            fused fingers, too many fingers, missing arms, missing legs, extra arms, extra legs,
+            poorly drawn hands, bad anatomy, bad proportions, cropped, lowres, jpeg artifacts, signature,
+            watermark, username, artist name, trademark, watermark, title, multiple view, Reference sheet,
+            long neck, Out of Frame"""
         ),
     ):
     ''' Generate an image with Stable Diffusion '''
@@ -212,7 +223,6 @@ def main():
             scheduler=scheduler,
             revision="fp16",
             torch_dtype=torch.float16,
-            # vae=AutoencoderKL.from_pretrained("stabilityai/sdxl-vae")
         )
         PIPE = PIPE.to("cuda")
 
