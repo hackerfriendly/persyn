@@ -33,6 +33,9 @@ from persyn.chat.simple import slack_msg, discord_msg
 # Mastodon support for image posting
 from persyn.chat.mastodon.bot import Mastodon
 
+# Time
+from persyn.interaction.chrono import ago
+
 # Long and short term memory
 from persyn.interaction.memory import Recall
 
@@ -406,16 +409,79 @@ async def read_news(event):
         return
 
 async def reflect_on(event):
-    ''' Reflect on the channel '''
+    ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
+    log.warning("🪩  Reflecting...")
 
-    return
+    convo = '\n'.join(recall.convo(event.service, event.channel, feels=True))
+    convo_id = recall.convo_id(event.service, event.channel)
+    chat = Chat(persyn_config=persyn_config, service=event.service)
 
-    # convo = recall.convo(event.service, event.channel, feels=True)
-    # TODO: use LangChain to implement a Stanford Smallville reflection agent.
+    questions = completion.get_reply(
+        f"""{convo}
+Given only the information above, what are three most salient high-level questions I can answer about the people in the statements? Questions only, no answers.
+Please convert pronouns and verbs to the first person."""
+    ).split('?')
 
-    # "Given only the information above, what are three most salient high-level questions we can answer about the subjects in the statements?"
-    # Then answer each question, supplemented by relevant memories.
-    # Inject (a summary of?) that interaction as an idea, verb="reflection".
+    log.warning("🪩 ", questions)
+
+    # Answer each question, supplemented by relevant memories.
+    for question in questions:
+        question = question.strip().strip('"\'')
+        if len(question) < 10:
+            if question:
+                log.warning("⁉️  Bad question:", question)
+            continue
+
+        log.warning("❓ ", question)
+
+        ranked = recall.find_related_convos(
+            event.service, event.channel,
+            query=convo,
+            size=5,
+            current_convo_id=convo_id,
+            threshold=persyn_config.memory.relevance * 1.4,
+            any_convo=True
+        )
+
+        visited = []
+        context = [convo]
+        for hit in ranked:
+            if hit.convo_id not in visited:
+                if hit.service == 'import_service':
+                    log.info("📚 Hit found from import:", hit.channel)
+                the_summary = recall.get_summary_by_id(hit.convo_id)
+                # Hit a sentence? Inject the summary and the sentence.
+                if the_summary and the_summary not in convo:
+                    context.append(f"""
+                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
+                        f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}"""
+                    )
+                # No summary? Just inject the sentence.
+                else:
+                    context.append(f"""
+                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
+                        f"{hit.speaker_name} said: {hit.msg}"""
+                    )
+                visited.append(hit.convo_id)
+                log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
+
+
+        prompt = '\n'.join(context) + f"""
+{persyn_config.id.name} asks: {question}?
+Respond with the best possible answer from {persyn_config.id.name}'s point of view. Please convert pronouns and verbs to the first person."""
+
+        answer = completion.get_reply(prompt)
+        log.warning("❗️", answer)
+
+        # Inject the question and answer.
+        chat.inject_idea(
+            channel=event.channel,
+            idea=f"{question}? {answer}",
+            verb="reflects"
+        )
+
+
+    log.warning("🪩  Done reflecting.")
 
 def generate_photo(event):
     ''' Generate a photo '''

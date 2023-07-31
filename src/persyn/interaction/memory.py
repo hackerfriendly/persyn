@@ -561,7 +561,7 @@ class Recall():
         for doc in reply.docs:
             # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
             if float(doc.score) < threshold:
-                log.info("👨‍👩‍👧 Related: ", doc.msg)
+                log.debug("👨‍👩‍👧 Related: ", doc.msg)
                 ret.append(doc)
 
         best = ""
@@ -614,7 +614,7 @@ class Recall():
         for doc in reply.docs:
             # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
             if float(doc.score) < threshold:
-                log.info("👨‍👩‍👧 Related: ", doc.summary)
+                log.debug("👨‍👩‍👧 Related: ", doc.summary)
                 ret.append(doc)
 
         best = ""

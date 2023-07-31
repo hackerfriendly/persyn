@@ -74,6 +74,7 @@ opine = "persyn.chat.stdio.opine:main"
 add_goal = "persyn.chat.stdio.add_goal:main"
 read_url = "persyn.chat.stdio.read_url:main"
 read_rss = "persyn.chat.stdio.read_rss:main"
+reflect = "persyn.chat.stdio.reflect:main"
 captions = "persyn.dreams.BLIP.captions:main"
 
 [project.optional-dependencies]

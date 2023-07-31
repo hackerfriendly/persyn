@@ -175,10 +175,10 @@ class GPT():
             if poss:
                 sents.append(self.nlp(poss))
 
-        if len(sents) < 2 or sents[-1][-1].is_punct:
-            return text
+        if len(sents) > 1 and not sents[-1][-1].is_punct:
+            sents.pop()
 
-        return ' '.join([sent.text for sent in sents[:-1]])
+        return ' '.join([sent.text for sent in sents])
 
     def truncate(self, text, model=None):
         ''' Truncate text to the max_prompt_length for this model '''
@@ -211,8 +211,16 @@ class GPT():
         llm_chain = LLMChain.from_string(llm=self.completion_llm, template=template)
         response = self.trim(llm_chain.predict(prompt=prompt))
 
-        log.info(f"🧠 Prompt: {prompt}")
-        log.debug(response)
+        if not response:
+            log.warning("🤔 No reply, trying again...")
+            response = self.trim(llm_chain.predict(prompt=prompt))
+
+        if len(prompt) < 500:
+            log.info(f"🧠 Prompt: {prompt}")
+        else:
+            log.info(f"🧠 Prompt: {prompt[:250]}...\n...{prompt[-250:]}")
+
+        log.info(f"🧠 👉 {response}")
 
         return response
 
@@ -248,6 +256,7 @@ class GPT():
 
         template = """You are an expert at determining the emotional state of people engaging in conversation.\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.feels_llm, template=template)
+
         reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
 
         log.warning(f"😁 sentiment of conversation: {reply}")

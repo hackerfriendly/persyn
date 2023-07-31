@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from openai.error import InvalidRequestError
+
 from langchain import LLMMathChain
 from langchain.agents import AgentType, initialize_agent
 from langchain.agents.agent_toolkits import create_python_agent
@@ -400,7 +402,14 @@ class Interact():
     def try_the_agent(self, service, channel, prompt):
         ''' Try to take an action using the agent '''
 
-        ret = self.agent.run(prompt)
+        # Only use some of the available context
+        prompt = self.enc.decode(self.enc.encode(prompt)[-int(self.completion.max_prompt_length() * 0.25):])
+
+        try:
+            ret = self.agent.run(prompt)
+        except InvalidRequestError as err:
+            log.error("🕵️‍♂️  Agent generated an exception, skipping:", err)
+            return
 
         if ret == "Agent stopped due to iteration limit or time limit.":
             log.warning("🕵️‍♂️ ", ret)
@@ -408,17 +417,17 @@ class Interact():
 
         if ret.startswith("say:"):
             ret = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("🕵️‍♂️ Say something about:", ret)
+            log.warning("🕵️‍♂️  Say something about:", ret)
             self.inject_idea(service, channel, ret, verb="thinks")
 
         elif ret.startswith("photo:"):
             ret = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("🕵️‍♂️ Take a photo of:", ret)
+            log.warning("🕵️‍♂️  Take a photo of:", ret)
             self.inject_idea(service, channel, f"to take a photo of {ret}", verb="decides")
             self.generate_photo(service, channel, ret)
 
         else:
-            log.warning("🕵️‍♂️ Wikipedia:", ret)
+            log.warning("🕵️‍♂️  Wikipedia:", ret)
             self.inject_idea(service, channel, ret, verb="read on Wikipedia")
 
     # Need to instrument this. It takes far too long and isn't async.
