@@ -465,10 +465,10 @@ Please convert pronouns and verbs to the first person."""
                 visited.append(hit.convo_id)
                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
 
-
         prompt = '\n'.join(context) + f"""
 {persyn_config.id.name} asks: {question}?
-Respond with the best possible answer from {persyn_config.id.name}'s point of view. Please convert pronouns and verbs to the first person."""
+Respond with the best possible answer from {persyn_config.id.name}'s point of view. Don't use proper names, and convert all pronouns and verbs to the first person."""
+        log.warning("✏️", question)
 
         answer = completion.get_reply(prompt)
         log.warning("❗️", answer)
@@ -480,6 +480,8 @@ Respond with the best possible answer from {persyn_config.id.name}'s point of vi
             verb="reflects"
         )
 
+    if event.send_chat:
+        await elaborate(event)
 
     log.warning("🪩  Done reflecting.")
 
@@ -589,10 +591,17 @@ async def auto_summarize():
         if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
             log.warning("💓 Convo expired:", key)
 
-            # Remove it from the convo list
-            recall.redis.srem(f"{recall.active_convos_prefix}", key)
-
             if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
+                log.info("🪩 Reflecting:", convo_id)
+                event = Reflect(
+                    bot_name=persyn_config.id.name,
+                    bot_id=persyn_config.id.guid,
+                    service=service,
+                    channel=channel,
+                    send_chat=True
+                )
+                autobus.publish(event)
+
                 log.info("💓 Summarizing:", convo_id)
                 event = Summarize(
                     bot_name=persyn_config.id.name,
@@ -606,15 +615,8 @@ async def auto_summarize():
                 )
                 autobus.publish(event)
 
-                log.info("🪩 Reflecting:", convo_id)
-                event = Reflect(
-                    bot_name=persyn_config.id.name,
-                    bot_id=persyn_config.id.guid,
-                    service=service,
-                    channel=channel,
-                    send_chat=True
-                )
-                autobus.publish(event)
+            # Remove it from the convo list
+            recall.redis.srem(f"{recall.active_convos_prefix}", key)
 
 @autobus.schedule(autobus.every(6).hours)
 async def plan_your_day():
