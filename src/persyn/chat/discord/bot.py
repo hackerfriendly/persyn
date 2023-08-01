@@ -222,7 +222,7 @@ async def handle_attachments(ctx):
             prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
             await ctx.channel.send(f"{prefix} {caption}")
 
-            chat.inject_idea(channel, f"{ctx.author.name} posted a photo of {caption}")
+            chat.inject_idea(channel, f"{ctx.author.name} imagines {caption}")
 
             msg = ctx.content
             if not msg.strip():

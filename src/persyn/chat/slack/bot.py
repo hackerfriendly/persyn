@@ -481,7 +481,7 @@ def main():
                 prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
                 say(f"{prefix} {caption}")
 
-                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
+                chat.inject_idea(channel, caption, verb="imagines")
 
                 if not msg.strip():
                     msg = "..."
