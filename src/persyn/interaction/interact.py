@@ -121,12 +121,12 @@ class Interact():
                 description="Answer simple math questions accurately. Inputs should be simple expressions, like 2+2. This tool does not accept python code.",
                 return_direct=True
             ),
-            Tool(
-                    name="Say something",
-                    func=lambda x: f"say:{x}",
-                    description="Continue the conversation",
-                    return_direct=True
-            ),
+            # Tool(
+            #         name="Say something",
+            #         func=lambda x: f"say:{x}",
+            #         description="Continue the conversation",
+            #         return_direct=True
+            # ),
             we_are_done,
             take_a_photo
         ]
@@ -247,16 +247,17 @@ class Interact():
         ''' Run the agent executor'''
         convo = '\n'.join(context[:-1])
         query = context[-1]
-        return doiify(self.agent_executor.run(f"""
-            Examine the following conversation:
-            {convo}
+        return doiify(self.agent_executor.run('\n'.join(context) + "\nIf you are consulting scientific literature, cite your sources including the doi if available."))
+    #     return doiify(self.agent_executor.run(f"""
+    #         Examine the following conversation:
+    #         {convo}
 
-            Using only the tools available to you, answer this question:
-            {query}
+    #         Using only the tools available to you, answer this question:
+    #         {query}
 
-            Cite your sources including the doi if available.
-        """
-    )).strip()
+    #         Cite your sources including the doi if available.
+    #     """
+    # )).strip()
 
     def validate_agent_reply(self, agent_reply):
         ''' Returns True if the question was answered, otherwise False. '''
@@ -317,7 +318,7 @@ class Interact():
                     f"{self.config.id.name} can't recall a specific relevant experience.",
                     f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from online sources, not direct participation.",
                     f"{self.config.id.name}'s understanding of the issue is academic, not experiential.",
-                    f"they can theorize about the topic, but can't draw upon any personal experiences to validate {self.config.id.name}'s views.",
+                    f"they can theorize about the topic, but can't draw upon any relevant personal experiences.",
                     f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic.",
                     f"that {self.config.id.name} has only circumstantial knowledge about the topic, not personal insights.",
                     f"that while they can offer informed opinions, {self.config.id.name} hasn't had a relevant direct experience.",
@@ -598,7 +599,7 @@ class Interact():
             # convo[-1] = f"{self.config.id.name}: {reply}"
 
         else:
-            self.inject_idea(service, channel, reply, verb="thinks")
+            # self.inject_idea(service, channel, reply, verb="thinks")
             log.warning("🤷 Agent was no help.")
 
             convo = self.recall.convo(service, channel, feels=True)
