@@ -8,19 +8,21 @@ import random
 import re # used by custom filters
 
 from urllib.parse import urlparse
+from typing import Optional, List
 
 import requests
 
-from openai.error import InvalidRequestError
-
-from langchain import LLMMathChain
-from langchain.agents import AgentType, initialize_agent
-from langchain.agents.agent_toolkits import create_python_agent
+from langchain import LLMMathChain, OpenAI
+from langchain.agents.agent_toolkits import create_vectorstore_router_agent, VectorStoreInfo
+from langchain.agents.agent_toolkits.base import BaseToolkit
+from langchain.base_language import BaseLanguageModel
 from langchain.chat_models import ChatOpenAI
-from langchain.tools import BaseTool, StructuredTool, Tool, tool
-from langchain.tools import WikipediaQueryRun, PubmedQueryRun
-# from langchain.tools.python.tool import PythonREPLTool # unsafe without a sandbox!
-from langchain.utilities import WikipediaAPIWrapper
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.tools import BaseTool, Tool, tool
+from langchain.tools.vectorstore.tool import VectorStoreQATool, VectorStoreQAWithSourcesTool
+from langchain.vectorstores import Redis
+
+from pydantic import Field
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
@@ -31,10 +33,49 @@ from persyn.interaction.chrono import exact_time, natural_time, ago, today, elap
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
 
+# Custom langchain
+from persyn.langchain.zim import ZimWrapper
+
 # Color logging
 from persyn.utils.color_logging import log
 
-wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
+def doiify(text):
+    ''' Turn DOIs into doi.org links '''
+    ret = re.sub(r'\b(10.\d{4,9}/[-._;()/:a-zA-Z0-9]+)\b', r'http://doi.org/\1', text).rstrip('.')
+    return re.sub(r'http://doi.org/http://doi.org/', r'http://doi.org/', ret)
+
+class MyVectorStoreRouterToolkit(BaseToolkit):
+    """Toolkit for routing between vector stores."""
+
+    vectorstores: List[VectorStoreInfo] = Field(exclude=True)
+    llm: BaseLanguageModel = Field(default_factory=lambda: OpenAI(temperature=0))
+    tools: Optional[List[BaseTool]] = []
+
+    class Config:
+        """Configuration for this pydantic object."""
+
+        arbitrary_types_allowed = True
+
+    def get_tools(self) -> List[BaseTool]:
+        """Get the tools in the toolkit."""
+        tools: List[BaseTool] = []
+        for vectorstore_info in self.vectorstores:
+            description = VectorStoreQATool.get_description(
+                vectorstore_info.name, vectorstore_info.description
+            )
+            qa_tool = VectorStoreQAWithSourcesTool(
+                name=vectorstore_info.name,
+                description=description,
+                vectorstore=vectorstore_info.vectorstore,
+                llm=self.llm,
+            )
+            tools.append(qa_tool)
+        return tools + self.tools
+
+@tool("None", return_direct=False)
+def we_are_done(query: str) -> str:
+    """Time to finish up."""
+    return "I now have all the information requested in the original question."
 
 @tool(return_direct=True)
 def take_a_photo(query: str) -> str:
@@ -64,55 +105,83 @@ class Interact():
         # Then create the Recall object (short-term, long-term, and graph memory).
         self.recall = Recall(persyn_config)
 
-        self.llm = ChatOpenAI(model=persyn_config.completion.chat_model, temperature=0)
+        # Langchain
+        self.llm = ChatOpenAI(
+            temperature=self.config.completion.temperature,
+            model=self.config.completion.completion_model,
+            openai_api_key=self.config.completion.api_key
+        )
+        embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.api_key)
 
-        llm_math_chain = LLMMathChain.from_llm(llm=self.llm, verbose=True)
-
-        self.enc = self.completion.model.get_enc()
-
-        @tool
-        def consult_wikipedia(query: str) -> str:
-            """Check Wikipedia for facts"""
-            reply = wikipedia.run(query)
-            replylen = self.completion.toklen(reply)
-            maxlen = round(self.completion.max_prompt_length() * 0.8)
-            if replylen > maxlen:
-                log.warning(f"wikipedia: reply too long ({replylen}), truncating to {maxlen}")
-
-                reply = self.enc.decode(self.enc.encode(reply)[:maxlen])
-
-            return reply
-
-        self.agent = initialize_agent(
-            [
-                take_a_photo,
-                consult_wikipedia,
-                PubmedQueryRun(),
-                # PythonREPLTool(),
-                # Tool(
-                #     name="Python",
-                #     func=PythonREPLTool.run,
-                #     description="Run python programs to answer questions about math or programming",
-                #     return_direct=True
-                # ),
-                # Tool(
-                #     name="Calculator",
-                #     func=llm_math_chain.run,
-                #     description="Answer simple math questions accurately. Inputs should be simple expressions, like 2+2.",
-                #     return_direct=True
-                # ),
-                Tool(
+        # langchain tools
+        agent_tools = [
+            Tool(
+                name="Calculator",
+                func=LLMMathChain.from_llm(llm=self.llm, verbose=True).run,
+                description="Answer simple math questions accurately. Inputs should be simple expressions, like 2+2. This tool does not accept python code.",
+                return_direct=True
+            ),
+            Tool(
                     name="Say something",
                     func=lambda x: f"say:{x}",
                     description="Continue the conversation",
                     return_direct=True
-                ),
-            ],
-            self.llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            verbose=True,
-            handle_parsing_errors=True
+            ),
+            we_are_done,
+            take_a_photo
+        ]
+
+        if self.config.get('zim'):
+            for cfgtool in self.config.zim:
+                log.info("💿 Loading zim:", cfgtool)
+                agent_tools.append(
+                    Tool(
+                        name=str(cfgtool),
+                        func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
+                        description=self.config.zim.get(cfgtool).description
+                    )
+                )
+
+        vectorstores = []
+        if self.config.get('vectorstores'):
+            for vs in self.config.vectorstores:
+                log.info("💾 Loading vectorstore:", vs)
+
+                vectorstore = Redis(
+                    redis_url=persyn_config.memory.redis,
+                    index_name=self.config.vectorstores.get(vs).index,
+                    embedding_function=embeddings.embed_query,
+                )
+
+                vectorstores.append(VectorStoreInfo(
+                    name=self.config.vectorstores.get(vs).name,
+                    description=self.config.vectorstores.get(vs).description,
+                    vectorstore=vectorstore
+                ))
+
+        router_toolkit = MyVectorStoreRouterToolkit(
+            vectorstores=vectorstores,
+            llm=self.llm,
+            tools=agent_tools
         )
+
+        self.agent_executor = create_vectorstore_router_agent(
+            llm=self.llm, toolkit=router_toolkit, verbose=True,
+            prefix="""You are an agent designed to answer questions.
+            You have access to tools for interacting with different sources, and the inputs to the tools are questions.
+            For complex questions, you can break the question down into sub questions and use tools to answers the sub questions.
+            Use whichever tool is relevant for answering the question at hand. If a tool is not relevant, do not use it.
+            If no tools are relevant, finish with "Thought:I now know the final answer."
+            If you don't have a final answer, finish with "Final Answer:" and a suitable reason why you could not answer.
+            """,
+            agent_executor_kwargs = {
+                'max_iterations': 10,
+                'max_execution_time': 60,
+                'handle_parsing_errors': True
+            }
+        )
+
+        self.enc = self.completion.model.get_enc()
 
     def summarize_convo(
         self,
@@ -173,6 +242,38 @@ class Interact():
             return "\n".join(text[-context_lines:] + [summary])
 
         return summary
+
+    def get_vector_agent_reply(self, context):
+        ''' Run the agent executor'''
+        convo = '\n'.join(context[:-1])
+        query = context[-1]
+        return doiify(self.agent_executor.run(f"""
+            Examine the following conversation:
+            {convo}
+
+            Using only the tools available to you, answer this question:
+            {query}
+
+            Cite your sources including the doi if available.
+        """
+    )).strip()
+
+    def validate_agent_reply(self, agent_reply):
+        ''' Returns True if the question was answered, otherwise False. '''
+        if (
+            not agent_reply
+            or len(agent_reply) < 40
+            or agent_reply == "Agent stopped due to iteration limit or time limit"
+        ):
+            return False
+
+        # TODO: encode "Yes" and "No", then ask llm if the question was answered
+
+        negatives = ["tool", "I cannot", "I can't", "I could not", "I couldn't", "is not mentioned", "isn't mentioned", "unable"]
+        if any(term in agent_reply for term in negatives):
+            return False
+
+        return True
 
     def gather_memories(self, service, channel, entities, visited=None):
         '''
@@ -399,37 +500,6 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
-    def try_the_agent(self, service, channel, prompt):
-        ''' Try to take an action using the agent '''
-
-        # Only use some of the available context
-        prompt = self.enc.decode(self.enc.encode(prompt)[-int(self.completion.max_prompt_length() * 0.25):])
-
-        try:
-            ret = self.agent.run(prompt)
-        except InvalidRequestError as err:
-            log.error("🕵️‍♂️  Agent generated an exception, skipping:", err)
-            return
-
-        if ret == "Agent stopped due to iteration limit or time limit.":
-            log.warning("🕵️‍♂️ ", ret)
-            return
-
-        if ret.startswith("say:"):
-            ret = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("🕵️‍♂️  Say something about:", ret)
-            self.inject_idea(service, channel, ret, verb="thinks")
-
-        elif ret.startswith("photo:"):
-            ret = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("🕵️‍♂️  Take a photo of:", ret)
-            self.inject_idea(service, channel, f"to take a photo of {ret}", verb="decides")
-            self.generate_photo(service, channel, ret)
-
-        else:
-            log.warning("🕵️‍♂️  Wikipedia:", ret)
-            self.inject_idea(service, channel, ret, verb="read on Wikipedia")
-
     # Need to instrument this. It takes far too long and isn't async.
     def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
@@ -517,11 +587,23 @@ class Interact():
             convo = self.recall.convo(service, channel, feels=True)
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        self.try_the_agent(service, channel, prompt)
+        log.warning("🕵️‍♀️  Consult the vector agent.")
+        reply = self.get_vector_agent_reply(convo)
+        if self.validate_agent_reply(reply):
+            log.warning("🕵️‍♀️  Agent success:", reply)
+            self.inject_idea(service, channel, idea=reply, verb="thinks")
+            # self.send_chat(service, channel, reply)
 
-        convo = self.recall.convo(service, channel, feels=True)
-        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
-        reply = self.completion.get_reply(prompt)
+            # # next reply will continue the thought
+            # convo[-1] = f"{self.config.id.name}: {reply}"
+
+        else:
+            self.inject_idea(service, channel, reply, verb="thinks")
+            log.warning("🤷 Agent was no help.")
+
+            convo = self.recall.convo(service, channel, feels=True)
+            prompt = self.generate_prompt(summaries, convo, service, channel, lts)
+            reply = self.completion.get_reply(prompt)
 
         if self.custom_filter:
             try:

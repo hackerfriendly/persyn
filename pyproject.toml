@@ -31,6 +31,7 @@ dependencies = [
   "ftfy",
   "humanize",
   "langchain>=0.0.240",
+  "libzim",
   "Levenshtein",
   "Mastodon.py",
   "neomodel",
