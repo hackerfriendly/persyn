@@ -56,17 +56,20 @@ class GPT():
         self.completion_llm = ChatOpenAI(
             model=self.completion_model,
             temperature=self.config.completion.temperature,
-            max_tokens=150
+            max_tokens=150,
+            openai_api_key=self.config.completion.api_key
         )
         self.summary_llm = ChatOpenAI(
             model=self.summary_model,
             temperature=self.config.completion.temperature,
-            max_tokens=50
+            max_tokens=50,
+            openai_api_key=self.config.completion.api_key
         )
         self.feels_llm = ChatOpenAI(
             model=self.completion_model,
             temperature=self.config.completion.temperature,
-            max_tokens=10
+            max_tokens=10,
+            openai_api_key=self.config.completion.api_key
         )
 
     def get_enc(self, model=None):
