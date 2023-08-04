@@ -418,8 +418,9 @@ async def reflect_on(event):
 
     questions = completion.get_reply(
         f"""{convo}
-Given only the information above, what are three most salient high-level questions I can answer about the people in the statements? Questions only, no answers.
-Please convert pronouns and verbs to the first person."""
+Given only the information above, what are three most salient high-level questions I can answer about the people in the statements?
+Questions only, no answers. Please convert pronouns and verbs to the first person.
+"""
     ).split('?')
 
     log.warning("🪩 ", questions)
@@ -467,7 +468,9 @@ Please convert pronouns and verbs to the first person."""
 
         prompt = '\n'.join(context) + f"""
 {persyn_config.id.name} asks: {question}?
-Respond with the best possible answer from {persyn_config.id.name}'s point of view. Don't use proper names, and convert all pronouns and verbs to the first person."""
+Respond with the best possible answer from {persyn_config.id.name}'s point of view.
+Don't use proper names, and convert all pronouns and verbs to the first person.
+"""
         log.warning("✏️", question)
 
         answer = completion.get_reply(prompt)
