@@ -13,6 +13,7 @@ from typing import Optional, List
 import requests
 
 from langchain import LLMMathChain, OpenAI
+from langchain.agents import AgentType, initialize_agent
 from langchain.agents.agent_toolkits import create_vectorstore_router_agent, VectorStoreInfo
 from langchain.agents.agent_toolkits.base import BaseToolkit
 from langchain.base_language import BaseLanguageModel
@@ -21,6 +22,8 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.tools import BaseTool, Tool, tool
 from langchain.tools.vectorstore.tool import VectorStoreQATool, VectorStoreQAWithSourcesTool
 from langchain.vectorstores import Redis
+
+from openai.error import InvalidRequestError
 
 from pydantic import Field
 
@@ -41,8 +44,11 @@ from persyn.utils.color_logging import log
 
 def doiify(text):
     ''' Turn DOIs into doi.org links '''
-    ret = re.sub(r'\b(10.\d{4,9}/[-._;()/:a-zA-Z0-9]+)\b', r'http://doi.org/\1', text).rstrip('.')
-    return re.sub(r'http://doi.org/http://doi.org/', r'http://doi.org/', ret)
+    return re.sub(
+        r"(https?://doi\.org/)?(10\.\d{4,9}/[-._;()/:a-zA-Z0-9]+)",
+        lambda match: match.group(0) if match.group(2) is None else f'https://doi.org/{match.group(2)}',
+        text
+    ).rstrip('.')
 
 class MyVectorStoreRouterToolkit(BaseToolkit):
     """Toolkit for routing between vector stores."""
@@ -82,6 +88,11 @@ def take_a_photo(query: str) -> str:
     """ Think of anything and instantly take a photo of whatever you imagine. """
     return f"photo:{query}"
 
+@tool(return_direct=True)
+def say_something(query: str) -> str:
+    """ Continue the conversation. """
+    return query
+
 class Interact():
     '''
     The Interact class contains all language handling routines and maintains
@@ -106,14 +117,10 @@ class Interact():
         self.recall = Recall(persyn_config)
 
         # Langchain
-        self.llm = ChatOpenAI(
-            temperature=self.config.completion.temperature,
-            model=self.config.completion.completion_model,
-            openai_api_key=self.config.completion.api_key
-        )
+        self.llm = self.completion.model.completion_llm
         embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.api_key)
 
-        # langchain tools
+        # generic agent tools
         agent_tools = [
             Tool(
                 name="Calculator",
@@ -121,26 +128,27 @@ class Interact():
                 description="Answer simple math questions accurately. Inputs should be simple expressions, like 2+2. This tool does not accept python code.",
                 return_direct=True
             ),
-            # Tool(
-            #         name="Say something",
-            #         func=lambda x: f"say:{x}",
-            #         description="Continue the conversation",
-            #         return_direct=True
-            # ),
+            say_something,
             we_are_done,
             take_a_photo
         ]
 
+        # vectorstore agent tools
+        vector_tools = [
+            we_are_done
+        ]
+
+        # zim / kiwix data sources
         if self.config.get('zim'):
             for cfgtool in self.config.zim:
                 log.info("💿 Loading zim:", cfgtool)
-                agent_tools.append(
-                    Tool(
+                zim = Tool(
                         name=str(cfgtool),
                         func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
                         description=self.config.zim.get(cfgtool).description
                     )
-                )
+                agent_tools.append(zim)
+                vector_tools.append(zim)
 
         vectorstores = []
         if self.config.get('vectorstores'):
@@ -162,17 +170,17 @@ class Interact():
         router_toolkit = MyVectorStoreRouterToolkit(
             vectorstores=vectorstores,
             llm=self.llm,
-            tools=agent_tools
+            tools=vector_tools
         )
 
-        self.agent_executor = create_vectorstore_router_agent(
+        self.vector_agent = create_vectorstore_router_agent(
             llm=self.llm, toolkit=router_toolkit, verbose=True,
             prefix="""You are an agent designed to answer questions.
             You have access to tools for interacting with different sources, and the inputs to the tools are questions.
             For complex questions, you can break the question down into sub questions and use tools to answers the sub questions.
             Use whichever tool is relevant for answering the question at hand. If a tool is not relevant, do not use it.
             If no tools are relevant, finish with "Thought:I now know the final answer."
-            If you don't have a final answer, finish with "Final Answer:" and a suitable reason why you could not answer.
+            If you are unable to answer the question, finish with "Final Answer: I could not find a suitable answer."
             """,
             agent_executor_kwargs = {
                 'max_iterations': 10,
@@ -181,7 +189,16 @@ class Interact():
             }
         )
 
+        self.generic_agent = initialize_agent(
+            agent_tools,
+            self.llm,
+            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            verbose=True,
+            handle_parsing_errors=True
+        )
+
         self.enc = self.completion.model.get_enc()
+
 
     def summarize_convo(
         self,
@@ -243,38 +260,76 @@ class Interact():
 
         return summary
 
-    def get_vector_agent_reply(self, context):
+    def get_vector_agent_reply(self, context: List[str]):
         ''' Run the agent executor'''
         convo = '\n'.join(context[:-1])
         query = context[-1]
-        return doiify(self.agent_executor.run('\n'.join(context) + "\nIf you are consulting scientific literature, cite your sources including the doi if available."))
-    #     return doiify(self.agent_executor.run(f"""
-    #         Examine the following conversation:
-    #         {convo}
+        return doiify(self.vector_agent.run(f"""
+            Examine the following conversation:
+            {convo}
 
-    #         Using only the tools available to you, answer this question:
-    #         {query}
+            Using only the tools available to you, respond to this:
+            {query}
 
-    #         Cite your sources including the doi if available.
-    #     """
-    # )).strip()
+            Cite your sources including the doi if available.
+        """
+    )).strip()
 
     def validate_agent_reply(self, agent_reply):
         ''' Returns True if the question was answered, otherwise False. '''
         if (
             not agent_reply
-            or len(agent_reply) < 40
             or agent_reply == "Agent stopped due to iteration limit or time limit"
         ):
             return False
 
         # TODO: encode "Yes" and "No", then ask llm if the question was answered
 
-        negatives = ["tool", "I cannot", "I can't", "I could not", "I couldn't", "is not mentioned", "isn't mentioned", "unable"]
+        negatives = ["I cannot", "I can't", "I could not", "I couldn't", "is not mentioned", "isn't mentioned", "unable"]
         if any(term in agent_reply for term in negatives):
             return False
 
         return True
+
+    def try_the_agents(self, prompt, convo, service, channel):
+        '''
+        Let the langchain agents weigh in by injecting thoughts.
+        They do not speak directly.
+        '''
+        if convo:
+            if self.config.get('vectorstores'):
+                log.warning("🕵🏼‍♀️  Consult the vector agent.")
+                reply = self.get_vector_agent_reply(convo)
+                if self.validate_agent_reply(reply):
+                    self.inject_idea(
+                        service,
+                        channel,
+                        reply,
+                        verb="thinks"
+                    )
+                    return reply
+                else:
+                    self.inject_idea(
+                        service,
+                        channel,
+                        "I could find no specific information about that topic in the library.",
+                        verb="thinks"
+                    )
+                    log.warning("🤷 Vector agent was no help.")
+
+            log.warning("🕵️  Consult the generic agent.")
+            reply = self.get_generic_agent_reply(service, channel, convo)
+
+            if self.validate_agent_reply(reply):
+                log.warning("🕵️  Generic agent success:", reply)
+                self.inject_idea(
+                    service,
+                    channel,
+                    reply,
+                    verb="thinks"
+                )
+            else:
+                log.warning("🤷 Generic agent was no help.")
 
     def gather_memories(self, service, channel, entities, visited=None):
         '''
@@ -318,7 +373,7 @@ class Interact():
                     f"{self.config.id.name} can't recall a specific relevant experience.",
                     f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from online sources, not direct participation.",
                     f"{self.config.id.name}'s understanding of the issue is academic, not experiential.",
-                    f"they can theorize about the topic, but can't draw upon any relevant personal experiences.",
+                    f"{self.config.id.name} can theorize about the topic, but can't draw upon any relevant personal experiences.",
                     f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic.",
                     f"that {self.config.id.name} has only circumstantial knowledge about the topic, not personal insights.",
                     f"that while they can offer informed opinions, {self.config.id.name} hasn't had a relevant direct experience.",
@@ -501,6 +556,41 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
+    def get_generic_agent_reply(self, service: str, channel: str, convo: List[str]):
+        ''' Try to take an action using the agent '''
+        prompt = self.generate_prompt(
+            self.recall.summaries(service, channel, size=3),
+            convo,
+            service,
+            channel
+        )
+
+        try:
+            ret = self.generic_agent.run(prompt)
+        except InvalidRequestError as err:
+            log.error("🕵️‍♂️  Agent generated an exception, skipping:", err)
+            return None
+
+        if ret == "Agent stopped due to iteration limit or time limit.":
+            log.warning("🕵️‍♂️ ", ret)
+            return None
+
+        if ret.startswith("say:"):
+            ret = ret.split(':', maxsplit=1)[1].strip()
+            log.warning("🕵️‍♂️  Say something about:", ret)
+            return ret
+
+        if ret.startswith("photo:"):
+            ret = ret.split(':', maxsplit=1)[1].strip()
+            log.warning("🕵️‍♂️  Take a photo of:", ret)
+            self.inject_idea(service, channel, f"to take a photo of {ret}", verb="decides")
+            self.generate_photo(service, channel, ret)
+            return None
+
+        log.warning("🕵️‍♂️  Found an answer:", ret)
+        return ret
+
+
     # Need to instrument this. It takes far too long and isn't async.
     def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
@@ -588,23 +678,13 @@ class Interact():
             convo = self.recall.convo(service, channel, feels=True)
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        log.warning("🕵️‍♀️  Consult the vector agent.")
-        reply = self.get_vector_agent_reply(convo)
-        if self.validate_agent_reply(reply):
-            log.warning("🕵️‍♀️  Agent success:", reply)
-            self.inject_idea(service, channel, idea=reply, verb="thinks")
-            # self.send_chat(service, channel, reply)
+        # The agents can only inject ideas. They do not speak for themselves.
+        self.try_the_agents(prompt, convo, service, channel)
 
-            # # next reply will continue the thought
-            # convo[-1] = f"{self.config.id.name}: {reply}"
+        convo = self.recall.convo(service, channel, feels=True)
+        prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        else:
-            # self.inject_idea(service, channel, reply, verb="thinks")
-            log.warning("🤷 Agent was no help.")
-
-            convo = self.recall.convo(service, channel, feels=True)
-            prompt = self.generate_prompt(summaries, convo, service, channel, lts)
-            reply = self.completion.get_reply(prompt)
+        reply = self.completion.get_reply(prompt)
 
         if self.custom_filter:
             try:
@@ -625,7 +705,10 @@ class Interact():
             for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
                 self.read_url(service, channel, url)
 
-        return reply
+        log.info(f"💬 get_reply done: {reply}")
+
+        # looping?
+        # return reply
 
     def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
