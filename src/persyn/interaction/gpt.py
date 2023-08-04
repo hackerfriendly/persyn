@@ -18,6 +18,7 @@ import numpy as np
 
 from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
+from langchain.llms.openai import BaseOpenAI
 from langchain import LLMChain
 
 from ftfy import fix_text
@@ -27,6 +28,12 @@ from persyn.utils.color_logging import ColorLog
 from persyn.interaction.feels import closest_emoji
 
 log = ColorLog()
+
+def the_llm(model, **kwargs):
+    ''' Construct the proper LLM object for model '''
+    if model.startswith('gpt-'):
+        return ChatOpenAI(**kwargs)
+    return OpenAI(**kwargs)
 
 class GPT():
     ''' Container for OpenAI completion requests '''
@@ -53,23 +60,26 @@ class GPT():
         openai.api_base = config.completion.api_base
         openai.organization = config.completion.openai_org
 
-        self.completion_llm = ChatOpenAI(
+        self.completion_llm = the_llm(
             model=self.completion_model,
             temperature=self.config.completion.temperature,
             max_tokens=150,
-            openai_api_key=self.config.completion.api_key
+            openai_api_key=self.config.completion.api_key,
+            openai_organization=self.config.completion.openai_org
         )
-        self.summary_llm = ChatOpenAI(
+        self.summary_llm = the_llm(
             model=self.summary_model,
             temperature=self.config.completion.temperature,
             max_tokens=50,
-            openai_api_key=self.config.completion.api_key
+            openai_api_key=self.config.completion.api_key,
+            openai_organization=self.config.completion.openai_org
         )
-        self.feels_llm = ChatOpenAI(
+        self.feels_llm = the_llm(
             model=self.completion_model,
             temperature=self.config.completion.temperature,
             max_tokens=10,
-            openai_api_key=self.config.completion.api_key
+            openai_api_key=self.config.completion.api_key,
+            openai_organization=self.config.completion.openai_org,
         )
 
     def get_enc(self, model=None):
@@ -87,13 +97,7 @@ class GPT():
         if model is None:
             model = self.completion_model
 
-        if model.startswith('gpt-4'):
-            return 8192
-        if model.startswith('gpt-3.5') or model.startswith('text-davinci-'):
-            return 4097
-
-        # Most models are 2k
-        return 2048
+        return BaseOpenAI.modelname_to_contextsize(model)
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
