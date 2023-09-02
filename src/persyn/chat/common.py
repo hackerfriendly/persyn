@@ -130,7 +130,7 @@ class Chat():
 
         log.warning(f"[{channel}] {self.bot_name}:", reply)
 
-        if self.dreams_url and any(verb in reply for verb in self.photo_triggers):
+        if self.dreams_url and reply and any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
                 channel,
                 self.get_summary(channel),
