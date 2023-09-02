@@ -222,11 +222,7 @@ class GPT():
             log.warning("🤔 No reply, trying again...")
             response = self.trim(llm_chain.predict(prompt=prompt))
 
-        if len(prompt) < 500:
-            log.info(f"🧠 Prompt: {prompt}")
-        else:
-            log.info(f"🧠 Prompt: {prompt[:250]}...\n...{prompt[-250:]}")
-
+        log.info(f"🧠 Prompt: {prompt}")
         log.info(f"🧠 👉 {response}")
 
         return response
