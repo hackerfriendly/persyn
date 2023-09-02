@@ -93,6 +93,11 @@ def say_something(query: str) -> str:
     """ Continue the conversation. """
     return query
 
+@tool(return_direct=True)
+def ask_a_question(query: str) -> str:
+    """ Ask the other person a question """
+    return query
+
 class Interact():
     '''
     The Interact class contains all language handling routines and maintains
@@ -129,6 +134,7 @@ class Interact():
                 return_direct=True
             ),
             say_something,
+            ask_a_question,
             we_are_done,
             take_a_photo
         ]
@@ -707,8 +713,7 @@ class Interact():
 
         log.info(f"💬 get_reply done: {reply}")
 
-        # looping?
-        # return reply
+        return reply
 
     def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
