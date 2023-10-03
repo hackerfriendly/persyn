@@ -23,7 +23,9 @@ from subprocess import run
 
 import requests
 import uvicorn
+import boto3
 
+from botocore.exceptions import ClientError
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.responses import RedirectResponse
 
@@ -56,8 +58,22 @@ def post_to_autobus(service, channel, prompt, images, bot_name, bot_id):
     log.info(f"🚌 Image post: {len(images)} sent to autobus")
 
 def upload_files(files):
-    ''' scp files to SCPDEST. Expects a Path glob generator. '''
+    ''' Upload files via scp or s3. Expects a Path glob generator. '''
     scpopts = getattr(persyn_config.dreams.upload, 'opts', None)
+    bucket = getattr(persyn_config.dreams.upload, 'bucket', None)
+    prefix = getattr(persyn_config.dreams.upload, 'dest_path', '')
+
+    if bucket:
+        for file in files:
+            s3_client = boto3.client('s3')
+            try:
+                response = s3_client.upload_file(file, bucket, f'{prefix}{os.path.basename(file)}')
+            except ClientError as e:
+                log.error(e)
+            continue
+        return
+
+    # no bucket. Use scp instead.
     if scpopts:
         run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
     else:
