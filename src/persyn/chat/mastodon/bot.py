@@ -127,7 +127,7 @@ class Mastodon():
 
     def get_text(self, msg):
         ''' Extract just the text from a message (no HTML or @username) '''
-        return BeautifulSoup(msg, features="html.parser").text.strip().replace(f'@{self.client.me().username} ','')
+        return BeautifulSoup(msg, features="lxml").text.strip().replace(f'@{self.client.me().username} ','')
 
     def fetch_and_post_image(self, url, msg):
         ''' Download the image at URL and post it to Mastodon '''

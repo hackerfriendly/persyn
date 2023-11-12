@@ -307,7 +307,7 @@ def text_from_url(url, selector='body'):
         log.error(f"🗞️ Could not fetch article {url}", err)
         return ''
 
-    soup = BeautifulSoup(article.text, 'html')
+    soup = BeautifulSoup(article.text, features="lxml")
     story = []
     for line in soup.select_one(selector).text.split('\n'):
         if not line:

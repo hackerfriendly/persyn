@@ -101,7 +101,7 @@ class ZimWrapper(BaseModel):
         web = requests.get(f"{self.search_url}{query}", timeout=10)
         web.raise_for_status()
 
-        soup = BeautifulSoup(web.text, 'html')
+        soup = BeautifulSoup(web.text, features="lxml")
         ret = []
         for elm in soup.select_one('.results').select('li')[:top]:
             href = elm.select_one('a')
@@ -136,9 +136,9 @@ class ZimWrapper(BaseModel):
 
         ret = []
         if self.zim:
-            soup = BeautifulSoup(bytes(entry.get_item().content).decode("UTF-8"), 'html')
+            soup = BeautifulSoup(bytes(entry.get_item().content).decode("UTF-8"), features="lxml")
         else:
-            soup = BeautifulSoup(entry, 'html')
+            soup = BeautifulSoup(entry, features="lxml")
 
         # (╯°□°)╯︵ ┻━┻
         for table in soup.select('table'):
