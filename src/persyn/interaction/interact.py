@@ -12,7 +12,7 @@ from typing import Optional, List
 
 import requests
 
-from langchain import LLMMathChain, OpenAI
+from langchain import LLMMathChain, OpenAI # pylint: disable=no-name-in-module
 from langchain.agents import AgentType, initialize_agent
 from langchain.agents.agent_toolkits import create_vectorstore_router_agent, VectorStoreInfo
 from langchain.agents.agent_toolkits.base import BaseToolkit
@@ -22,6 +22,7 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.tools import BaseTool, Tool, tool
 from langchain.tools.vectorstore.tool import VectorStoreQATool, VectorStoreQAWithSourcesTool
 from langchain.vectorstores import Redis
+from langchain.memory import ConversationBufferMemory
 
 from openai.error import InvalidRequestError
 
@@ -127,21 +128,9 @@ class Interact():
 
         # generic agent tools
         agent_tools = [
-            Tool(
-                name="Calculator",
-                func=LLMMathChain.from_llm(llm=self.llm, verbose=True).run,
-                description="Answer simple math questions accurately. Inputs should be simple expressions, like 2+2. This tool does not accept python code.",
-                return_direct=True
-            ),
             say_something,
-            ask_a_question,
             we_are_done,
             take_a_photo
-        ]
-
-        # vectorstore agent tools
-        vector_tools = [
-            we_are_done
         ]
 
         # zim / kiwix data sources
@@ -161,7 +150,7 @@ class Interact():
             for vs in self.config.vectorstores:
                 log.info("💾 Loading vectorstore:", vs)
 
-                vectorstore = Redis(
+                vectorstore = Redis( # pylint: disable=no-value-for-parameter
                     redis_url=persyn_config.memory.redis,
                     index_name=self.config.vectorstores.get(vs).index,
                     embedding_function=embeddings.embed_query,
@@ -185,7 +174,7 @@ class Interact():
             You have access to tools for interacting with different sources, and the inputs to the tools are questions.
             For complex questions, you can break the question down into sub questions and use tools to answers the sub questions.
             Use whichever tool is relevant for answering the question at hand. If a tool is not relevant, do not use it.
-            If no tools are relevant, finish with "Thought:I now know the final answer."
+            If no tools are relevant, finish with "Thought: I now know the final answer."
             If you are unable to answer the question, finish with "Final Answer: I could not find a suitable answer."
             """,
             agent_executor_kwargs = {
@@ -195,12 +184,16 @@ class Interact():
             }
         )
 
+        self.cbm = ConversationBufferMemory(memory_key="chat_history")
+
         self.generic_agent = initialize_agent(
             agent_tools,
             self.llm,
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            # agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            memory=self.cbm
         )
 
         self.enc = self.completion.model.get_enc()
@@ -305,7 +298,7 @@ class Interact():
         if convo:
             if self.config.get('vectorstores'):
                 log.warning("🕵🏼‍♀️  Consult the vector agent.")
-                reply = self.get_vector_agent_reply(convo)
+                reply = self.get_vector_agent_reply([prompt] + convo)
                 if self.validate_agent_reply(reply):
                     self.inject_idea(
                         service,
@@ -314,17 +307,12 @@ class Interact():
                         verb="thinks"
                     )
                     return reply
-                else:
-                    self.inject_idea(
-                        service,
-                        channel,
-                        "I could find no specific information about that topic in the library.",
-                        verb="thinks"
-                    )
-                    log.warning("🤷 Vector agent was no help.")
+
+                log.warning("🤷 Vector agent was no help.")
 
             log.warning("🕵️  Consult the generic agent.")
             reply = self.get_generic_agent_reply(service, channel, convo)
+            # reply = None
 
             if self.validate_agent_reply(reply):
                 log.warning("🕵️  Generic agent success:", reply)
@@ -334,8 +322,11 @@ class Interact():
                     reply,
                     verb="thinks"
                 )
-            else:
-                log.warning("🤷 Generic agent was no help.")
+                return reply
+
+            log.warning("🤷 Generic agent was no help.")
+
+        return None
 
     def gather_memories(self, service, channel, entities, visited=None):
         '''
@@ -346,7 +337,7 @@ class Interact():
         if visited is None:
             visited = []
 
-        convo = self.recall.convo(service, channel, feels=True)
+        convo = self.recall.convo(service, channel, feels=False)
 
         if not convo:
             return visited
@@ -376,13 +367,9 @@ class Interact():
             self.inject_idea(
                 service, channel,
                 random.choice([
-                    f"{self.config.id.name} can't recall a specific relevant experience.",
-                    f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from online sources, not direct participation.",
-                    f"{self.config.id.name}'s understanding of the issue is academic, not experiential.",
-                    f"{self.config.id.name} can theorize about the topic, but can't draw upon any relevant personal experiences.",
-                    f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic.",
-                    f"that {self.config.id.name} has only circumstantial knowledge about the topic, not personal insights.",
-                    f"that while they can offer informed opinions, {self.config.id.name} hasn't had a relevant direct experience.",
+                    f"{self.config.id.name} isn't sure what is being discussed.",
+                    f"{self.config.id.name} is interested, but unsure.",
+                    f"while they can offer informed opinions, {self.config.id.name} hasn't had much relevant direct experience.",
                 ]),
                 verb="realizes"
             )
@@ -564,6 +551,8 @@ class Interact():
 
     def get_generic_agent_reply(self, service: str, channel: str, convo: List[str]):
         ''' Try to take an action using the agent '''
+        self.cbm.clear()
+
         prompt = self.generate_prompt(
             self.recall.summaries(service, channel, size=3),
             convo,
@@ -619,7 +608,7 @@ class Interact():
                 verb='dialog'
             )
 
-        convo = self.recall.convo(service, channel, feels=True)
+        convo = self.recall.convo(service, channel, feels=False)
         last_sentence = None
 
         if convo:
@@ -655,14 +644,14 @@ class Interact():
             convo.append(last_sentence)
 
         summaries = []
-        for doc in self.recall.summaries(service, channel, None, size=5, raw=True):
+        for doc in self.recall.summaries(service, channel, None, size=1, raw=True):
             if doc.convo_id not in visited and doc.summary not in summaries:
                 log.warning("💬 Adding summary:", doc.summary)
                 summaries.append(doc.summary)
                 visited.append(doc.convo_id)
 
         lts = self.recall.get_last_timestamp(service, channel)
-        convo = self.recall.convo(service, channel, feels=True)
+        convo = self.recall.convo(service, channel, feels=False)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
@@ -681,13 +670,13 @@ class Interact():
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
                 return " :dancer: :interrobang: "
 
-            convo = self.recall.convo(service, channel, feels=True)
+            convo = self.recall.convo(service, channel, feels=False)
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
         # The agents can only inject ideas. They do not speak for themselves.
         self.try_the_agents(prompt, convo, service, channel)
 
-        convo = self.recall.convo(service, channel, feels=True)
+        convo = self.recall.convo(service, channel, feels=False)
         prompt = self.generate_prompt([], convo, service, channel, lts)
 
         reply = self.completion.get_reply(prompt)
