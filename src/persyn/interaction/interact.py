@@ -12,20 +12,6 @@ from typing import Optional, List
 
 import requests
 
-from langchain import LLMMathChain, OpenAI # pylint: disable=no-name-in-module
-from langchain.agents import AgentType, initialize_agent
-from langchain.agents.agent_toolkits import create_vectorstore_router_agent, VectorStoreInfo
-from langchain.agents.agent_toolkits.base import BaseToolkit
-from langchain.base_language import BaseLanguageModel
-from langchain.chat_models import ChatOpenAI
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.tools import BaseTool, Tool, tool
-from langchain.tools.vectorstore.tool import VectorStoreQATool, VectorStoreQAWithSourcesTool
-from langchain.vectorstores import Redis
-from langchain.memory import ConversationBufferMemory
-
-from openai.error import InvalidRequestError
-
 from pydantic import Field
 
 # Long and short term memory
@@ -50,54 +36,6 @@ def doiify(text):
         lambda match: match.group(0) if match.group(2) is None else f'https://doi.org/{match.group(2)}',
         text
     ).rstrip('.')
-
-class MyVectorStoreRouterToolkit(BaseToolkit):
-    """Toolkit for routing between vector stores."""
-
-    vectorstores: List[VectorStoreInfo] = Field(exclude=True)
-    llm: BaseLanguageModel = Field(default_factory=lambda: OpenAI(temperature=0))
-    tools: Optional[List[BaseTool]] = []
-
-    class Config:
-        """Configuration for this pydantic object."""
-
-        arbitrary_types_allowed = True
-
-    def get_tools(self) -> List[BaseTool]:
-        """Get the tools in the toolkit."""
-        tools: List[BaseTool] = []
-        for vectorstore_info in self.vectorstores:
-            description = VectorStoreQATool.get_description(
-                vectorstore_info.name, vectorstore_info.description
-            )
-            qa_tool = VectorStoreQAWithSourcesTool(
-                name=vectorstore_info.name,
-                description=description,
-                vectorstore=vectorstore_info.vectorstore,
-                llm=self.llm,
-            )
-            tools.append(qa_tool)
-        return tools + self.tools
-
-@tool("None", return_direct=False)
-def we_are_done(query: str) -> str:
-    """Time to finish up."""
-    return "I now have all the information requested in the original question."
-
-@tool(return_direct=True)
-def take_a_photo(query: str) -> str:
-    """ Think of anything and instantly take a photo of whatever you imagine. """
-    return f"photo:{query}"
-
-@tool(return_direct=True)
-def say_something(query: str) -> str:
-    """ Continue the conversation. """
-    return query
-
-@tool(return_direct=True)
-def ask_a_question(query: str) -> str:
-    """ Ask the other person a question """
-    return query
 
 class Interact():
     '''
@@ -124,77 +62,18 @@ class Interact():
 
         # Langchain
         self.llm = self.completion.model.completion_llm
-        embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.api_key)
 
-        # generic agent tools
-        agent_tools = [
-            say_something,
-            we_are_done,
-            take_a_photo
-        ]
-
-        # zim / kiwix data sources
-        if self.config.get('zim'):
-            for cfgtool in self.config.zim:
-                log.info("💿 Loading zim:", cfgtool)
-                zim = Tool(
-                        name=str(cfgtool),
-                        func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
-                        description=self.config.zim.get(cfgtool).description
-                    )
-                agent_tools.append(zim)
-                vector_tools.append(zim)
-
-        vectorstores = []
-        if self.config.get('vectorstores'):
-            for vs in self.config.vectorstores:
-                log.info("💾 Loading vectorstore:", vs)
-
-                vectorstore = Redis( # pylint: disable=no-value-for-parameter
-                    redis_url=persyn_config.memory.redis,
-                    index_name=self.config.vectorstores.get(vs).index,
-                    embedding_function=embeddings.embed_query,
-                )
-
-                vectorstores.append(VectorStoreInfo(
-                    name=self.config.vectorstores.get(vs).name,
-                    description=self.config.vectorstores.get(vs).description,
-                    vectorstore=vectorstore
-                ))
-
-        router_toolkit = MyVectorStoreRouterToolkit(
-            vectorstores=vectorstores,
-            llm=self.llm,
-            tools=vector_tools
-        )
-
-        self.vector_agent = create_vectorstore_router_agent(
-            llm=self.llm, toolkit=router_toolkit, verbose=True,
-            prefix="""You are an agent designed to answer questions.
-            You have access to tools for interacting with different sources, and the inputs to the tools are questions.
-            For complex questions, you can break the question down into sub questions and use tools to answers the sub questions.
-            Use whichever tool is relevant for answering the question at hand. If a tool is not relevant, do not use it.
-            If no tools are relevant, finish with "Thought: I now know the final answer."
-            If you are unable to answer the question, finish with "Final Answer: I could not find a suitable answer."
-            """,
-            agent_executor_kwargs = {
-                'max_iterations': 10,
-                'max_execution_time': 60,
-                'handle_parsing_errors': True
-            }
-        )
-
-        self.cbm = ConversationBufferMemory(memory_key="chat_history")
-
-        self.generic_agent = initialize_agent(
-            agent_tools,
-            self.llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-            # agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
-            verbose=True,
-            handle_parsing_errors=True,
-            memory=self.cbm
-        )
+        # # zim / kiwix data sources
+        # if self.config.get('zim'):
+        #     for cfgtool in self.config.zim:
+        #         log.info("💿 Loading zim:", cfgtool)
+        #         zim = Tool(
+        #                 name=str(cfgtool),
+        #                 func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
+        #                 description=self.config.zim.get(cfgtool).description
+        #             )
+        #         agent_tools.append(zim)
+        #         vector_tools.append(zim)
 
         self.enc = self.completion.model.get_enc()
 
@@ -258,75 +137,6 @@ class Interact():
             return "\n".join(text[-context_lines:] + [summary])
 
         return summary
-
-    def get_vector_agent_reply(self, context: List[str]):
-        ''' Run the agent executor'''
-        convo = '\n'.join(context[:-1])
-        query = context[-1]
-        return doiify(self.vector_agent.run(f"""
-            Examine the following conversation:
-            {convo}
-
-            Using only the tools available to you, respond to this:
-            {query}
-
-            Cite your sources including the doi if available.
-        """
-    )).strip()
-
-    def validate_agent_reply(self, agent_reply):
-        ''' Returns True if the question was answered, otherwise False. '''
-        if (
-            not agent_reply
-            or agent_reply == "Agent stopped due to iteration limit or time limit"
-        ):
-            return False
-
-        # TODO: encode "Yes" and "No", then ask llm if the question was answered
-
-        negatives = ["I cannot", "I can't", "I could not", "I couldn't", "is not mentioned", "isn't mentioned", "unable"]
-        if any(term in agent_reply for term in negatives):
-            return False
-
-        return True
-
-    def try_the_agents(self, prompt, convo, service, channel):
-        '''
-        Let the langchain agents weigh in by injecting thoughts.
-        They do not speak directly.
-        '''
-        if convo:
-            if self.config.get('vectorstores'):
-                log.warning("🕵🏼‍♀️  Consult the vector agent.")
-                reply = self.get_vector_agent_reply([prompt] + convo)
-                if self.validate_agent_reply(reply):
-                    self.inject_idea(
-                        service,
-                        channel,
-                        reply,
-                        verb="thinks"
-                    )
-                    return reply
-
-                log.warning("🤷 Vector agent was no help.")
-
-            log.warning("🕵️  Consult the generic agent.")
-            reply = self.get_generic_agent_reply(service, channel, convo)
-            # reply = None
-
-            if self.validate_agent_reply(reply):
-                log.warning("🕵️  Generic agent success:", reply)
-                self.inject_idea(
-                    service,
-                    channel,
-                    reply,
-                    verb="thinks"
-                )
-                return reply
-
-            log.warning("🤷 Generic agent was no help.")
-
-        return None
 
     def gather_memories(self, service, channel, entities, visited=None):
         '''
@@ -549,43 +359,6 @@ class Interact():
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
-    def get_generic_agent_reply(self, service: str, channel: str, convo: List[str]):
-        ''' Try to take an action using the agent '''
-        self.cbm.clear()
-
-        prompt = self.generate_prompt(
-            self.recall.summaries(service, channel, size=3),
-            convo,
-            service,
-            channel
-        )
-
-        try:
-            ret = self.generic_agent.run(prompt)
-        except InvalidRequestError as err:
-            log.error("🕵️‍♂️  Agent generated an exception, skipping:", err)
-            return None
-
-        if ret == "Agent stopped due to iteration limit or time limit.":
-            log.warning("🕵️‍♂️ ", ret)
-            return None
-
-        if ret.startswith("say:"):
-            ret = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("🕵️‍♂️  Say something about:", ret)
-            return ret
-
-        if ret.startswith("photo:"):
-            ret = ret.split(':', maxsplit=1)[1].strip()
-            log.warning("🕵️‍♂️  Take a photo of:", ret)
-            self.inject_idea(service, channel, f"to take a photo of {ret}", verb="decides")
-            self.generate_photo(service, channel, ret)
-            return None
-
-        log.warning("🕵️‍♂️  Found an answer:", ret)
-        return ret
-
-
     # Need to instrument this. It takes far too long and isn't async.
     def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
@@ -672,12 +445,6 @@ class Interact():
 
             convo = self.recall.convo(service, channel, feels=False)
             prompt = self.generate_prompt([], convo, service, channel, lts)
-
-        # The agents can only inject ideas. They do not speak for themselves.
-        self.try_the_agents(prompt, convo, service, channel)
-
-        convo = self.recall.convo(service, channel, feels=False)
-        prompt = self.generate_prompt([], convo, service, channel, lts)
 
         reply = self.completion.get_reply(prompt)
 
