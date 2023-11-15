@@ -26,9 +26,6 @@ from persyn.interaction.feels import closest_emoji
 
 log = ColorLog()
 
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
 def get_oai_embedding(text: str, model="text-similarity-davinci-001", **kwargs) -> List[float]:
 
     # replace newlines, which can negatively affect performance.
@@ -217,9 +214,9 @@ class GPT():
         ''' Return the embedding for text '''
         return  np.array(get_oai_embedding(text, model=model), dtype=np.float32).tobytes()
 
-    def cosine_similarity(self, vec1, vec2):
+    def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''
-        return cosine_similarity(vec1, vec2)
+        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
     def get_reply(self, prompt):
         '''
@@ -229,11 +226,12 @@ class GPT():
 
         template = """Compose the next line of the following play:\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.completion_llm, template=template)
-        response = self.trim(llm_chain.predict(prompt=prompt))
+        # response = self.trim(llm_chain.predict(prompt=prompt))
+        response = llm_chain.predict(prompt=prompt)
 
         if not response:
             log.warning("🤔 No reply, trying again...")
-            response = self.trim(llm_chain.predict(prompt=prompt))
+            response = llm_chain.predict(prompt=prompt)
 
         log.info(f"🧠 Prompt: {prompt}")
         log.info(f"🧠 👉 {response}")
