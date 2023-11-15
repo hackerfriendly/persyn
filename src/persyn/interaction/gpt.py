@@ -1,25 +1,22 @@
-''' OpenAI completion engine '''
+''' OpenAI completion '''
 # pylint: disable=invalid-name
 
 import re
 
 from collections import Counter
+from typing import List, Optional
 
 import spacy
 import tiktoken
 
 import openai
-from openai.embeddings_utils import (
-    get_embedding as oai_get_embedding,
-    cosine_similarity as oai_cosine_similarity
-)
 
 import numpy as np
 
 from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
 from langchain.llms.openai import BaseOpenAI
-from langchain import LLMChain
+from langchain.chains import LLMChain
 
 from ftfy import fix_text
 
@@ -28,6 +25,16 @@ from persyn.utils.color_logging import ColorLog
 from persyn.interaction.feels import closest_emoji
 
 log = ColorLog()
+
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def get_oai_embedding(text: str, model="text-similarity-davinci-001", **kwargs) -> List[float]:
+
+    # replace newlines, which can negatively affect performance.
+    text = text.replace("\n", " ")
+
+    return openai.embeddings.create(input=[text], model=model, **kwargs).data[0].embedding
 
 def the_llm(model, **kwargs):
     ''' Construct the proper LLM object for model '''
@@ -97,7 +104,13 @@ class GPT():
         if model is None:
             model = self.completion_model
 
-        return BaseOpenAI.modelname_to_contextsize(model)
+        try:
+            return BaseOpenAI.modelname_to_contextsize(model)
+        except ValueError:
+            if model == 'gpt-4-1106-preview':
+                return 128 * 1024
+            else:
+                raise RuntimeError(f'Unknown contextsize for model {model}. Try updating openai.')
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
@@ -200,13 +213,13 @@ class GPT():
         enc = self.get_enc(model)
         return enc.decode(enc.encode(text)[:maxlen])
 
-    def get_embedding(self, text, engine='text-embedding-ada-002'):
+    def get_embedding(self, text, model='text-embedding-ada-002'):
         ''' Return the embedding for text '''
-        return  np.array(oai_get_embedding(text, engine=engine), dtype=np.float32).tobytes()
+        return  np.array(get_oai_embedding(text, model=model), dtype=np.float32).tobytes()
 
     def cosine_similarity(self, vec1, vec2):
         ''' Cosine similarity for two embeddings '''
-        return oai_cosine_similarity(vec1, vec2)
+        return cosine_similarity(vec1, vec2)
 
     def get_reply(self, prompt):
         '''
