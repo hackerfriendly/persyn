@@ -14,8 +14,7 @@ import openai
 import numpy as np
 
 from langchain.chat_models import ChatOpenAI
-from langchain.llms import OpenAI
-from langchain.llms.openai import BaseOpenAI
+from langchain.llms.openai import OpenAI, BaseOpenAI
 from langchain.chains import LLMChain
 
 from ftfy import fix_text
@@ -26,16 +25,15 @@ from persyn.interaction.feels import closest_emoji
 
 log = ColorLog()
 
-def get_oai_embedding(text: str, model="text-similarity-davinci-001", **kwargs) -> List[float]:
-
+def get_oai_embedding(text: str, model="text-embedding-ada-002", **kwargs) -> List[float]:
     # replace newlines, which can negatively affect performance.
     text = text.replace("\n", " ")
 
     return openai.embeddings.create(input=[text], model=model, **kwargs).data[0].embedding
 
-def the_llm(model, **kwargs):
+def the_llm(**kwargs):
     ''' Construct the proper LLM object for model '''
-    if model.startswith('gpt-'):
+    if kwargs['model'].startswith('gpt-'):
         return ChatOpenAI(**kwargs)
     return OpenAI(**kwargs)
 
@@ -86,6 +84,9 @@ class GPT():
             openai_organization=self.config.completion.openai_org,
         )
 
+        log.warning(f"🤖 completion model: {self.completion_model}")
+        log.warning(f"🤖 summary model: {self.summary_model}")
+
     def get_enc(self, model=None):
         ''' Return the encoder for model_name '''
         if model is None:
@@ -103,11 +104,11 @@ class GPT():
 
         try:
             return BaseOpenAI.modelname_to_contextsize(model)
-        except ValueError:
+        except ValueError as err:
             if model == 'gpt-4-1106-preview':
                 return 128 * 1024
             else:
-                raise RuntimeError(f'Unknown contextsize for model {model}. Try updating openai.')
+                raise err
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
