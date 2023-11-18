@@ -5,21 +5,8 @@ feels.py: emoji and emotions
 
 import random
 
-# scikit-learn profanity filter (alt-profanity-check)
-from profanity_check import predict_prob as profanity_prob
-
 # edit distance
 from Levenshtein import ratio
-
-# flair sentiment
-import flair
-
-# spacy sentiment
-import spacy
-from spacytextblob.spacytextblob import SpacyTextBlob
-
-# Only load the model once when we need it. Uses GPU if available.
-flair_sentiment = None
 
 # Not actually "all" emoji, but all the emoji we can randomly respond with.
 reply_emoji = (
@@ -308,40 +295,3 @@ def get_spectrum(score):
 def get_degree(score):
     ''' Turn a 0.0-1.0 score into a degree '''
     return degrees[int(score * (len(degrees) - 1))]
-
-def get_profanity_score(prompt):
-    ''' Profanity analysis with slkearn. Returns a float, -1.0 to 0 '''
-    return -profanity_prob([prompt])[0]
-
-def get_flair_score(prompt):
-    ''' Run the flair sentiment prediction model. Returns a float, -1.0 to 1.0 '''
-    global flair_sentiment
-    if not flair_sentiment:
-        flair_sentiment = flair.models.TextClassifier.load('en-sentiment')
-    sent = flair.data.Sentence(prompt)
-    flair_sentiment.predict(sent)
-
-    if sent.labels[0].value == 'NEGATIVE':
-        return -sent.labels[0].score
-
-    return sent.labels[0].score
-
-class Sentiment():
-    def __init__(self, engine="flair", model=None):
-        self.engine = engine
-        # `model` doesn't do anything for Flair right now because we're not
-        # loading the Flair model here
-        self.model = model
-
-        if self.engine == "spacy":
-            self.nlp = spacy.load(self.model or "en_core_web_sm")
-            self.nlp.add_pipe('spacytextblob')
-
-    def get_sentiment_score(self, prompt):
-        if self.engine == "spacy":
-            doc = self.nlp(prompt)
-            return doc._.blob.polarity
-        return get_flair_score(prompt)
-
-    def get_profanity_score(self, prompt):
-        return get_profanity_score(prompt)

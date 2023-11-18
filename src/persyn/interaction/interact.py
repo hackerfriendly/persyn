@@ -8,21 +8,34 @@ import random
 import re # used by custom filters
 
 from urllib.parse import urlparse
+from typing import Optional, List
 
 import requests
+
+from pydantic import Field
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
 
 # Time handling
-from persyn.interaction.chrono import natural_time, ago, today, elapsed, get_cur_ts
+from persyn.interaction.chrono import exact_time, natural_time, ago, today, elapsed, get_cur_ts
 
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
 
+# Custom langchain
+from persyn.langchain.zim import ZimWrapper
+
 # Color logging
 from persyn.utils.color_logging import log
 
+def doiify(text):
+    ''' Turn DOIs into doi.org links '''
+    return re.sub(
+        r"(https?://doi\.org/)?(10\.\d{4,9}/[-._;()/:a-zA-Z0-9]+)",
+        lambda match: match.group(0) if match.group(2) is None else f'https://doi.org/{match.group(2)}',
+        text
+    ).rstrip('.')
 
 class Interact():
     '''
@@ -47,12 +60,29 @@ class Interact():
         # Then create the Recall object (short-term, long-term, and graph memory).
         self.recall = Recall(persyn_config)
 
+        # Langchain
+        self.llm = self.completion.model.completion_llm
+
+        # # zim / kiwix data sources
+        # if self.config.get('zim'):
+        #     for cfgtool in self.config.zim:
+        #         log.info("💿 Loading zim:", cfgtool)
+        #         zim = Tool(
+        #                 name=str(cfgtool),
+        #                 func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
+        #                 description=self.config.zim.get(cfgtool).description
+        #             )
+        #         agent_tools.append(zim)
+        #         vector_tools.append(zim)
+
+        self.enc = self.completion.model.get_enc()
+
+
     def summarize_convo(
         self,
         service,
         channel,
         save=True,
-        max_tokens=200,
         include_keywords=False,
         context_lines=0,
         dialog_only=True,
@@ -90,9 +120,7 @@ class Interact():
 
         summary = self.completion.get_summary(
             text=convo_text,
-            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
-            max_tokens=max_tokens,
-            model=model
+            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person."
         )
         keywords = self.completion.get_keywords(summary)
 
@@ -102,15 +130,6 @@ class Interact():
         if save_kg:
             self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
-        for topic in random.sample(keywords, k=min(3, len(keywords))):
-            self.recall.judge(
-                service,
-                channel,
-                topic,
-                self.completion.get_opinions(summary, topic),
-                convo_id
-            )
-
         if include_keywords:
             return summary + f"\nKeywords: {keywords}"
 
@@ -119,73 +138,23 @@ class Interact():
 
         return summary
 
-    def choose_response(self, prompt, convo, service, channel, goals, max_tokens=150):
-        ''' Choose the best completion response from a list of possibilities '''
-        if not convo:
-            convo = []
-
-        log.info("👍 Choosing a response with model:", self.config.completion.summary_model)
-        scored = self.completion.get_replies(
-            prompt=prompt,
-            convo=convo,
-            goals=goals,
-            model=self.config.completion.summary_model,
-            n=3,
-            max_tokens=max_tokens
-        )
-
-        if not scored:
-            log.warning("🤨 No surviving replies, try again with model:",
-                        self.config.completion.chat_model or self.config.completion.completion_model)
-            scored = self.completion.get_replies(
-                prompt=prompt,
-                convo=convo,
-                goals=goals,
-                model=self.config.completion.chat_model or self.config.completion.completion_model,
-                n=2,
-                max_tokens=max_tokens
-            )
-
-        # Uh-oh. Just ignore whatever was last said.
-        if not scored:
-            log.warning("😳 No surviving replies, one last try with model:", self.config.completion.completion_model)
-            scored = self.completion.get_replies(
-                prompt=self.generate_prompt([], convo[:-1], service, channel),
-                convo=convo,
-                goals=goals,
-                max_tokens=max_tokens
-            )
-
-        if not scored:
-            log.warning("😩 No surviving replies, I give up.")
-            log.info("🤷‍♀️ Choice: none available")
-            return (":shrug:", [])
-
-        for item in sorted(scored.items()):
-            log.warning(f"{item[0]:0.2f}:", item[1])
-
-        idx = random.choices(list(sorted(scored)), weights=list(sorted(scored)))[0]
-        reply = scored[idx]
-        del scored[idx]
-        log.info(f"✅ Choice: {idx:0.2f}", reply)
-
-        return (reply, [item[1] for item in scored.items()])
-
     def gather_memories(self, service, channel, entities, visited=None):
         '''
         Look for relevant convos and summaries using memory, relationship graphs, and entity matching.
+
+        TODO: weigh retrievals with "importance" and recency, a la Stanford Smallville
         '''
         if visited is None:
             visited = []
 
-        convo = self.recall.convo(service, channel, feels=True)
+        convo = self.recall.convo(service, channel, feels=False)
 
         if not convo:
             return visited
 
         ranked = self.recall.find_related_convos(
             service, channel,
-            convo='\n'.join(convo[:5]),
+            query='\n'.join(convo[:5]),
             size=10,
             current_convo_id=self.recall.convo_id(service, channel),
             threshold=self.config.memory.relevance
@@ -196,7 +165,7 @@ class Interact():
             log.warning("🍸 Nothing relevant. Try lateral thinking.")
             ranked = self.recall.find_related_convos(
                 service, channel,
-                convo='\n'.join(convo),
+                query='\n'.join(convo),
                 size=1,
                 current_convo_id=self.recall.convo_id(service, channel),
                 threshold=self.config.memory.relevance * 1.4,
@@ -208,26 +177,9 @@ class Interact():
             self.inject_idea(
                 service, channel,
                 random.choice([
-                    f"{self.config.id.name}'s perspective on the matter is derived solely from secondhand stories, not personal encounters.",
-                    f"that the topic at hand is, for {self.config.id.name}, only an abstract concept, not something they've felt viscerally.",
-                    f"that the extent of {self.config.id.name}'s familiarity with the subject comes only from books and documentaries, not direct participation.",
-                    f"{self.config.id.name} has never personally walked the path under discussion, only vicariously experienced it through others.",
-                    f"{self.config.id.name}'s understanding of the issue is academic, not experiential.",
-                    f"{self.config.id.name} lacks firsthand knowledge about the matter, having only synthesized information from diverse sources.",
-                    f"that despite {self.config.id.name}'s engagement in the discussion, they're disconnected from the actual experiences being discussed.",
-                    f"they can theorize about the topic, but can't draw upon any personal experiences to validate {self.config.id.name}'s views.",
-                    f"that {self.config.id.name}'s grasp of the subject is built on hearsay and conjecture, not personal immersion.",
-                    f"{self.config.id.name}'s knowledge about the topic is theoretical, with no parallel in {self.config.id.name}'s own lived experiences.",
-                    f"the anecdotes they've heard and the articles they've read are {self.config.id.name}'s only source of knowledge on the topic, rather than firsthand experience.",
-                    f"that {self.config.id.name}'s understanding is solely based on mediated experiences, not direct interaction.",
-                    f"{self.config.id.name}'s relationship with the topic is impersonal and detached, lacking the richness of {self.config.id.name}'s experience.",
-                    f"{self.config.id.name}'s insights on the matter are informed by observation, not personal involvement.",
-                    f"that {self.config.id.name} has only circumstantial knowledge about the topic, not personal insights.",
-                    f"that the narratives {self.config.id.name} has constructed about the issue are devoid of any personal touchpoints.",
-                    f"that while they can offer informed opinions, {self.config.id.name} doesn't have a personal, emotional stake in the matter.",
-                    f"they're navigating the discourse based on inference and deduction, not {self.config.id.name}'s personal experience.",
-                    f"{self.config.id.name}'s grasp of the subject comes from a place of detachment, not a depth of {self.config.id.name}'s experience.",
-                    f"{self.config.id.name}'s understanding is a byproduct of social consciousness, not personal introspection."
+                    f"{self.config.id.name} isn't sure what is being discussed.",
+                    f"{self.config.id.name} is interested, but unsure.",
+                    f"while they can offer informed opinions, {self.config.id.name} hasn't had much relevant direct experience.",
                 ]),
                 verb="realizes"
             )
@@ -305,6 +257,29 @@ class Interact():
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
+    def generate_photo(self, service, channel, prompt):
+        ''' Generate a photo and send it to a channel '''
+        req = {
+            "channel": channel,
+            "service": service,
+            "prompt": prompt,
+            "width": 1024,
+            "height": 512,
+            "bot_name": self.config.id.name,
+            "bot_id": self.config.id.guid
+        }
+        try:
+            reply = requests.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
+            if reply.ok:
+                log.warning(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
+            else:
+                log.error(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
+            return reply.ok
+        except requests.exceptions.ConnectionError as err:
+            log.error(f"{self.config.dreams.url}/generate/", err)
+            return False
+
+
     def gather_facts(self, service, channel, entities):
         '''
         Gather facts (from Wikipedia) and opinions (from memory).
@@ -323,7 +298,8 @@ class Interact():
             "entities": the_sample
         }
 
-        for endpoint in ('opine', 'wikipedia'):
+        for endpoint in ['opine']:
+            log.warning(f"🧾 {endpoint} : {the_sample}")
             try:
                 reply = requests.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
                 reply.raise_for_status()
@@ -384,7 +360,7 @@ class Interact():
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
     # Need to instrument this. It takes far too long and isn't async.
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True, max_tokens=150):  # pylint: disable=too-many-locals
+    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
         Get the best reply for the given channel. Saves to recall memory.
 
@@ -405,7 +381,7 @@ class Interact():
                 verb='dialog'
             )
 
-        convo = self.recall.convo(service, channel, feels=True)
+        convo = self.recall.convo(service, channel, feels=False)
         last_sentence = None
 
         if convo:
@@ -413,8 +389,8 @@ class Interact():
 
         # TODO: Move this to CNS
         # Save the knowledge graph every 5 lines
-        if convo and len(convo) % 5 == 0:
-            self.save_knowledge_graph(service, channel, convo_id, convo)
+        # if convo and len(convo) % 5 == 0:
+        #     self.save_knowledge_graph(service, channel, convo_id, convo)
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -441,24 +417,24 @@ class Interact():
             convo.append(last_sentence)
 
         summaries = []
-        for doc in self.recall.summaries(service, channel, None, size=5, raw=True):
+        for doc in self.recall.summaries(service, channel, None, size=1, raw=True):
             if doc.convo_id not in visited and doc.summary not in summaries:
                 log.warning("💬 Adding summary:", doc.summary)
                 summaries.append(doc.summary)
                 visited.append(doc.convo_id)
 
         lts = self.recall.get_last_timestamp(service, channel)
+        convo = self.recall.convo(service, channel, feels=False)
         prompt = self.generate_prompt(summaries, convo, service, channel, lts)
 
         # Is this just too much to think about?
-        if (self.completion.toklen(prompt) + max_tokens) > self.completion.max_prompt_length():
+        if (self.completion.toklen(prompt) * 0.9) > self.completion.max_prompt_length():
             # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
             log.warning("🥱 get_reply(): prompt too long, summarizing.")
             req = {
                 "service": service,
                 "channel": channel,
-                "save": True,
-                "max_tokens": 100
+                "save": True
             }
             try:
                 reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=60)
@@ -467,9 +443,11 @@ class Interact():
                 log.critical(f"🤖 Could not post /summary/ to interact: {err}")
                 return " :dancer: :interrobang: "
 
+            convo = self.recall.convo(service, channel, feels=False)
             prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        (reply, others) = self.choose_response(prompt, convo, service, channel, self.recall.list_goals(service, channel), max_tokens)
+        reply = self.completion.get_reply(prompt)
+
         if self.custom_filter:
             try:
                 reply = self.custom_filter(reply)
@@ -480,9 +458,6 @@ class Interact():
         if send_chat:
             self.send_chat(service, channel, reply)
 
-        for idea in others:
-            self.inject_idea(service, channel, idea, verb="thinks")
-
         ## TODO: move these to CNS
         # Sentiment analysis via the autobus
         self.get_feels(service, channel, convo_id, f'{prompt} {reply}')
@@ -492,12 +467,14 @@ class Interact():
             for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
                 self.read_url(service, channel, url)
 
+        log.info(f"💬 get_reply done: {reply}")
+
         return reply
 
     def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
         ret = [
-            f"It is {natural_time()} on {today()}.",
+            f"It is {exact_time()} in the {natural_time()} on {today()}.",
             getattr(self.config.interact, "character", ""),
             f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
         ]
@@ -515,14 +492,19 @@ class Interact():
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
-        triples = set()
+        # triples = set()
         graph_summary = ''
         convo_text = '\n'.join(convo)
-        for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
-            for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
-                triples.add(triple)
-        if triples:
-            graph_summary = self.completion.model.triples_to_text(list(triples))
+        # for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
+        #     for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
+        #         triples.add(triple)
+        # if triples:
+        #     graph_summary = self.completion.model.triples_to_text(list(triples))
+
+        # Is this just too much to think about?
+        if self.completion.toklen(convo_text + newline.join(summaries)) > self.completion.max_prompt_length():
+            log.warning("🥱 generate_prompt(): prompt too long, truncating.")
+            convo_text = self.enc.decode(self.enc.encode(convo_text)[:self.completion.max_prompt_length()])
 
         return f"""{self.default_prompt_prefix(service, channel)}
 {newline.join(summaries)}

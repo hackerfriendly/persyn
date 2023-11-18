@@ -122,3 +122,22 @@ class Web(autobus.Event):
     bot_id: str
     url: str
     reread: bool
+
+
+class Reflect(autobus.Event):
+    ''' Reflect on the current channel. '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    send_chat: Optional[bool] = True
+
+
+class Photo(autobus.Event):
+    ''' Generate a photo. '''
+    service: str
+    channel: str
+    prompt: str
+    size: Optional[tuple] = (1024, 512)
+    bot_name: str
+    bot_id: str

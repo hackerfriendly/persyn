@@ -6,6 +6,7 @@ Chat with your persyn on Discord.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
+import logging
 import os
 import random
 import tempfile
@@ -221,7 +222,7 @@ async def handle_attachments(ctx):
             prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
             await ctx.channel.send(f"{prefix} {caption}")
 
-            chat.inject_idea(channel, f"{ctx.author.name} posted a photo of {caption}")
+            chat.inject_idea(channel, f"{ctx.author.name} imagines {caption}")
 
             msg = ctx.content
             if not msg.strip():
@@ -326,6 +327,10 @@ def main():
 
     global persyn_config
     persyn_config = load_config(args.config_file)
+
+    # enable logging to disk
+    if hasattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-discord.log"))
 
     # Mastodon support
     global mastodon

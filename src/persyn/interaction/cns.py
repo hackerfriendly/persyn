@@ -5,8 +5,10 @@ cns.py
 The central nervous system. Listen for events on the event bus and inject results into interact.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
-import os
 import argparse
+import logging
+import os
+import random
 
 import requests
 
@@ -30,6 +32,9 @@ from persyn.chat.simple import slack_msg, discord_msg
 
 # Mastodon support for image posting
 from persyn.chat.mastodon.bot import Mastodon
+
+# Time
+from persyn.interaction.chrono import ago
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
@@ -116,14 +121,14 @@ async def elaborate(event):
     )
 
 async def opine(event):
-    ''' Recall opinions of entities (if any) '''
+    ''' Recall opinions of entities (if any). Form a new opinion if none is found. '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
-
+    log.info(f"🙆‍♂️ Opinion time for {len(event.entities)} entities on {event.service} | {event.channel}")
     for entity in event.entities:
         if not entity.strip() or entity in STOP_WORDS:
             continue
 
-        opinions = recall.opine(event.service, event.channel, entity)
+        opinions = recall.surmise(event.service, event.channel, entity)
         if opinions:
             log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
             if len(opinions) == 1:
@@ -131,10 +136,25 @@ async def opine(event):
             else:
                 opinion = completion.nlp(completion.get_summary(
                     text='\n'.join(opinions),
-                    summarizer=f"{event.bot_name}'s opinion about {entity} can be briefly summarized as:",
-                    max_tokens=75
+                    summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.bot_name}'s point of view, and convert pronouns and verbs to the first person."
                 )).text
 
+            chat.inject_idea(
+                channel=event.channel,
+                idea=opinion,
+                verb=f"thinks about {entity}"
+            )
+
+        else:
+            log.warning(f"💁‍♂️ Forming an opinion about {entity}")
+            opinion = completion.get_opinions(recall.convo(event.service, event.channel), entity)
+            recall.judge(
+                event.service,
+                event.channel,
+                entity,
+                opinion,
+                recall.convo_id(event.service, event.channel)
+            )
             chat.inject_idea(
                 channel=event.channel,
                 idea=opinion,
@@ -170,8 +190,7 @@ async def wikipedia_summary(event):
 
                 summary = completion.nlp(completion.get_summary(
                     text=f"This Wikipedia article:\n{wiki}",
-                    summarizer="Can be briefly summarized as: ",
-                    max_tokens=75
+                    summarizer="Can be briefly summarized as: "
                 ))
                 # 3 sentences max please.
                 wikicache[entity] = ' '.join([s.text for s in summary.sents][:3])
@@ -214,11 +233,27 @@ async def check_feels(event):
     )
     log.warning("😄 Feeling:", feels)
 
-async def build_knowledge_graph(event):
+async def build_knowledge_graph(event, max_opinions=3):
     ''' Build the knowledge graph. '''
     triples = completion.model.generate_triples(event.convo)
     log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
     recall.triples_to_kg(triples)
+
+    # Recall any relevant opinions about subjects and predicates
+    so = set()
+    for triple in triples:
+        so.add(triple[0])
+        so.add(triple[2])
+
+    await opine(
+        Opine(
+            service=event.service,
+            channel=event.channel,
+            bot_name=event.bot_name,
+            bot_id=event.bot_id,
+            entities=random.sample(list(so), k=min(max_opinions, len(so)))
+        )
+    )
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
@@ -227,8 +262,7 @@ async def goals_achieved(event):
     for goal in event.goals:
         goal_achieved = completion.get_summary(
             event.convo,
-            summarizer=f"Q: True or False: {persyn_config.id.name} achieved the goal of {goal}.\nA:",
-            max_tokens=10
+            summarizer=f"Q: True or False: {persyn_config.id.name} achieved the goal of {goal}.\nA:"
         )
 
         log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
@@ -273,7 +307,7 @@ def text_from_url(url, selector='body'):
         log.error(f"🗞️ Could not fetch article {url}", err)
         return ''
 
-    soup = BeautifulSoup(article.text, 'html')
+    soup = BeautifulSoup(article.text, features="lxml")
     story = []
     for line in soup.select_one(selector).text.split('\n'):
         if not line:
@@ -333,8 +367,7 @@ async def read_web(event):
 
         summary = completion.get_summary(
             text=chunk,
-            summarizer=prompt,
-            max_tokens=max_reply_length
+            summarizer=prompt
         )
 
         chat.inject_idea(
@@ -374,6 +407,91 @@ async def read_news(event):
         await read_web(item_event)
         # only one at a time
         return
+
+async def reflect_on(event):
+    ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
+    log.warning("🪩  Reflecting...")
+
+    convo = '\n'.join(recall.convo(event.service, event.channel, feels=True))
+    convo_id = recall.convo_id(event.service, event.channel)
+    chat = Chat(persyn_config=persyn_config, service=event.service)
+
+    questions = completion.get_reply(
+        f"""{convo}
+Given only the information above, what are three most salient high-level questions I can answer about the people in the statements?
+Questions only, no answers. Please convert pronouns and verbs to the first person.
+"""
+    ).split('?')
+
+    log.warning("🪩 ", questions)
+
+    # Answer each question, supplemented by relevant memories.
+    for question in questions:
+        question = question.strip().strip('"\'')
+        if len(question) < 10:
+            if question:
+                log.warning("⁉️  Bad question:", question)
+            continue
+
+        log.warning("❓ ", question)
+
+        ranked = recall.find_related_convos(
+            event.service, event.channel,
+            query=convo,
+            size=5,
+            current_convo_id=convo_id,
+            threshold=persyn_config.memory.relevance * 1.4,
+            any_convo=True
+        )
+
+        visited = []
+        context = [convo]
+        for hit in ranked:
+            if hit.convo_id not in visited:
+                if hit.service == 'import_service':
+                    log.info("📚 Hit found from import:", hit.channel)
+                the_summary = recall.get_summary_by_id(hit.convo_id)
+                # Hit a sentence? Inject the summary and the sentence.
+                if the_summary and the_summary not in convo:
+                    context.append(f"""
+                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
+                        f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}"""
+                    )
+                # No summary? Just inject the sentence.
+                else:
+                    context.append(f"""
+                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
+                        f"{hit.speaker_name} said: {hit.msg}"""
+                    )
+                visited.append(hit.convo_id)
+                log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
+
+        prompt = '\n'.join(context) + f"""
+{persyn_config.id.name} asks: {question}?
+Respond with the best possible answer from {persyn_config.id.name}'s point of view.
+Don't use proper names, and convert all pronouns and verbs to the first person.
+"""
+        log.warning("✏️", question)
+
+        answer = completion.get_reply(prompt)
+        log.warning("❗️", answer)
+
+        # Inject the question and answer.
+        chat.inject_idea(
+            channel=event.channel,
+            idea=f"{question}? {answer}",
+            verb="reflects"
+        )
+
+    if event.send_chat:
+        await elaborate(event)
+
+    log.warning("🪩  Done reflecting.")
+
+def generate_photo(event):
+    ''' Generate a photo '''
+    chat = Chat(persyn_config=persyn_config, service=event.service)
+    chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1])
 
 @autobus.subscribe(SendChat)
 async def chat_event(event):
@@ -447,6 +565,18 @@ async def web_event(event):
     log.debug("Web received", event)
     await read_web(event)
 
+@autobus.subscribe(Reflect)
+async def reflect_event(event):
+    ''' Dispatch Reflect event. '''
+    log.debug("Reflect received", event)
+    await reflect_on(event)
+
+@autobus.subscribe(Photo)
+async def photo_event(event):
+    ''' Dispatch Reflect event. '''
+    log.debug("Photo received", event)
+    await generate_photo(event)
+
 ##
 # recurring events
 ##
@@ -464,10 +594,17 @@ async def auto_summarize():
         if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
             log.warning("💓 Convo expired:", key)
 
-            # Remove it from the convo list
-            recall.redis.srem(f"{recall.active_convos_prefix}", key)
-
             if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
+                log.info("🪩 Reflecting:", convo_id)
+                event = Reflect(
+                    bot_name=persyn_config.id.name,
+                    bot_id=persyn_config.id.guid,
+                    service=service,
+                    channel=channel,
+                    send_chat=True
+                )
+                autobus.publish(event)
+
                 log.info("💓 Summarizing:", convo_id)
                 event = Summarize(
                     bot_name=persyn_config.id.name,
@@ -476,10 +613,19 @@ async def auto_summarize():
                     channel=channel,
                     convo_id=convo_id,
                     photo=True,
-                    max_tokens=200,
+                    max_tokens=30,
                     send_chat=False
                 )
                 autobus.publish(event)
+
+            # Remove it from the convo list
+            recall.redis.srem(f"{recall.active_convos_prefix}", key)
+
+@autobus.schedule(autobus.every(6).hours)
+async def plan_your_day():
+    ''' Make a schedule of actions for the next part of the day '''
+    log.info("📅 Time to make a schedule")
+    # TODO: use LangChain to decide on the actions to take for the next interval, and inject as an idea.
 
 def main():
     ''' Main event '''
@@ -501,6 +647,10 @@ def main():
 
     if not hasattr(persyn_config, 'cns'):
         raise SystemExit('cns not defined in config, exiting.')
+
+    # enable logging to disk
+    if hasattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-cns.log"))
 
     global mastodon
     mastodon = Mastodon(args.config_file)

@@ -119,6 +119,11 @@ class Recall():
                     log.error(f"{err}:", cmd.split(' ')[1])
                 continue
 
+        # Convenience ids. Useful when browsing with RedisInsight.
+        self.redis.hset(f"persyn:{self.bot_id}:whoami", "bot_name", self.bot_name)
+        self.redis.hset(f"persyn:{self.bot_id}:whoami", "bot_id", str(self.bot_id))
+        self.redis.hset(f"persyn:{self.bot_id}:whoami", "bot_ulid", str(self.bot_ulid))
+
         if hasattr(persyn_config.memory, 'neo4j'):
             neomodel_config.DATABASE_URL = persyn_config.memory.neo4j.url
 
@@ -314,7 +319,10 @@ class Recall():
         if self.expired(service, channel):
             return self.new_convo(service, channel)
 
-        return self.get_last_message(service, channel).convo_id
+        ret = self.get_last_message(service, channel)
+        if ret:
+            return ret.convo_id
+        return None
 
     @staticmethod
     def entity_id_to_epoch(entity_id):
@@ -511,12 +519,12 @@ class Recall():
         query_params = {"service": service, "channel": channel, "topic": topic}
         return [doc.opinion for doc in self.redis.ft(self.opinion_prefix).search(query, query_params).docs]
 
-    def find_related_convos(self, service, channel, convo, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
+    def find_related_convos(self, service, channel, query, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
         '''
-        Find conversations related to convo using vector similarity
+        Find conversations related to query using vector similarity
         '''
         # TODO: truncate to 8191 tokens HERE.
-        emb = self.completion.model.get_embedding(convo)
+        emb = self.completion.model.get_embedding(query)
 
         if any_convo:
             service_channel = "((@service:{$service}))"
@@ -553,14 +561,67 @@ class Recall():
         for doc in reply.docs:
             # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
             if float(doc.score) < threshold:
-                log.info("👨‍👩‍👧 Related: ", doc.msg)
+                log.debug("👨‍👩‍👧 Related: ", doc.msg)
                 ret.append(doc)
 
         best = ""
         if reply.docs:
             best = f" (best: {float(reply.docs[0].score):0.3f})"
 
-        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold}{best}")
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(ret)} < {threshold:0.3f}{best}")
+
+        return ret
+
+    def find_related_summaries(self, service, channel, query, current_convo_id=None, size=1, threshold=1.0, any_convo=True):
+        '''
+        Find summaries related to query using vector similarity
+        '''
+        # TODO: truncate to 8191 tokens HERE.
+        emb = self.completion.model.get_embedding(query)
+
+        if any_convo:
+            service_channel = "((@service:{$service}))"
+        else:
+            service_channel = "((@service:{$service}) (@channel:{$channel}))"
+
+        if current_convo_id is None:
+            query = (
+                Query(
+                    f"{service_channel}=>[KNN " + str(size) + " @emb $emb as score]"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "summary", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb}
+
+        else:
+            # exclude the current convo_id
+            query = (
+                Query(
+                   "(" + service_channel + "-(@convo_id:{$convo_id}))=>[KNN " + str(size) + " @emb $emb as score]"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "summary", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb, "convo_id": current_convo_id}
+
+        reply = self.redis.ft(self.summary_prefix).search(query, query_params)
+        ret = []
+        for doc in reply.docs:
+            # Redis uses 1-cosine_similarity, so it's a distance (not a similarity)
+            if float(doc.score) < threshold:
+                log.debug("👨‍👩‍👧 Related: ", doc.summary)
+                ret.append(doc)
+
+        best = ""
+        if reply.docs:
+            best = f" (best: {float(reply.docs[0].score):0.3f})"
+
+        log.info("👨‍👩‍👧‍👦 find_related_summaries():", f"{reply.total} matches, {len(ret)} < {threshold:0.3f}{best}")
 
         return ret
 

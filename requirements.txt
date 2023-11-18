@@ -1,6 +1,5 @@
 # git+https://github.com/openai/CLIP.git@main#egg=clip
 # git+https://github.com/pharmapsychotic/BLIP.git@main#egg=blip
-alt-profanity-check==1.1.3
 asyncio
 beautifulsoup4
 boto3
@@ -11,8 +10,7 @@ dalle2>=1.0.7
 discord.py
 dotwiz
 fastapi[all]
-flair
-ftfy==6.1.1
+ftfy
 humanize
 Levenshtein
 Mastodon.py

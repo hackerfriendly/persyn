@@ -11,6 +11,7 @@ import random
 import re
 import tempfile
 import uuid
+import logging
 
 from hashlib import sha256
 
@@ -108,6 +109,10 @@ def main():
     global persyn_config
     persyn_config = load_config(args.config_file)
 
+    # enable logging to disk
+    if hasattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-slack.log"))
+
     # Slack bolt App
     global app
     app = App(token=persyn_config.chat.slack.bot_token)
@@ -177,7 +182,7 @@ def main():
         channel = context['channel_id']
         chat.take_a_photo(
             channel,
-            chat.get_summary(channel, max_tokens=60),
+            chat.get_summary(channel),
             engine="stable-diffusion",
             width=persyn_config.dreams.stable_diffusion.width,
             height=persyn_config.dreams.stable_diffusion.height,
@@ -411,10 +416,12 @@ def main():
                     if 'blocks' in msg and 'image_url' in msg['blocks'][0]:
                         blk = msg['blocks'][0]
                         try:
-                            if len(blk['alt_text']) > 497:
-                                toot = blk['alt_text'][:497] + '...'
+                            tags = "\n#imagesynthesis #persyn"
+                            maxlen = 497 - len(tags)
+                            if len(blk['alt_text']) > maxlen:
+                                toot = blk['alt_text'][:maxlen] + '...' + tags
                             else:
-                                toot = blk['alt_text']
+                                toot = blk['alt_text'] + tags
                             with tempfile.TemporaryDirectory() as tmpdir:
                                 media_ids = []
                                 for blk in msg['blocks']:
@@ -474,7 +481,7 @@ def main():
                 prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
                 say(f"{prefix} {caption}")
 
-                chat.inject_idea(channel, f"{speaker_name} posted a photo of {caption}")
+                chat.inject_idea(channel, caption, verb="imagines")
 
                 if not msg.strip():
                     msg = "..."

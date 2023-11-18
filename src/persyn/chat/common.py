@@ -82,7 +82,7 @@ class Chat():
         log.warning(f"∑ {reply.json()['summary']}")
 
         if summary:
-            if photo:
+            if self.dreams_url and photo:
                 self.take_a_photo(
                     channel,
                     summary,
@@ -130,10 +130,10 @@ class Chat():
 
         log.warning(f"[{channel}] {self.bot_name}:", reply)
 
-        if any(verb in reply for verb in self.photo_triggers):
+        if self.dreams_url and reply and any(verb in reply for verb in self.photo_triggers):
             self.take_a_photo(
                 channel,
-                self.get_summary(channel, max_tokens=60),
+                self.get_summary(channel),
                 engine="stable-diffusion",
                 width=self.persyn_config.dreams.stable_diffusion.width,
                 height=self.persyn_config.dreams.stable_diffusion.height,

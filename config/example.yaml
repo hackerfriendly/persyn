@@ -114,11 +114,6 @@ chat:
 spacy:
   model: "en_core_web_sm"
 
-# Optional, but recommended: Sentiment analysis engine
-sentiment:
-  engine: "flair"
-  model: "en-sentiment"
-
 # Required: Central Nervous System. Used for asynchronous events, image generation,
 # and posting images to social media. It also requires autobus, https://github.com/schuyler/autobus/
 cns:

@@ -5,9 +5,10 @@ interact_server.py
 A REST API for the limbic system.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
-import os
 import argparse
 import asyncio
+import logging
+import os
 
 from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor
@@ -89,7 +90,7 @@ async def handle_summary(
 ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, max_tokens, include_keywords, context_lines, dialog_only, model, convo_id]
+        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, model, convo_id]
     ))
     return {
         "summary": ret[0]
@@ -169,7 +170,7 @@ async def handle_opinion(
             return { "opinions": [] }
 
         ret = await asyncio.gather(in_thread(
-            interact.completion.get_summary, ['\n'.join(opinions), "To briefly summarize,", max_tokens]
+            interact.completion.get_summary, ['\n'.join(opinions), "To briefly summarize,"]
         ))
 
         return {
@@ -425,6 +426,10 @@ async def main():
     persyn_config = load_config(args.config_file)
     global interact
     interact = Interact(persyn_config)
+
+    # enable logging to disk
+    if hasattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-interact.log"))
 
     log.info(f"💃🕺 {persyn_config.id.name}'s interact server starting up")
 

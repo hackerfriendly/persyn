@@ -6,6 +6,7 @@ Chat with your persyn on Mastodon.
 """
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member
 import argparse
+import logging
 import os
 import random
 import tempfile
@@ -126,7 +127,7 @@ class Mastodon():
 
     def get_text(self, msg):
         ''' Extract just the text from a message (no HTML or @username) '''
-        return BeautifulSoup(msg, features="html.parser").text.strip().replace(f'@{self.client.me().username} ','')
+        return BeautifulSoup(msg, features="lxml").text.strip().replace(f'@{self.client.me().username} ','')
 
     def fetch_and_post_image(self, url, msg):
         ''' Download the image at URL and post it to Mastodon '''
@@ -315,6 +316,10 @@ def main():
         raise SystemExit("Invalid credentials, run masto-login.py and try again.")
 
     log.info(f"🎺 Logged in as: {mastodon.client.me().url}")
+
+    # enable logging to disk
+    if hasattr(mastodon.persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{mastodon.persyn_config.id.logdir}/{mastodon.persyn_config.id.name}-mastodon.log"))
 
     listener = TheListener(mastodon)
 
