@@ -45,6 +45,8 @@ known_bots = {}
 # Threaded reminders
 reminders = Reminders()
 
+rs = requests.Session()
+
 # Defined in main()
 app = None
 persyn_config = None
@@ -84,7 +86,7 @@ def get_caption(url):
     ''' Fetch the image caption using CLIP Interrogator '''
     log.warning("🖼  needs a caption")
 
-    resp = requests.get(url, headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}, timeout=20)
+    resp = rs.get(url, headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}, timeout=20)
     if not resp.ok:
         log.error(f"🖼  Could not retrieve image: {resp.text}")
         return None
@@ -335,8 +337,11 @@ def main():
 
     @app.message(re.compile(r"(.*)", re.I))
     def catch_all(say, context):
-        ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
+        ''' Default message handler '''
+        service = app.client.auth_test().data['url']
         channel = context['channel_id']
+
+        log.debug(context)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
@@ -351,36 +356,23 @@ def main():
             if random.random() < 0.95:
                 return
 
-        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id, reminders, send_chat=True)
+        # Save the line
+        chat.recall.save_convo_line(
+            service=service,
+            channel=channel,
+            msg=msg,
+            speaker_name=get_display_name(speaker_id),
+            speaker_id=speaker_id,
+            convo_id=chat.recall.convo_id(service, channel),
+            verb='dialog'
+        )
 
-        # say(the_reply)
+        # Dispatch a "message received" event. Replies are handled by CNS.
+        chat.chat_received(channel, msg, speaker_name, speaker_id)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
         reminders.cancel(channel, name='summarizer')
-
-        # chat.summarize_later(channel, reminders)
-
-        if the_reply.endswith('…') or the_reply.endswith('...'):
-            say_something_later(
-                say,
-                channel,
-                context,
-                when=1
-            )
-            return
-
-        # # 5% chance of random interjection later
-        # rnd = random.random()
-        # if rnd < 0.05:
-        #     log.info(f"⏳ say something later in {rnd}...")
-        #     say_something_later(
-        #         say,
-        #         channel,
-        #         context,
-        #         when=random.randint(2, 5)
-        #     )
-
 
     @app.event("app_mention")
     def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
@@ -425,7 +417,7 @@ def main():
                             with tempfile.TemporaryDirectory() as tmpdir:
                                 media_ids = []
                                 for blk in msg['blocks']:
-                                    response = requests.get(blk['image_url'], timeout=30)
+                                    response = rs.get(blk['image_url'], timeout=30)
                                     response.raise_for_status()
                                     fname = f"{tmpdir}/{uuid.uuid4()}.{blk['image_url'][-3:]}"
                                     with open(fname, "wb") as f:

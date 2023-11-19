@@ -12,6 +12,9 @@ import requests
 # Color logging
 from persyn.utils.color_logging import log
 
+# Long and short term memory
+from persyn.interaction.memory import Recall
+
 # Artist names
 from persyn.utils.art import artists
 
@@ -39,6 +42,8 @@ excuses = [
     "Um..."
 ]
 
+rs = requests.Session()
+
 class Chat():
     ''' Container class for common chat functions '''
     def __init__(self, persyn_config, service):
@@ -54,6 +59,7 @@ class Chat():
         self.parrot_url=persyn_config.dreams.parrot.url
 
         self.photo_triggers = default_photo_triggers
+        self.recall = Recall(persyn_config)
 
     def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
@@ -72,7 +78,7 @@ class Chat():
             "model": model
         }
         try:
-            reply = requests.post(f"{self.interact_url}/summary/", params=req, timeout=60)
+            reply = rs.post(f"{self.interact_url}/summary/", params=req, timeout=60)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /summary/ to interact: {err}")
@@ -117,7 +123,7 @@ class Chat():
             "send_chat": send_chat
         }
         try:
-            response = requests.post(f"{self.interact_url}/reply/", params=req, timeout=60)
+            response = rs.post(f"{self.interact_url}/reply/", params=req, timeout=60)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
@@ -171,7 +177,7 @@ class Chat():
             "idea": idea
         }
         try:
-            response = requests.post(f"{self.interact_url}/inject/", params=req, data=data, timeout=30)
+            response = rs.post(f"{self.interact_url}/inject/", params=req, data=data, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /inject/ to interact: {err}")
@@ -216,7 +222,7 @@ class Chat():
             "guidance": guidance
         }
         try:
-            reply = requests.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
+            reply = rs.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
             if reply.ok:
                 log.warning(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code}")
             else:
@@ -236,7 +242,7 @@ class Chat():
             "text": text
         }
         try:
-            reply = requests.post(f"{self.interact_url}/nouns/", params=req, timeout=10)
+            reply = rs.post(f"{self.interact_url}/nouns/", params=req, timeout=10)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /nouns/ to interact: {err}")
@@ -254,7 +260,7 @@ class Chat():
             "text": text
         }
         try:
-            reply = requests.post(f"{self.interact_url}/entities/", params=req, timeout=10)
+            reply = rs.post(f"{self.interact_url}/entities/", params=req, timeout=10)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /entities/ to interact: {err}")
@@ -273,7 +279,7 @@ class Chat():
             "channel": channel,
         }
         try:
-            reply = requests.post(f"{self.interact_url}/status/", params=req, timeout=30)
+            reply = rs.post(f"{self.interact_url}/status/", params=req, timeout=30)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /status/ to interact: {err}")
@@ -294,7 +300,7 @@ class Chat():
             "summarize": condense
         }
         try:
-            reply = requests.post(f"{self.interact_url}/opinion/", params=req, timeout=20)
+            reply = rs.post(f"{self.interact_url}/opinion/", params=req, timeout=20)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
@@ -317,7 +323,7 @@ class Chat():
             "channel": channel
         }
         try:
-            reply = requests.post(f"{self.interact_url}/list_goals/", params=req, timeout=20)
+            reply = rs.post(f"{self.interact_url}/list_goals/", params=req, timeout=20)
             reply.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /list_goals/ to interact: {err}")
@@ -336,7 +342,7 @@ class Chat():
             return False
         try:
             req = { "prompt": prompt }
-            response = requests.post(f"{self.parrot_url}/generate/", params=req, timeout=10)
+            response = rs.post(f"{self.parrot_url}/generate/", params=req, timeout=10)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
@@ -351,7 +357,7 @@ class Chat():
 
         try:
             req = { "service": self.service, "channel": channel, "topic": topic }
-            response = requests.post(f"{self.interact_url}/opinion/", params=req, timeout=20)
+            response = rs.post(f"{self.interact_url}/opinion/", params=req, timeout=20)
             response.raise_for_status()
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /opinion/ to interact: {err}")
@@ -366,13 +372,13 @@ class Chat():
 
         log.warning("🖼  needs a caption")
         if image_data[:4] == "http":
-            resp = requests.post(
+            resp = rs.post(
                     f"{self.captions_url}/caption/",
                     json={"data": image_data},
                     timeout=20
                 )
         else:
-            resp = requests.post(
+            resp = rs.post(
                 f"{self.captions_url}/caption/",
                 json={"data": base64.b64encode(image_data).decode()},
                 timeout=20
@@ -384,3 +390,25 @@ class Chat():
         caption = resp.json()['caption']
         log.warning(f"🖼  got caption: '{caption}'")
         return caption
+
+    def chat_received(self, channel, msg, speaker_name, speaker_id):
+        ''' Dispatch a ChatReceived event. '''
+        if not self.interact_url:
+            log.error("💬 chat_received() called with no URL defined, skipping.")
+            return None
+
+        req = {
+            "service": self.service,
+            "channel": channel,
+            "speaker_name": speaker_name,
+            "speaker_id": speaker_id,
+            "msg": msg
+        }
+        try:
+            reply = rs.post(f"{self.interact_url}/chat_received/", params=req, timeout=60)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /chat_received/ to interact: {err}")
+            return " 💬 :interrobang: "
+
+        return True

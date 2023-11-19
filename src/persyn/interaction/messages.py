@@ -16,6 +16,15 @@ class SendChat(autobus.Event):
     images: Optional[list[str]]
 
 
+class ChatReceived(autobus.Event):
+    ''' Chat was received from a service + channel '''
+    service: str
+    channel: str
+    speaker_name: str
+    speaker_id: str
+    msg: str
+
+
 class Idea(autobus.Event):
     ''' Inject an idea '''
     service: str

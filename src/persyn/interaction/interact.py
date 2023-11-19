@@ -29,6 +29,8 @@ from persyn.langchain.zim import ZimWrapper
 # Color logging
 from persyn.utils.color_logging import log
 
+rs = requests.Session()
+
 def doiify(text):
     ''' Turn DOIs into doi.org links '''
     return re.sub(
@@ -251,7 +253,7 @@ class Interact():
         }
 
         try:
-            reply = requests.post(f"{self.config.interact.url}/send_msg/", params=req, timeout=10)
+            reply = rs.post(f"{self.config.interact.url}/send_msg/", params=req, timeout=10)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
@@ -269,7 +271,7 @@ class Interact():
             "bot_id": self.config.id.guid
         }
         try:
-            reply = requests.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
+            reply = rs.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
             if reply.ok:
                 log.warning(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
             else:
@@ -301,7 +303,7 @@ class Interact():
         for endpoint in ['opine']:
             log.warning(f"🧾 {endpoint} : {the_sample}")
             try:
-                reply = requests.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
+                reply = rs.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /{endpoint}/ to interact: {err}")
@@ -320,7 +322,7 @@ class Interact():
             }
 
             try:
-                reply = requests.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
+                reply = rs.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
                 reply.raise_for_status()
             except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
                 log.critical(f"🤖 Could not post /check_goals/ to interact: {err}")
@@ -337,7 +339,7 @@ class Interact():
         }
 
         try:
-            reply = requests.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
+            reply = rs.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
@@ -354,43 +356,27 @@ class Interact():
         }
 
         try:
-            reply = requests.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
+            reply = rs.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
 
-    # Need to instrument this. It takes far too long and isn't async.
-    def get_reply(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
+    def retort(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
         '''
-        Get the best reply for the given channel. Saves to recall memory.
+        Get a completion for the given channel.
 
-        Returns the best available reply. If send_chat is True, also send it to chat.
+        Returns the response. If send_chat is True, also send it to chat.
         '''
         log.info(f"💬 get_reply to: {msg}")
 
         convo_id = self.recall.convo_id(service, channel)
-
-        if msg != '...':
-            self.recall.save_convo_line(
-                service,
-                channel,
-                msg,
-                speaker_name,
-                speaker_id,
-                convo_id=convo_id,
-                verb='dialog'
-            )
-
         convo = self.recall.convo(service, channel, feels=False)
-        last_sentence = None
 
-        if convo:
-            last_sentence = convo.pop()
+        lts = self.recall.get_last_timestamp(service, channel)
+        prompt = self.generate_prompt([], convo, service, channel, lts)
 
-        # TODO: Move this to CNS
-        # Save the knowledge graph every 5 lines
-        # if convo and len(convo) % 5 == 0:
-        #     self.save_knowledge_graph(service, channel, convo_id, convo)
+
+        # TODO: vvv  Use this time to backfill context!  vvv
 
         # Ruminate a bit
         entities = self.extract_entities(msg)
@@ -403,19 +389,6 @@ class Interact():
 
         # Reflect on this conversation
         visited = self.gather_memories(service, channel, entities)
-
-        # Facts and opinions
-        self.gather_facts(service, channel, entities)
-
-        # TODO: Move this to CNS
-        # Goals. Don't give out _too_ many trophies.
-        if random.random() < 0.5:
-            self.check_goals(service, channel, convo)
-
-        # Our mind might have been wandering, so remember the last thing that was said.
-        if last_sentence:
-            convo.append(last_sentence)
-
         summaries = []
         for doc in self.recall.summaries(service, channel, None, size=1, raw=True):
             if doc.convo_id not in visited and doc.summary not in summaries:
@@ -423,28 +396,7 @@ class Interact():
                 summaries.append(doc.summary)
                 visited.append(doc.convo_id)
 
-        lts = self.recall.get_last_timestamp(service, channel)
-        convo = self.recall.convo(service, channel, feels=False)
-        prompt = self.generate_prompt(summaries, convo, service, channel, lts)
-
-        # Is this just too much to think about?
-        if (self.completion.toklen(prompt) * 0.9) > self.completion.max_prompt_length():
-            # Kick off a summary request via autobus. Yes, we're talking to ourselves now.
-            log.warning("🥱 get_reply(): prompt too long, summarizing.")
-            req = {
-                "service": service,
-                "channel": channel,
-                "save": True
-            }
-            try:
-                reply = requests.post(f"{self.config.interact.url}/summary/", params=req, timeout=60)
-                reply.raise_for_status()
-            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-                log.critical(f"🤖 Could not post /summary/ to interact: {err}")
-                return " :dancer: :interrobang: "
-
-            convo = self.recall.convo(service, channel, feels=False)
-            prompt = self.generate_prompt([], convo, service, channel, lts)
+        # ^^^  end TODO  ^^^
 
         reply = self.completion.get_reply(prompt)
 
@@ -457,15 +409,6 @@ class Interact():
         # Say it!
         if send_chat:
             self.send_chat(service, channel, reply)
-
-        ## TODO: move these to CNS
-        # Sentiment analysis via the autobus
-        self.get_feels(service, channel, convo_id, f'{prompt} {reply}')
-
-        if 'http' in msg:
-            # Regex chosen by GPT-4. 😵‍💫
-            for url in re.findall(r'http[s]?://(?:[^\s()<>\"\']|(?:\([^\s()<>]*\)))+', msg):
-                self.read_url(service, channel, url)
 
         log.info(f"💬 get_reply done: {reply}")
 
@@ -585,7 +528,7 @@ class Interact():
             "title": title
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/read_news/", params=req, timeout=10)
+            reply = rs.post(f"{self.config.interact.url}/read_news/", params=req, timeout=10)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /read_news/ to interact: {err}")
@@ -603,7 +546,7 @@ class Interact():
             "url": url
         }
         try:
-            reply = requests.post(f"{self.config.interact.url}/read_url/", params=req, timeout=10)
+            reply = rs.post(f"{self.config.interact.url}/read_url/", params=req, timeout=10)
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /read_url/ to interact: {err}")

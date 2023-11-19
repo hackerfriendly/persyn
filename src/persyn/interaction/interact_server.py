@@ -25,7 +25,7 @@ from persyn import autobus
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from persyn.interaction.messages import SendChat, ChatReceived, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -70,10 +70,39 @@ async def handle_reply(
         )
 
     ret = await asyncio.gather(in_thread(
-        interact.get_reply, [service, channel, msg, speaker_name, speaker_id, send_chat]
+        interact.retort, [service, channel, msg, speaker_name, speaker_id, send_chat]
     ))
     return {
         "reply": ret[0]
+    }
+
+@app.post("/chat_received/")
+async def handle_chat_received(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    speaker_name: str = Query(..., min_length=1, max_length=255),
+    speaker_id: str = Query(..., min_length=1, max_length=255),
+    msg: str = Query(..., min_length=1, max_length=5000),
+    ):
+    ''' Notify CNS that a message was received '''
+
+    if not msg.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Text must contain at least one non-space character."
+        )
+
+    event = ChatReceived(
+        service=service,
+        channel=channel,
+        speaker_name=speaker_name,
+        speaker_id=speaker_id,
+        msg=msg
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
     }
 
 @app.post("/summary/")

@@ -59,6 +59,8 @@ completion = None
 
 wikicache = {}
 
+rs = requests.Session()
+
 def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
     for image in images:
@@ -86,6 +88,38 @@ async def say_something(event):
     ''' Send a message to a service + channel '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
+
+async def chat_received(event):
+    ''' Somebody is talking to us '''
+    chat = Chat(persyn_config=persyn_config, service=event.service)
+
+    # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
+
+    # TODO: Decide whether to delay reply, or to reply at all?
+
+    the_reply = chat.get_reply(
+        channel=event.channel,
+        speaker_name=event.speaker_name,
+        speaker_id=event.speaker_id,
+        msg=event.msg,
+        send_chat=True
+    )
+
+    # Time for self-examination.
+
+    # TODO: Should this be a priority queue?
+
+    # Dispatch an event to gather facts
+
+        # # Facts and opinions
+        # self.gather_facts(service, channel, entities)
+
+
+    # Dispatch an event to check goals
+        # # Goals. Don't give out _too_ many trophies.
+        # if random.random() < 0.5:
+        #     self.check_goals(service, channel, convo)
+
 
 async def new_idea(event):
     ''' Inject a new idea '''
@@ -302,7 +336,7 @@ async def goals_achieved(event):
 def text_from_url(url, selector='body'):
     ''' Return just the text from url. You probably want a better selector than <body>. '''
     try:
-        article = requests.get(url, timeout=30)
+        article = rs.get(url, timeout=30)
     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
         log.error(f"🗞️ Could not fetch article {url}", err)
         return ''
@@ -384,7 +418,7 @@ async def read_news(event):
     ''' Check our RSS feed. Read the first unread article. '''
     log.info("🗞️  Reading news feed:", event.url)
     try:
-        page = requests.get(event.url, timeout=30)
+        page = rs.get(event.url, timeout=30)
     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
         log.error(f"🗞️  Could not fetch RSS feed {event.url}", err)
         return
@@ -494,10 +528,16 @@ def generate_photo(event):
     chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1])
 
 @autobus.subscribe(SendChat)
-async def chat_event(event):
-    ''' Dispatch chat event w/ optional images. '''
+async def sendchat_event(event):
+    ''' Dispatch SendChat event w/ optional images. '''
     log.debug("SendChat received", event)
     await say_something(event)
+
+@autobus.subscribe(ChatReceived)
+async def chatreceived_event(event):
+    ''' Dispatch ChatReceived event '''
+    log.debug("ChatReceived received", event)
+    await chat_received(event)
 
 @autobus.subscribe(Idea)
 async def idea_event(event):
@@ -590,6 +630,8 @@ async def auto_summarize():
 
     for key in convos:
         (service, channel, convo_id) = key.split('|')
+        # TODO: Also check if the convo is too long, even if it hasn't expired
+
         # it should be stale and have more in it than a new_convo marker
         if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
             log.warning("💓 Convo expired:", key)

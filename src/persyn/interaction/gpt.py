@@ -84,8 +84,8 @@ class GPT():
             openai_organization=self.config.completion.openai_org,
         )
 
-        log.warning(f"🤖 completion model: {self.completion_model}")
-        log.warning(f"🤖 summary model: {self.summary_model}")
+        log.debug(f"🤖 completion model: {self.completion_model}")
+        log.debug(f"🤖 summary model: {self.summary_model}")
 
     def get_enc(self, model=None):
         ''' Return the encoder for model_name '''

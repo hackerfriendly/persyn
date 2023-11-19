@@ -16,8 +16,12 @@ import requests
 # Color logging
 from persyn.utils.color_logging import log
 
+rs = requests.Session()
+
 def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     ''' Post a message to Slack with optional images '''
+
+    # TODO: Why does this call take ~three seconds to show up in the channel?
 
     blocks = []
     if images:
@@ -48,7 +52,7 @@ def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
         req['blocks'] = json.dumps(blocks)
 
     try:
-        reply = requests.post('https://slack.com/api/chat.postMessage', data=req, timeout=30)
+        reply = rs.post('https://slack.com/api/chat.postMessage', data=req, timeout=30)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Slack: {err}")
@@ -87,7 +91,7 @@ def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
         req['content'] = msg
 
     try:
-        reply = requests.post(persyn_config.chat.discord.webhook, json=req, timeout=30)
+        reply = rs.post(persyn_config.chat.discord.webhook, json=req, timeout=30)
         reply.raise_for_status()
     except requests.exceptions.RequestException as err:
         log.critical(f"⚡️ Could not post image to Discord: {err}")
