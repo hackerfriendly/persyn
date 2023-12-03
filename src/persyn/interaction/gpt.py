@@ -1,4 +1,4 @@
-''' OpenAI completion '''
+''' LLM completion '''
 # pylint: disable=invalid-name
 
 import re
@@ -13,7 +13,7 @@ import openai
 
 import numpy as np
 
-from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.llms.openai import OpenAI, BaseOpenAI
 from langchain.chains import LLMChain
 
@@ -31,11 +31,24 @@ def get_oai_embedding(text: str, model="text-embedding-ada-002", **kwargs) -> Li
 
     return openai.embeddings.create(input=[text], model=model, **kwargs).data[0].embedding
 
-def the_llm(**kwargs):
+def the_llm(config, **kwargs):
     ''' Construct the proper LLM object for model '''
     if kwargs['model'].startswith('gpt-'):
-        return ChatOpenAI(**kwargs)
-    return OpenAI(**kwargs)
+        return ChatOpenAI(
+            openai_api_key=config.completion.api_key,
+            openai_organization=config.completion.openai_org,
+            **kwargs
+        )
+    if kwargs['model'].startswith('claude-'):
+        return ChatAnthropic(
+            anthropic_api_key=config.completion.anthropic_key,
+            **kwargs
+        )
+    return OpenAI(
+        openai_api_key=config.completion.api_key,
+        openai_organization=config.completion.openai_org,
+        **kwargs
+    )
 
 class GPT():
     ''' Container for OpenAI completion requests '''
@@ -63,25 +76,22 @@ class GPT():
         openai.organization = config.completion.openai_org
 
         self.completion_llm = the_llm(
+            self.config,
             model=self.completion_model,
             temperature=self.config.completion.temperature,
             max_tokens=150,
-            openai_api_key=self.config.completion.api_key,
-            openai_organization=self.config.completion.openai_org
         )
         self.summary_llm = the_llm(
+            self.config,
             model=self.summary_model,
             temperature=self.config.completion.temperature,
             max_tokens=50,
-            openai_api_key=self.config.completion.api_key,
-            openai_organization=self.config.completion.openai_org
         )
         self.feels_llm = the_llm(
+            self.config,
             model=self.completion_model,
             temperature=self.config.completion.temperature,
             max_tokens=10,
-            openai_api_key=self.config.completion.api_key,
-            openai_organization=self.config.completion.openai_org,
         )
 
         log.debug(f"🤖 completion model: {self.completion_model}")
@@ -105,10 +115,16 @@ class GPT():
         try:
             return BaseOpenAI.modelname_to_contextsize(model)
         except ValueError as err:
+            # Anthropic
+            if model.startswith('claude-'):
+                if model == 'claude-2.1':
+                    return 200000
+                return 100000
+            # Beta OpenAI models
             if model == 'gpt-4-1106-preview':
                 return 128 * 1024
-            else:
-                raise err
+            # Unknown model
+            raise err
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
@@ -151,7 +167,7 @@ class GPT():
 
     def validate_reply(self, text: str):
         '''
-        Filter or fix low quality OpenAI responses
+        Filter or fix low quality responses
         '''
         try:
             # No whitespace or surrounding quotes
@@ -445,7 +461,7 @@ as told from the third-person point of view of {self.bot_name}.
         text,
         summarizer="Topics mentioned in the preceding paragraph include the following tags:"
         ):
-        ''' Ask OpenAI for keywords'''
+        ''' Ask for keywords'''
         keywords = self.get_summary(text, summarizer)
         log.debug(f"gpt get_keywords() raw: {keywords}")
 
