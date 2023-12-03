@@ -134,12 +134,15 @@ class GPT():
 
     def paginate(self, f, max_tokens=None, prompt=None, max_reply_length=0):
         '''
-        Chunk text from iterable f. By default, fit the model's maximum prompt length.
+        Chunk text from iterable f, splitting on whitespace, chunk by tokens.
+        By default, fit the model's maximum prompt length.
         If prompt is provided, subtract that many tokens from the chunk length.
-        Lines containing no alphanumeric characters are removed.
         '''
         if max_tokens is None:
             max_tokens = self.max_prompt_length()
+
+        # 1 token minimum
+        max_tokens = max(1, max_tokens)
 
         if prompt:
             max_tokens = max_tokens - self.toklen(prompt)
@@ -147,23 +150,26 @@ class GPT():
         max_tokens = max_tokens - max_reply_length
 
         if isinstance(f, str):
-            f = f.split('\n')
+            f = f.split()
 
-        lines = []
-        for line in f:
-            line = line.strip()
-            if not line or not re.search('[a-zA-Z0-9]', line):
+        words = []
+        total = 0
+        for word in f:
+            tl = self.toklen(word)
+            if not tl:
                 continue
 
-            convo = ' '.join(lines)
-            if self.toklen(convo + line) > max_tokens:
-                yield convo
-                lines = [line]
+            if total + tl >= max_tokens:
+                ret = ' '.join(words)
+                total = tl
+                words = [word]
+                yield ret
             else:
-                lines.append(line)
+                total = total + tl
+                words.append(word)
 
-        if lines:
-            yield ' '.join(lines)
+        if words:
+            yield ' '.join(words)
 
     def validate_reply(self, text: str):
         '''
@@ -228,8 +234,17 @@ class GPT():
         return enc.decode(enc.encode(text)[:maxlen])
 
     def get_embedding(self, text, model='text-embedding-ada-002'):
-        ''' Return the embedding for text '''
-        return  np.array(get_oai_embedding(text, model=model), dtype=np.float32).tobytes()
+        ''' Return the embedding for text. Truncates text to the max size supported by the model. '''
+        # TODO: embedding model should determine its own size, but embedding models are not
+        # (yet?) in BaseOpenAI.modelname_to_contextsize()
+
+        return  np.array(
+            get_oai_embedding(
+                next(self.paginate(text, max_tokens=8192)),
+                model=model
+            ),
+            dtype=np.float32
+        ).tobytes()
 
     def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''
