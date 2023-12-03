@@ -129,8 +129,8 @@ class Interact():
         if save:
             self.recall.save_summary(service, channel, convo_id, summary, keywords)
 
-        if save_kg:
-            self.save_knowledge_graph(service, channel, convo_id, convo_text)
+        # if save_kg:
+        #     self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         if include_keywords:
             return summary + f"\nKeywords: {keywords}"
