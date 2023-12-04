@@ -14,6 +14,7 @@ import uuid
 import logging
 
 from hashlib import sha256
+from pathlib import Path
 
 import requests
 
@@ -35,6 +36,9 @@ from persyn.chat.mastodon.bot import Mastodon
 
 # Common chat library
 from persyn.chat.common import Chat
+
+# Upload files (for image caption processing)
+from persyn.dreams.dreams import upload_files
 
 # Username cache
 known_users = {}
@@ -413,49 +417,67 @@ def main():
         log.info("Reaction removed event")
 
 
-    @app.event("message")
-    def handle_message_events(body, say):
-        ''' Handle uploaded images '''
-        channel = body['event']['channel']
+    # Slack file handling is awful. Fix this sometime.
 
-        if 'user' not in body['event']:
-            log.warning("Message event with no user. 🤷")
-            return
+    # @app.event("message")
+    # def handle_message_events(body, say):
+    #     ''' Handle uploaded images '''
+    #     channel = body['event']['channel']
 
-        speaker_id = body['event']['user']
-        speaker_name = get_display_name(speaker_id)
-        msg = substitute_names(body['event']['text'])
+    #     if 'user' not in body['event']:
+    #         log.warning("Message event with no user. 🤷")
+    #         return
 
-        if 'files' not in body['event']:
-            log.warning("Message with no picture? 🤷‍♂️")
-            return
+    #     speaker_id = body['event']['user']
+    #     speaker_name = get_display_name(speaker_id)
+    #     msg = substitute_names(body['event']['text'])
 
-        for file in body['event']['files']:
-            caption = get_caption(file['url_private_download'])
+    #     if 'files' not in body['event']:
+    #         log.warning("Message with no picture? 🤷‍♂️")
+    #         return
 
-            if caption:
-                prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
-                say(f"{prefix} {caption}")
+    #     for file in body['event']['files']:
 
-                chat.inject_idea(channel, caption, verb="imagines")
+    #         # OpenAI can't see these, so upload them to a public link
+    #         log.warning(f"Downloaded: {file['url_private_download']}")
 
-                if not msg.strip():
-                    msg = "..."
+    #         response = rs.get(file['url_private_download'])
+    #         response.raise_for_status()
 
-                chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+    #         with tempfile.TemporaryDirectory() as tmpdir:
+    #             image_id = uuid.uuid4()
+    #             fname = str(Path(tmpdir)/f"{image_id}.jpg")
+    #             with open(fname, "wb") as f:
+    #                 for chunk in response.iter_content(chunk_size=1024):
+    #                     f.write(chunk)
 
-            else:
-                say(
-                    random.choice([
-                        "I'm not sure.",
-                        ":face_with_monocle:",
-                        ":face_with_spiral_eyes:",
-                        "What the...?",
-                        "Um.",
-                        "No idea.",
-                        "Beats me."
-                    ])
-                )
+    #             upload_files([fname], persyn_config)
+
+    #         log.warning(f"Uploaded: {persyn_config.dreams.upload.url_base}/{image_id}.jpg")
+    #         caption = get_caption(f"{persyn_config.dreams.upload.url_base}/{image_id}.jpg")
+
+    #         if caption:
+    #             say(caption)
+
+    #             chat.inject_idea(channel, caption, verb="imagines")
+
+    #             if not msg.strip():
+    #                 msg = "..."
+
+    #             chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+
+    #         else:
+    #             say(
+    #                 random.choice([
+    #                     "I'm not sure.",
+    #                     ":face_with_monocle:",
+    #                     ":face_with_spiral_eyes:",
+    #                     "What the...?",
+    #                     "Um.",
+    #                     "No idea.",
+    #                     "Beats me."
+    #                 ])
+    #             )
 
 
     handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)

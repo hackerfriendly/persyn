@@ -63,11 +63,14 @@ def post_to_autobus(service, channel, prompt, images, bot_name, bot_id):
     autobus.publish(event)
     log.info(f"🚌 Image post: {len(images)} sent to autobus")
 
-def upload_files(files):
+def upload_files(files, config=None):
     ''' Upload files via scp or s3. Expects a Path glob generator. '''
-    scpopts = getattr(persyn_config.dreams.upload, 'opts', None)
-    bucket = getattr(persyn_config.dreams.upload, 'bucket', None)
-    prefix = getattr(persyn_config.dreams.upload, 'dest_path', '')
+    if config is None:
+        config = persyn_config
+
+    scpopts = getattr(config.dreams.upload, 'opts', None)
+    bucket = getattr(config.dreams.upload, 'bucket', None)
+    prefix = getattr(config.dreams.upload, 'dest_path', '')
 
     if bucket:
         for file in files:
@@ -81,9 +84,9 @@ def upload_files(files):
 
     # no bucket. Use scp instead.
     if scpopts:
-        run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
+        run(['/usr/bin/scp', scpopts] + [str(f) for f in files] + [config.dreams.upload.dest_path], check=True)
     else:
-        run(['/usr/bin/scp'] + [str(f) for f in files] + [persyn_config.dreams.upload.dest_path], check=True)
+        run(['/usr/bin/scp'] + [str(f) for f in files] + [config.dreams.upload.dest_path], check=True)
 
 def sdd(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
     ''' Fetch images from stable_diffusion.py '''

@@ -76,7 +76,7 @@ def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
         embeds = []
         url = ""
         for image in images:
-            url =  f"{persyn_config.dreams.upload.url_base}/{image}"
+            url = f"{persyn_config.dreams.upload.url_base}/{image}"
             embeds.append(
                 {
                     "description": msg or "Untitled",
