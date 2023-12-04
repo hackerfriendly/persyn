@@ -83,15 +83,8 @@ def substitute_names(text):
     return text
 
 def get_caption(url):
-    ''' Fetch the image caption using CLIP Interrogator '''
-    log.warning("🖼  needs a caption")
-
-    resp = rs.get(url, headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}, timeout=20)
-    if not resp.ok:
-        log.error(f"🖼  Could not retrieve image: {resp.text}")
-        return None
-
-    return chat.get_caption(resp.content)
+    ''' Fetch the image caption using OpenAI CLIP '''
+    return chat.get_caption(url)
 
 def main():
     ''' Main event '''

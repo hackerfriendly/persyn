@@ -9,6 +9,8 @@ import random
 
 import requests
 
+from openai import OpenAI
+
 # Color logging
 from persyn.utils.color_logging import log
 
@@ -52,11 +54,14 @@ class Chat():
         self.bot_id=persyn_config.id.guid
         self.interact_url=persyn_config.interact.url
         self.dreams_url=persyn_config.dreams.url
-        self.captions_url=persyn_config.dreams.captions.url
-        self.parrot_url=persyn_config.dreams.parrot.url
 
         self.photo_triggers = default_photo_triggers
         self.recall = Recall(persyn_config)
+
+        self.oai_client = OpenAI(
+            api_key=persyn_config.completion.api_key,
+            organization=persyn_config.completion.openai_org
+        )
 
     def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
@@ -331,20 +336,6 @@ class Chat():
 
         return []
 
-    def prompt_parrot(self, prompt):
-        ''' Fetch a prompt from the parrot '''
-        if not self.parrot_url:
-            log.error("🦜 Parrot called with no URL defined, skipping.")
-            return False
-        try:
-            req = { "prompt": prompt }
-            response = rs.post(f"{self.parrot_url}/generate/", params=req, timeout=10)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /generate/ to Prompt Parrot: {err}")
-            return prompt
-        return response.json()['parrot']
-
     def opinion(self, channel, topic):
         ''' Form an opinion on topic '''
         if not self.interact_url:
@@ -360,32 +351,31 @@ class Chat():
             return ""
         return response.json()['opinion']
 
-    def get_caption(self, image_data):
-        ''' Fetch the image caption using CLIP Interrogator '''
-        if not self.captions_url:
-            log.error("🖼  Caption called with no URL defined, skipping.")
-            return None
-
+    def get_caption(self, image_url):
+        ''' Fetch the image caption using OpenAI gpt-4-vision (aka CLIP) '''
         log.warning("🖼  needs a caption")
-        if image_data[:4] == "http":
-            resp = rs.post(
-                    f"{self.captions_url}/caption/",
-                    json={"data": image_data},
-                    timeout=20
-                )
-        else:
-            resp = rs.post(
-                f"{self.captions_url}/caption/",
-                json={"data": base64.b64encode(image_data).decode()},
-                timeout=20
-            )
-        if not resp.ok:
-            log.error(f"🖼  Could not get_caption(): {resp.text}")
-            return None
 
-        caption = resp.json()['caption']
-        log.warning(f"🖼  got caption: '{caption}'")
-        return caption
+        response = self.oai_client.chat.completions.create(
+        model="gpt-4-vision-preview",
+        messages=[
+            {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What’s in this image?"},
+                {
+                "type": "image_url",
+                "image_url": {
+                    "url": image_url,
+                },
+                },
+            ],
+            }
+        ],
+        max_tokens=200,
+        )
+
+        log.warning(f"🖼️  {response.choices[0].message.content}")
+        return response.choices[0].message.content
 
     def chat_received(self, channel, msg, speaker_name, speaker_id):
         ''' Dispatch a ChatReceived event. '''
