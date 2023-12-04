@@ -83,7 +83,7 @@ def load_config(cfg=None):
             if 'model' not in config['dreams']['stable_diffusion']:
                 config['dreams']['stable_diffusion']['model'] = "stabilityai/stable-diffusion-2-1"
             if 'width' not in config['dreams']['stable_diffusion']:
-                config['dreams']['stable_diffusion']['width'] = 1024
+                config['dreams']['stable_diffusion']['width'] = 512
             if 'height' not in config['dreams']['stable_diffusion']:
                 config['dreams']['stable_diffusion']['height'] = 512
             if 'guidance' not in config['dreams']['stable_diffusion']:
