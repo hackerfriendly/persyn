@@ -37,6 +37,9 @@ from persyn.chat.common import Chat
 # Coroutine reminders
 reminders = AsyncReminders()
 
+# Requests session
+rs = requests.Session()
+
 # Defined in main()
 app = None
 chat = None
@@ -131,23 +134,17 @@ def say_something_later(ctx, when, what=None):
         ctx.content = "..."
         reminders.add(channel, when, on_message, args=ctx)
 
-def synthesize_image(ctx, prompt, engine="stable-diffusion", style=None, hq=False):
+def synthesize_image(ctx, prompt, engine="dall-e", width=None, height=None, style=None):
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
-    width = persyn_config.dreams.stable_diffusion.width
-    height = persyn_config.dreams.stable_diffusion.height
-    if hq:
-        width *= 2
-        height *= 2
 
     chat.take_a_photo(
         channel,
         prompt,
         engine=engine,
-        style=style,
         width=width,
         height=height,
-        guidance=persyn_config.dreams.stable_diffusion.guidance
+        style=style
     )
     say_something_later(ctx, when=3, what=":camera_with_flash:")
 
@@ -164,7 +161,7 @@ def fetch_and_post_to_masto(url, toot):
     media_ids = []
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            response = requests.get(url, timeout=10)
+            response = rs.get(url, timeout=10)
             response.raise_for_status()
             fname = f"{tmpdir}/{uuid.uuid4()}.{url[-3:]}"
             with open(fname, "wb") as f:
@@ -192,25 +189,24 @@ async def schedule_reply(ctx):
 
     log.warning("⏰ schedule_reply")
 
-    the_reply = chat.get_reply(channel, ctx.content, ctx.author.name, ctx.author.id, reminders, send_chat=True)
+    # Save the line
+    chat.recall.save_convo_line(
+        service='discord',
+        channel=channel,
+        msg=ctx.content,
+        speaker_name=ctx.author.name,
+        speaker_id=ctx.author.id,
+        convo_id=chat.recall.convo_id('discord', channel),
+        verb='dialog'
+    )
+
+    # Dispatch a "message received" event. Replies are handled by CNS.
+    chat.chat_received(channel, ctx.content, ctx.author.name, ctx.author.id)
 
     # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
     # if not channel.startswith('dm|'):
     #     chat.summarize_later(channel, reminders)
 
-    if the_reply.endswith('…') or the_reply.endswith('...'):
-        say_something_later(
-            ctx,
-            when=1
-        )
-        return
-
-    # 5% chance of random interjection later
-    if random.random() < 0.05:
-        say_something_later(
-            ctx,
-            when=random.randint(2, 5)
-        )
 
 async def handle_attachments(ctx):
     ''' Caption photos posted to the channel '''
@@ -252,18 +248,11 @@ async def dispatch(ctx):
 
     elif ctx.content.startswith('🎨'):
         await ctx.channel.send(f"OK, {ctx.author.name}.")
-        synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion")
-
-    elif ctx.content.startswith('🪄'):
-        await ctx.channel.send(f"OK, {ctx.author.name}.")
-        prompt = ctx.content[1:].strip()
-        style = chat.prompt_parrot(prompt)
-        log.warning(f"🦜 {style}")
-        synthesize_image(ctx, prompt, engine="stable-diffusion", style=style)
+        synthesize_image(ctx, ctx.content[1:].strip(), engine="dall-e")
 
     elif ctx.content.startswith('🖼'):
         await ctx.channel.send(f"OK, {ctx.author.name}.")
-        synthesize_image(ctx, ctx.content[1:].strip(), engine="stable-diffusion", hq=True)
+        synthesize_image(ctx, ctx.content[1:].strip(), engine="dall-e", width=1024, height=1792)
 
     elif ctx.content == 'help':
         await ctx.channel.send(f"""*Commands:*
@@ -275,9 +264,8 @@ async def dispatch(ctx):
   `goals`: See {persyn_config.id.name}'s current goals
 
   *Image generation:*
-  :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
-  :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
-  :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
+  :art: _prompt_ : Generate a picture of _prompt_ using dall-e v3
+  :frame_with_picture: _prompt_ : Generate a portrait of _prompt_ using dall-e v3
 """)
 
     elif ctx.content == 'status':

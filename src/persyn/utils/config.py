@@ -88,6 +88,20 @@ def load_config(cfg=None):
                 config['dreams']['stable_diffusion']['height'] = 512
             if 'guidance' not in config['dreams']['stable_diffusion']:
                 config['dreams']['stable_diffusion']['guidance'] = 14
+        else:
+            config['dreams']['stable_diffusion'] = None
+
+        if 'dalle' in config['dreams']:
+            if 'model' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['model'] = "dall-e-3"
+            if 'width' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['width'] = 1024
+            if 'height' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['height'] = 1024
+            if 'quality' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['quality'] = "standard"
+        else:
+            config['dreams']['dalle'] = None
 
     if 'cns' in config and 'redis' not in config['cns']:
         config['cns']['redis'] = 'redis://localhost:6379/'

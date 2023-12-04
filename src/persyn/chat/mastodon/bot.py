@@ -105,17 +105,16 @@ class Mastodon():
             # Yadda yadda yadda
             self.reminders.add(channel, when, self.dispatch, args=[channel, '...', status])
 
-    def synthesize_image(self, channel, prompt, engine="stable-diffusion", style=None, model=None):
+    def synthesize_image(self, channel, prompt, engine="dall-e", model=None, width=None, height=None, style=None):
         ''' It's not AI art. It's _image synthesis_ '''
         self.chat.take_a_photo(
             channel,
             prompt,
             engine=engine,
-            style=style,
             model=model,
-            width=self.persyn_config.dreams.stable_diffusion.width,
-            height=self.persyn_config.dreams.stable_diffusion.height,
-            guidance=self.persyn_config.dreams.stable_diffusion.guidance
+            width=width,
+            height=height,
+            style=style
         )
         ents = self.chat.get_entities(prompt)
         if ents:
@@ -208,13 +207,10 @@ class Mastodon():
         ''' Handle commands and replies '''
 
         if msg.startswith('🎨'):
-            self.synthesize_image(channel, msg[1:].strip(), engine="stable-diffusion")
+            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e")
 
-        elif msg.startswith('🦜'):
-            prompt = msg[1:].strip()
-            style = self.chat.prompt_parrot(prompt)
-            log.warning(f"🦜 {style}")
-            self.synthesize_image(channel, prompt, engine="stable-diffusion", style=style)
+        elif msg.startswith('🖼️'):
+            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792)
 
         else:
             if status:

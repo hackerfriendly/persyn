@@ -147,6 +147,6 @@ class Photo(autobus.Event):
     service: str
     channel: str
     prompt: str
-    size: Optional[tuple] = (1024, 512)
+    size: Optional[tuple] = (1024, 1024)
     bot_name: str
     bot_id: str

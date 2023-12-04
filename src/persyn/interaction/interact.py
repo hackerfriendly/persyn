@@ -259,29 +259,6 @@ class Interact():
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
-    def generate_photo(self, service, channel, prompt):
-        ''' Generate a photo and send it to a channel '''
-        req = {
-            "channel": channel,
-            "service": service,
-            "prompt": prompt,
-            "width": 1024,
-            "height": 512,
-            "bot_name": self.config.id.name,
-            "bot_id": self.config.id.guid
-        }
-        try:
-            reply = rs.post(f"{self.config.dreams.url}/generate/", params=req, timeout=10)
-            if reply.ok:
-                log.warning(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code}")
-            else:
-                log.error(f"{self.config.dreams.url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
-            return reply.ok
-        except requests.exceptions.ConnectionError as err:
-            log.error(f"{self.config.dreams.url}/generate/", err)
-            return False
-
-
     def gather_facts(self, service, channel, entities):
         '''
         Gather facts (from Wikipedia) and opinions (from memory).

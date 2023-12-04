@@ -15,9 +15,6 @@ from persyn.utils.color_logging import log
 # Long and short term memory
 from persyn.interaction.memory import Recall
 
-# Artist names
-from persyn.utils.art import artists
-
 default_photo_triggers = [
     'look', 'see', 'show', 'watch', 'vision',
     'imagine', 'idea', 'memory', 'remember'
@@ -92,11 +89,10 @@ class Chat():
                 self.take_a_photo(
                     channel,
                     summary,
-                    engine="stable-diffusion",
-                    style=f"style by {random.choice(artists)}",
-                    width=self.persyn_config.dreams.stable_diffusion.width,
-                    height=self.persyn_config.dreams.stable_diffusion.height,
-                    guidance=self.persyn_config.dreams.stable_diffusion.guidance
+                    engine="dall-e",
+                    width=self.persyn_config.dreams.dalle.width,
+                    height=self.persyn_config.dreams.dalle.height,
+                    style=self.persyn_config.dreams.dalle.quality
                 )
             return summary
 
@@ -140,10 +136,10 @@ class Chat():
             self.take_a_photo(
                 channel,
                 self.get_summary(channel),
-                engine="stable-diffusion",
-                width=self.persyn_config.dreams.stable_diffusion.width,
-                height=self.persyn_config.dreams.stable_diffusion.height,
-                guidance=self.persyn_config.dreams.stable_diffusion.guidance
+                engine="dall-e",
+                width=self.persyn_config.dreams.dalle.width,
+                height=self.persyn_config.dreams.dalle.height,
+                style=self.persyn_config.dreams.dalle.quality
             )
 
         return reply
@@ -189,9 +185,9 @@ class Chat():
         self,
         channel,
         prompt,
-        engine="stable-diffusion",
-        model=None,
-        style=None,
+        engine="dall-e",
+        model="dall-e-3",
+        style="standard",
         seed=None,
         steps=None,
         width=None,

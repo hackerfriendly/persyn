@@ -161,9 +161,7 @@ def main():
     `goals`: See {persyn_config.id.name}'s current goals
 
     *Image generation:*
-    :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
-    :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
-    :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
+    :art: _prompt_ : Generate a picture of _prompt_ using dall-e v3
     """)
 
     @app.message(re.compile(r"^goals$"))
@@ -185,15 +183,15 @@ def main():
         chat.take_a_photo(
             channel,
             chat.get_summary(channel),
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width,
-            height=persyn_config.dreams.stable_diffusion.height,
-            guidance=persyn_config.dreams.stable_diffusion.guidance
+            engine="dall-e",
+            width=persyn_config.dreams.dalle.width,
+            height=persyn_config.dreams.dalle.height,
+            style=persyn_config.dreams.dalle.quality
         )
 
     @app.message(re.compile(r"^:art:(.+)$"))
-    def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
-        ''' Take a picture with stable diffusion '''
+    def dalle_picture(say, context): # pylint: disable=unused-argument
+        ''' Take a picture with Dall-E '''
         speaker_id = context['user_id']
         speaker_name = get_display_name(speaker_id)
         channel = context['channel_id']
@@ -202,10 +200,10 @@ def main():
         chat.take_a_photo(
             channel,
             prompt,
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width,
-            height=persyn_config.dreams.stable_diffusion.height,
-            guidance=persyn_config.dreams.stable_diffusion.guidance
+            engine="dall-e",
+            width=persyn_config.dreams.dalle.width,
+            height=persyn_config.dreams.dalle.height,
+            style=persyn_config.dreams.dalle.quality
         )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
@@ -214,8 +212,8 @@ def main():
             chat.inject_idea(channel, ents)
 
     @app.message(re.compile(r"^:frame_with_picture:(.+)$"))
-    def stable_diffusion_picture_hq(say, context): # pylint: disable=unused-argument
-        ''' Take a picture with stable diffusion '''
+    def dalle_portrait(say, context): # pylint: disable=unused-argument
+        ''' Take a picture with Dall-E '''
         speaker_id = context['user_id']
         speaker_name = get_display_name(speaker_id)
         channel = context['channel_id']
@@ -224,39 +222,12 @@ def main():
         chat.take_a_photo(
             channel,
             prompt,
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width * 2,
-            height=persyn_config.dreams.stable_diffusion.height * 2,
-            guidance=persyn_config.dreams.stable_diffusion.guidance
+            engine="dall-e",
+            width=1024,
+            height=1792,
         )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
-        ents = chat.get_entities(prompt)
-        if ents:
-            chat.inject_idea(channel, ents)
-
-    @app.message(re.compile(r"^:magic_wand:(.+)$"))
-    def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
-        ''' Take a picture with stable diffusion '''
-        speaker_id = context['user_id']
-        speaker_name = get_display_name(speaker_id)
-        channel = context['channel_id']
-        prompt = context['matches'][0].strip()
-
-        parrot = chat.prompt_parrot(prompt)
-        log.warning(f"🦜 {parrot}")
-        chat.take_a_photo(
-            channel,
-            prompt,
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width,
-            height=persyn_config.dreams.stable_diffusion.height,
-            guidance=persyn_config.dreams.stable_diffusion.guidance,
-            style=parrot
-        )
-        say(f"OK, {speaker_name}.")
-        say_something_later(say, channel, context, 3, ":camera_with_flash:")
-
         ents = chat.get_entities(prompt)
         if ents:
             chat.inject_idea(channel, ents)
@@ -336,7 +307,7 @@ def main():
             chat.inject_idea(channel, "The lights are off.")
 
     @app.message(re.compile(r"(.*)", re.I))
-    def catch_all(say, context):
+    def catch_all(_, context):
         ''' Default message handler '''
         service = app.client.auth_test().data['url']
         channel = context['channel_id']
