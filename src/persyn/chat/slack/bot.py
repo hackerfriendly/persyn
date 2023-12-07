@@ -176,19 +176,25 @@ def main():
     @app.message(re.compile(r"^:art:$"))
     def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
         ''' Take a stable diffusion photo of this conversation '''
+        if not persyn_config.dreams.stable_diffusion:
+            log.error('🎨 No Stable Diffusion support available, check your config.')
+            return
         channel = context['channel_id']
         chat.take_a_photo(
             channel,
             chat.get_summary(channel),
             engine="dall-e",
-            width=persyn_config.dreams.dalle.width,
-            height=persyn_config.dreams.dalle.height,
-            style=persyn_config.dreams.dalle.quality
+            width=persyn_config.dreams.stable_diffusion.width,
+            height=persyn_config.dreams.stable_diffusion.height,
+            style=persyn_config.dreams.stable_diffusion.quality
         )
 
     @app.message(re.compile(r"^:art:(.+)$"))
     def dalle_picture(say, context): # pylint: disable=unused-argument
         ''' Take a picture with Dall-E '''
+        if not persyn_config.dreams.dalle:
+            log.error('🎨 No DALL-E support available, check your config.')
+            return
         speaker_id = context['user_id']
         speaker_name = get_display_name(speaker_id)
         channel = context['channel_id']
@@ -417,67 +423,70 @@ def main():
         log.info("Reaction removed event")
 
 
-    # Slack file handling is awful. Fix this sometime.
+    @app.event("message")
+    def handle_message_events(body, say):
+        ''' Handle uploaded images '''
+        channel = body['event']['channel']
 
-    # @app.event("message")
-    # def handle_message_events(body, say):
-    #     ''' Handle uploaded images '''
-    #     channel = body['event']['channel']
+        if 'user' not in body['event']:
+            log.warning("Message event with no user. 🤷")
+            return
 
-    #     if 'user' not in body['event']:
-    #         log.warning("Message event with no user. 🤷")
-    #         return
+        speaker_id = body['event']['user']
+        speaker_name = get_display_name(speaker_id)
+        msg = substitute_names(body['event']['text'])
 
-    #     speaker_id = body['event']['user']
-    #     speaker_name = get_display_name(speaker_id)
-    #     msg = substitute_names(body['event']['text'])
+        if 'files' not in body['event']:
+            log.warning("Message with no picture? 🤷‍♂️")
+            return
 
-    #     if 'files' not in body['event']:
-    #         log.warning("Message with no picture? 🤷‍♂️")
-    #         return
+        for file in body['event']['files']:
 
-    #     for file in body['event']['files']:
+            # Download needs auth, so upload it to a public link
+            log.warning(f"Downloaded: {file['url_private_download']}")
 
-    #         # OpenAI can't see these, so upload them to a public link
-    #         log.warning(f"Downloaded: {file['url_private_download']}")
+            response = rs.get(
+                file['url_private_download'],
+                headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}
+            )
+            response.raise_for_status()
 
-    #         response = rs.get(file['url_private_download'])
-    #         response.raise_for_status()
+            with tempfile.TemporaryDirectory() as tmpdir:
+                image_id = uuid.uuid4()
+                fname = str(Path(tmpdir)/f"{image_id}.jpg")
+                with open(fname, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        f.write(chunk)
 
-    #         with tempfile.TemporaryDirectory() as tmpdir:
-    #             image_id = uuid.uuid4()
-    #             fname = str(Path(tmpdir)/f"{image_id}.jpg")
-    #             with open(fname, "wb") as f:
-    #                 for chunk in response.iter_content(chunk_size=1024):
-    #                     f.write(chunk)
+                upload_files([fname], persyn_config)
 
-    #             upload_files([fname], persyn_config)
+            log.warning(f"Uploaded: {persyn_config.dreams.upload.url_base}/{image_id}.jpg")
 
-    #         log.warning(f"Uploaded: {persyn_config.dreams.upload.url_base}/{image_id}.jpg")
-    #         caption = get_caption(f"{persyn_config.dreams.upload.url_base}/{image_id}.jpg")
+            chat.inject_idea(channel, f"{speaker_name} uploads a picture.")
+            caption = get_caption(f"{persyn_config.dreams.upload.url_base}/{image_id}.jpg")
 
-    #         if caption:
-    #             say(caption)
+            if caption:
+                say(caption)
 
-    #             chat.inject_idea(channel, caption, verb="imagines")
+                chat.inject_idea(channel, caption, verb="observes")
 
-    #             if not msg.strip():
-    #                 msg = "..."
+                if not msg.strip():
+                    msg = "..."
 
-    #             chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+                chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
 
-    #         else:
-    #             say(
-    #                 random.choice([
-    #                     "I'm not sure.",
-    #                     ":face_with_monocle:",
-    #                     ":face_with_spiral_eyes:",
-    #                     "What the...?",
-    #                     "Um.",
-    #                     "No idea.",
-    #                     "Beats me."
-    #                 ])
-    #             )
+            else:
+                say(
+                    random.choice([
+                        "I'm not sure.",
+                        ":face_with_monocle:",
+                        ":face_with_spiral_eyes:",
+                        "What the...?",
+                        "Um.",
+                        "No idea.",
+                        "Beats me."
+                    ])
+                )
 
 
     handler = SocketModeHandler(app, persyn_config.chat.slack.app_token)
