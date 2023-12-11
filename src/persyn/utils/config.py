@@ -134,11 +134,10 @@ def load_config(cfg=None):
     if 'completion' in config:
         completion_defaults = {
             'engine': 'openai',
-            'api_base': 'https://api.openai.com/v1',
+            'openai_api_base': 'https://api.openai.com/v1',
             'openai_org': None,
-            'completion_model': 'text-davinci-003',
             'chat_model': 'gpt-3.5-turbo',
-            'summary_model': 'gpt-3.5-turbo'
+            'reasoning_model': 'gpt-4'
         }
         for setting, val in completion_defaults.items():
             if setting not in config['completion']:

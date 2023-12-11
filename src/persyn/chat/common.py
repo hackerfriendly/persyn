@@ -59,7 +59,7 @@ class Chat():
         self.recall = Recall(persyn_config)
 
         self.oai_client = OpenAI(
-            api_key=persyn_config.completion.api_key,
+            api_key=persyn_config.completion.openai_api_key,
             organization=persyn_config.completion.openai_org
         )
 

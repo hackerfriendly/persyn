@@ -35,7 +35,7 @@ def the_llm(config, **kwargs):
     ''' Construct the proper LLM object for model '''
     if kwargs['model'].startswith('gpt-'):
         return ChatOpenAI(
-            openai_api_key=config.completion.api_key,
+            openai_api_key=config.completion.openai_api_key,
             openai_organization=config.completion.openai_org,
             **kwargs
         )
@@ -45,7 +45,7 @@ def the_llm(config, **kwargs):
             **kwargs
         )
     return OpenAI(
-        openai_api_key=config.completion.api_key,
+        openai_api_key=config.completion.openai_api_key,
         openai_organization=config.completion.openai_org,
         **kwargs
     )
@@ -61,46 +61,44 @@ class GPT():
         self.forbidden = None
         self.bot_name = config.id.name
         self.bot_id = config.id.guid
-        self.min_score = config.completion.minimum_quality_score
 
-        self.completion_model = config.completion.completion_model
         self.chat_model = config.completion.chat_model
-        self.summary_model = config.completion.summary_model
+        self.reasoning_model = config.completion.reasoning_model
 
         self.nlp = spacy.load(config.spacy.model)
 
         self.stats = Counter()
 
-        openai.api_key = config.completion.api_key
-        openai.api_base = config.completion.api_base
+        openai.api_key = config.completion.openai_api_key
+        openai.api_base = config.completion.openai_api_base
         openai.organization = config.completion.openai_org
 
         self.completion_llm = the_llm(
             self.config,
-            model=self.completion_model,
-            temperature=self.config.completion.temperature,
+            model=self.chat_model,
+            temperature=self.config.completion.chat_temperature,
             max_tokens=150,
         )
         self.summary_llm = the_llm(
             self.config,
-            model=self.summary_model,
-            temperature=self.config.completion.temperature,
+            model=self.reasoning_model,
+            temperature=self.config.completion.reasoning_temperature,
             max_tokens=50,
         )
         self.feels_llm = the_llm(
             self.config,
-            model=self.completion_model,
-            temperature=self.config.completion.temperature,
+            model=self.chat_model,
+            temperature=self.config.completion.chat_temperature,
             max_tokens=10,
         )
 
-        log.debug(f"🤖 completion model: {self.completion_model}")
-        log.debug(f"🤖 summary model: {self.summary_model}")
+        log.debug(f"🤖 chat model: {self.chat_model}")
+        log.debug(f"🤖 reasoning model: {self.reasoning_model}")
 
     def get_enc(self, model=None):
         ''' Return the encoder for model_name '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
 
         try:
             return tiktoken.encoding_for_model(model)
@@ -110,7 +108,7 @@ class GPT():
     def max_prompt_length(self, model=None):
         ''' Return the maximum number of tokens allowed for a model. '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
 
         try:
             return BaseOpenAI.modelname_to_contextsize(model)
@@ -129,7 +127,7 @@ class GPT():
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
         return len(self.get_enc(model).encode(text))
 
     def paginate(self, f, max_tokens=None, prompt=None, max_reply_length=0):
@@ -223,7 +221,7 @@ class GPT():
     def truncate(self, text, model=None):
         ''' Truncate text to the max_prompt_length for this model '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
 
         maxlen = self.max_prompt_length(model)
         if self.toklen(text) <= maxlen:
@@ -280,7 +278,7 @@ class GPT():
         log.warning("🧷 get_opinions:", entity)
         prompt = self.truncate(
             f"Briefly state {self.bot_name}'s opinion about {entity} from {self.bot_name}'s point of view, and convert pronouns and verbs to the first person.\n{context}",
-            model=self.summary_model
+            model=self.reasoning_model
         )
 
         template = """You are an expert at estimating opinions based on conversation.\n{prompt}"""
@@ -297,7 +295,7 @@ class GPT():
         '''
         prompt = self.truncate(
             f"In the following text, these three comma separated words best describe {self.bot_name}'s emotional state:\n{context}",
-            model=self.completion_model
+            model=self.chat_model
         )
 
         template = """You are an expert at determining the emotional state of people engaging in conversation.\n{prompt}"""
@@ -437,7 +435,7 @@ as told from the third-person point of view of {self.bot_name}.
             log.warning('get_summary():', "No text, skipping summary.")
             return ""
 
-        prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.summary_model)
+        prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.reasoning_model)
 
         template = """You are an expert at summarizing text.\n{prompt}"""
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)

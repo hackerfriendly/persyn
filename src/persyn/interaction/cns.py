@@ -139,7 +139,7 @@ async def summarize_channel(event):
         save=True,
         photo=event.photo,
         max_tokens=event.max_tokens,
-        model=persyn_config.completion.summary_model
+        model=persyn_config.completion.reasoning_model
     )
     if event.send_chat:
         services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
@@ -449,6 +449,21 @@ async def reflect_on(event):
     convo = '\n'.join(recall.convo(event.service, event.channel, feels=True))
     convo_id = recall.convo_id(event.service, event.channel)
     chat = Chat(persyn_config=persyn_config, service=event.service)
+
+    """
+    Given only the dialog above, what are the three most salient high-level question that can be asked about Anna?
+
+    What three actions can Anna take to answer those questions?
+
+    Please convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
+
+    {
+    "questions": ["THE QUESTIONS", "AS A LIST"],
+    "actions": ["THE ACTIONS", "AS A LIST"]
+    }
+
+    Your response should only include JSON, no other text.
+    """
 
     questions = completion.get_reply(
         f"""{convo}

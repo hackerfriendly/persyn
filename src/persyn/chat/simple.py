@@ -59,7 +59,7 @@ def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
 
     if images:
         log.info(f"⚡️ Posted image to Slack as {bot_name}")
-        chat.inject_idea(channel, chat.get_caption(url), verb='imagines')
+        chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
     else:
         log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
         chat.inject_idea(channel, msg, verb='dialog')
@@ -98,7 +98,7 @@ def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
 
     if images:
         log.info(f"⚡️ Posted image to Discord as {bot_name}")
-        chat.inject_idea(channel, chat.get_caption(url), verb='imagines')
+        chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
     else:
         log.info(f"⚡️ Posted dialog to Discord as {bot_name}")
         chat.inject_idea(channel, msg, verb='dialog')

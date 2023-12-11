@@ -77,8 +77,9 @@ class Interact():
         #         agent_tools.append(zim)
         #         vector_tools.append(zim)
 
-        self.enc = self.completion.model.get_enc()
+        # Other tools: introspection (assess software + hardware), Claude (ask for facts)
 
+        self.enc = self.completion.model.get_enc()
 
     def summarize_convo(
         self,
@@ -172,18 +173,6 @@ class Interact():
                 current_convo_id=self.recall.convo_id(service, channel),
                 threshold=self.config.memory.relevance * 1.4,
                 any_convo=True
-            )
-
-        if not ranked:
-            log.warning("💁‍♂️ Vicarious comprehension")
-            self.inject_idea(
-                service, channel,
-                random.choice([
-                    f"{self.config.id.name} isn't sure what is being discussed.",
-                    f"{self.config.id.name} is interested, but unsure.",
-                    f"while they can offer informed opinions, {self.config.id.name} hasn't had much relevant direct experience.",
-                ]),
-                verb="realizes"
             )
 
         for hit in ranked:
