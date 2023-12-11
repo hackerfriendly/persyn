@@ -166,7 +166,7 @@ async def handle_entities(
 async def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    idea: str = Form(..., min_length=1, max_length=65535),
+    idea: str = Form(..., min_length=1, max_length=2e6),
     verb: Optional[str] = Query('recalls', min_length=1, max_length=255),
 ):
     ''' Inject an idea into the stream of consciousness '''
@@ -349,8 +349,8 @@ async def wiki(
 async def vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: str = Query(..., min_length=1, max_length=255),
-    room: str = Form(..., max_length=65535),
+    convo_id: Optional[str] = Query("", min_length=1, max_length=255),
+    room: Optional[str] = Form("", max_length=2e6),
 ):
     ''' Ask the autobus to vibe check the room '''
     event = VibeCheck(
@@ -373,7 +373,7 @@ async def build_graph(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: str = Query(..., min_length=1, max_length=255),
-    convo: str = Form(..., max_length=65535),
+    convo: str = Form(..., max_length=2e6),
 ):
     ''' Add to this convo to the knowledge graph '''
     event = KnowledgeGraph(

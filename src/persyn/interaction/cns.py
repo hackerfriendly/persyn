@@ -93,6 +93,7 @@ async def chat_received(event):
     ''' Somebody is talking to us '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
+    log.warning("💬 chat received")
     # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
 
     # TODO: Decide whether to delay reply, or to reply at all?
@@ -104,6 +105,18 @@ async def chat_received(event):
         msg=event.msg,
         send_chat=True
     )
+
+    vc = VibeCheck(
+        service=event.service,
+        channel=event.channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=None,
+        room=None
+    )
+    autobus.publish(vc)
+    log.warning("VibeCheck sent")
+    log.warning(vc)
 
     # Time for self-examination.
 
@@ -255,6 +268,11 @@ async def add_goal(event):
 
 async def check_feels(event):
     ''' Run sentiment analysis on ourselves. '''
+    if not event.room:
+        event.room = '\n'.join(recall.convo(event.service, event.channel))
+    if not event.convo_id:
+        event.convo_id = recall.convo_id(event.service, event.channel)
+
     feels = completion.get_feels(event.room)
     recall.save_convo_line(
         service=event.service,

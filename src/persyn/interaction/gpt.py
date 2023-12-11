@@ -87,7 +87,7 @@ class GPT():
         )
         self.feels_llm = the_llm(
             self.config,
-            model=self.chat_model,
+            model=self.reasoning_model,
             temperature=self.config.completion.chat_temperature,
             max_tokens=10,
         )
@@ -298,7 +298,12 @@ class GPT():
             model=self.chat_model
         )
 
-        template = """You are an expert at determining the emotional state of people engaging in conversation.\n{prompt}"""
+        template = """
+You are an expert at determining the emotional state of people engaging in conversation.
+{prompt}
+-----
+Your response should only include the three words, no other text.
+"""
         llm_chain = LLMChain.from_string(llm=self.feels_llm, template=template)
 
         reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
@@ -437,7 +442,12 @@ as told from the third-person point of view of {self.bot_name}.
 
         prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.reasoning_model)
 
-        template = """You are an expert at summarizing text.\n{prompt}"""
+        template = """
+You are an expert at summarizing text.
+{prompt}
+-----
+Your response should only include the summary, no other text.
+"""
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
         reply = self.trim(llm_chain.predict(prompt=prompt).strip())
 
