@@ -87,7 +87,7 @@ class Chat():
             return " :writing_hand: :interrobang: "
 
         summary = reply.json()['summary']
-        log.warning(f"∑ {reply.json()['summary']}")
+        log.warning(f"∑: » {reply.json()['summary']} «")
 
         if summary:
             if self.dreams_url and photo:

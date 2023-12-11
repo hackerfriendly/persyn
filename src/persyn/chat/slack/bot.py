@@ -240,7 +240,13 @@ def main():
         ''' Say a condensed summary of this channel '''
         save = bool(context['matches'][0])
         channel = context['channel_id']
-        say("💭 " + chat.get_summary(channel, save, include_keywords=False, photo=True))
+        say("💭 " + chat.get_summary(
+            channel=channel,
+            convo_id=None,
+            save=save,
+            include_keywords=False,
+            photo=True)
+        )
 
     @app.message(re.compile(r"^status$", re.I))
     def status(say, context):

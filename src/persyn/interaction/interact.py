@@ -89,10 +89,8 @@ class Interact():
         include_keywords=False,
         context_lines=0,
         dialog_only=True,
-        model=None,
-        convo_id=None,
-        save_kg=True
-        ):
+        convo_id=None
+    ):
         '''
         Generate a summary of the current conversation for this channel.
         Also generate and save opinions about detected topics.
@@ -104,15 +102,19 @@ class Interact():
         '''
         if convo_id is None:
             convo_id = self.recall.convo_id(service, channel)
+            log.warning(f"∑ summarize_convo: {convo_id}")
         if not convo_id:
+            log.error("∑ summarize_convo: no convo_id")
             return ""
 
+        log.warning(f"{service} | {channel} | {convo_id}")
         if dialog_only:
-            text = self.recall.convo(service, channel, verb='dialog') or self.recall.summaries(service, channel, size=3)
+            text = self.recall.convo(service, channel, convo_id=convo_id, verb='dialog') or self.recall.summaries(service, channel, size=3)
         else:
-            text = self.recall.convo(service, channel, feels=True)
+            text = self.recall.convo(service, channel, convo_id=convo_id, feels=True)
 
         if not text:
+            log.error("∑ summarize_convo: no text")
             return ""
 
         log.warning("∑ summarizing convo")
@@ -123,15 +125,13 @@ class Interact():
 
         summary = self.completion.get_summary(
             text=convo_text,
-            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person."
+            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
+
         )
         keywords = self.completion.get_keywords(summary)
 
         if save:
             self.recall.save_summary(service, channel, convo_id, summary, keywords)
-
-        # if save_kg:
-        #     self.save_knowledge_graph(service, channel, convo_id, convo_text)
 
         if include_keywords:
             return summary + f"\nKeywords: {keywords}"

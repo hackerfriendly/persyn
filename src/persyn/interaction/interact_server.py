@@ -110,16 +110,14 @@ async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     save: Optional[bool] = Query(True),
-    max_tokens: Optional[int] = Query(200),
     include_keywords: Optional[bool] = Query(False),
     context_lines: Optional[int] = Query(0),
     dialog_only: Optional[bool] = Query(False),
-    model: Optional[str] = Query(None, min_length=1, max_length=64),
     convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
 ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, model, convo_id]
+        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, convo_id]
     ))
     return {
         "summary": ret[0]

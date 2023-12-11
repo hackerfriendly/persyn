@@ -93,7 +93,7 @@ async def chat_received(event):
     ''' Somebody is talking to us '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
-    log.warning("💬 chat received")
+    log.warning("💬 chat_received start")
     # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
 
     # TODO: Decide whether to delay reply, or to reply at all?
@@ -115,8 +115,6 @@ async def chat_received(event):
         room=None
     )
     autobus.publish(vc)
-    log.warning("VibeCheck sent")
-    log.warning(vc)
 
     # Time for self-examination.
 
@@ -133,6 +131,7 @@ async def chat_received(event):
         # if random.random() < 0.5:
         #     self.check_goals(service, channel, convo)
 
+    log.warning("💬 chat_received done")
 
 async def new_idea(event):
     ''' Inject a new idea '''
