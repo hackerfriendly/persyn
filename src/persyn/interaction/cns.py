@@ -106,6 +106,9 @@ async def chat_received(event):
         send_chat=True
     )
 
+    # Time for self-examination.
+
+    # Update emotional state
     vc = VibeCheck(
         service=event.service,
         channel=event.channel,
@@ -116,7 +119,17 @@ async def chat_received(event):
     )
     autobus.publish(vc)
 
-    # Time for self-examination.
+    # Check facts
+    fc = FactCheck(
+        service=event.service,
+        channel=event.channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=None,
+        room=None
+    )
+    autobus.publish(fc)
+
 
     # TODO: Should this be a priority queue?
 
@@ -125,11 +138,7 @@ async def chat_received(event):
         # # Facts and opinions
         # self.gather_facts(service, channel, entities)
 
-
-    # Dispatch an event to check goals
-        # # Goals. Don't give out _too_ many trophies.
-        # if random.random() < 0.5:
-        #     self.check_goals(service, channel, convo)
+    #     self.check_goals(service, channel, convo)
 
     log.warning("💬 chat_received done")
 
@@ -284,6 +293,26 @@ async def check_feels(event):
     )
     log.warning("😄 Feeling:", feels)
 
+async def check_facts(event):
+    ''' Ask for a second opinion about our side of the conversation. '''
+    if not event.room:
+        event.room = '\n'.join(recall.convo(event.service, event.channel))
+    if not event.convo_id:
+        event.convo_id = recall.convo_id(event.service, event.channel)
+
+    facts = completion.fact_check(event.room)
+    if facts:
+        recall.save_convo_line(
+            service=event.service,
+            channel=event.channel,
+            msg=facts,
+            speaker_name=event.bot_name,
+            speaker_id=event.bot_id,
+            convo_id=event.convo_id,
+            verb='realizes'
+        )
+        log.warning("🧠 Thinking:", facts)
+
 async def build_knowledge_graph(event, max_opinions=3):
     ''' Build the knowledge graph. '''
     triples = completion.model.generate_triples(event.convo)
@@ -305,6 +334,26 @@ async def build_knowledge_graph(event, max_opinions=3):
             entities=random.sample(list(so), k=min(max_opinions, len(so)))
         )
     )
+
+async def find_goals(event):
+    ''' Interrogate the conversation, looking for goals '''
+
+    preamble = f"-----\nIn the previous dialog, does {event.bot_name} express any desires or goals? "
+    prompt = preamble + """
+Answer in the first person and in JSON format using the following template with no other text or explanation:
+
+{
+  goals: ["LIST", "OF", "GOALS"]
+}
+
+If no goals or desires are expressed, return an empty JSON list in this format, with no other text:
+
+{
+  goals: []
+}
+
+Your response MUST return valid JSON.
+"""
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
@@ -479,7 +528,7 @@ async def reflect_on(event):
     "actions": ["THE ACTIONS", "AS A LIST"]
     }
 
-    Your response should only include JSON, no other text.
+    Your response should only include JSON, no other text. Your response MUST return valid JSON.
     """
 
     questions = completion.get_reply(
@@ -618,6 +667,12 @@ async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
     log.debug("VibeCheck received", event)
     await check_feels(event)
+
+@autobus.subscribe(FactCheck)
+async def facts_event(event):
+    ''' Dispatch FactCheck event. '''
+    log.debug("FactCheck received", event)
+    await check_facts(event)
 
 @autobus.subscribe(KnowledgeGraph)
 async def kg_event(event):

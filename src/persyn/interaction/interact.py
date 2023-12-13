@@ -125,7 +125,10 @@ class Interact():
 
         summary = self.completion.get_summary(
             text=convo_text,
-            summarizer=f"Briefly summarize this conversation from {self.config.id.name}'s point of view, and convert pronouns and verbs to the first person.",
+            summarizer=f"""
+Briefly summarize this dialog, and convert pronouns and verbs to the first person.
+Your response must only include the summary and no other text.
+""",
 
         )
         keywords = self.completion.get_keywords(summary)

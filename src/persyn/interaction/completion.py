@@ -40,6 +40,12 @@ class LanguageModel():
         '''
         return self.model.get_feels(context)
 
+    def fact_check(self, context):
+        '''
+        Ask the model to fact check the current convo.
+        '''
+        return self.model.fact_check(context)
+
     def get_summary(self, text, summarizer="To sum it up in one sentence:"):
         ''' Ask the model for a summary'''
         return self.model.get_summary(text, summarizer)

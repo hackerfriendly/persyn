@@ -83,7 +83,7 @@ class GPT():
             self.config,
             model=self.reasoning_model,
             temperature=self.config.completion.reasoning_temperature,
-            max_tokens=50,
+            max_tokens=100,
         )
         self.feels_llm = the_llm(
             self.config,
@@ -312,6 +312,32 @@ Your response should only include the three words, no other text.
 
         return reply
 
+    def fact_check(self, context):
+        '''
+        Ask the LLM to fact check the current convo.
+        '''
+        log.debug(f"✅ fact check: {context}")
+
+        prompt = self.truncate(
+            f"Examine all facts in the following conversation, pointing out any inconsistencies. Convert pronouns and verbs to the first person:\n{context}",
+            model=self.reasoning_model
+        )
+
+        template = """
+You are an experienced fact-checker, and are happy to validate any inconsistencies in a dialog.
+{prompt}
+"""
+        llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
+
+        reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
+
+        log.warning(f"✅ fact check: {reply}")
+
+        if 'NONE' in reply:
+            return None
+
+        return reply
+
     @staticmethod
     def camelCaseName(name):
         ''' Return name sanitized as camelCaseName, alphanumeric only, max 64 characters. '''
@@ -434,20 +460,15 @@ as told from the third-person point of view of {self.bot_name}.
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-    def get_summary(self, text, summarizer="Sum the following up in one sentence:"):
+    def get_summary(self, text, summarizer="Summarize the following in one sentence. Your response must include only the summary and no other text."):
         ''' Ask the LLM for a summary'''
         if not text:
             log.warning('get_summary():', "No text, skipping summary.")
             return ""
 
         prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.reasoning_model)
-
-        template = """
-You are an expert at summarizing text.
-{prompt}
------
-Your response should only include the summary, no other text.
-"""
+        log.warning(f'get_summary(): summarizing: {prompt}')
+        template = "{prompt}"
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
         reply = self.trim(llm_chain.predict(prompt=prompt).strip())
 

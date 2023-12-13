@@ -101,6 +101,17 @@ class VibeCheck(autobus.Event):
     convo_id: Optional[str]
     room: Optional[str]
 
+
+class FactCheck(autobus.Event):
+    ''' How we thinkin'? '''
+    service: str
+    channel: str
+    bot_name: str
+    bot_id: str
+    convo_id: Optional[str]
+    room: Optional[str]
+
+
 class KnowledgeGraph(autobus.Event):
     '''
     The best lack all conviction, while the worst are full of passionate intensity.
