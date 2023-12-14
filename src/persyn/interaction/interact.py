@@ -386,7 +386,7 @@ Your response must only include the summary and no other text.
     def default_prompt_prefix(self, service, channel):
         ''' The default prompt prefix '''
         ret = [
-            f"It is {exact_time()} in the {natural_time()} on {today()}.",
+            f"It is {exact_time()} {natural_time()} on {today()}.",
             getattr(self.config.interact, "character", ""),
             f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
         ]

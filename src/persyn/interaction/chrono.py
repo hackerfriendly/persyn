@@ -26,7 +26,7 @@ def natural_time(hour=None):
     ''' Natural time of the day '''
     if hour is None:
         hour = dt.datetime.now().hour
-    day_times = ("late night", "early morning", "morning", "afternoon", "evening", "night")
+    day_times = ("late at night", "in the early morning", "in the morning", "in the afternoon", "in the evening", "at night")
     return day_times[hour // 4]
 
 def today():

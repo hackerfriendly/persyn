@@ -26,9 +26,9 @@ def test_elapsed_time():
 
 def test_natural_time():
     ''' Numbers to human estimates '''
-    assert natural_time(1) == "late night"
-    assert natural_time(5) == "early morning"
-    assert natural_time(9) == "morning"
-    assert natural_time(13) == "afternoon"
-    assert natural_time(17) == "evening"
-    assert natural_time(21) == "early night"
+    assert natural_time(1) == "late at night"
+    assert natural_time(5) == "in the early morning"
+    assert natural_time(9) == "in the morning"
+    assert natural_time(13) == "in the afternoon"
+    assert natural_time(17) == "in the evening"
+    assert natural_time(21) == "at night"
