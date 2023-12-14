@@ -61,12 +61,16 @@ wikicache = {}
 
 rs = requests.Session()
 
-def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
+def mastodon_msg(_, chat, channel, bot_name, msg, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
-    for image in images:
-        mastodon.fetch_and_post_image(
-            f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn"
-        )
+    if images:
+        for image in images:
+            mastodon.fetch_and_post_image(
+                f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn"
+            )
+    else:
+        # TODO: This can't respond to a specific thread, need to patch through to_status
+        mastodon.toot(msg)
 
 services = {
     'slack': slack_msg,

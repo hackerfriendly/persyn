@@ -212,38 +212,52 @@ class Mastodon():
         elif msg.startswith('🖼️'):
             self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792)
 
-        else:
-            if status:
-                the_reply = self.chat.get_reply(
-                    channel,
-                    msg,
-                    status.account.username,
-                    status.account.id
-                )
-                my_response = self.toot(
-                    the_reply,
-                    to_status=status
-                )
-            else:
-                the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders, send_chat=True)
+        # Save the line
+        self.chat.recall.save_convo_line(
+            service='mastodon',
+            channel=channel,
+            msg=msg,
+            speaker_name=status.account.username,
+            speaker_id=status.account.id,
+            convo_id=self.chat.recall.convo_id('mastodon', channel),
+            verb='dialog'
+        )
 
-            # self.chat.summarize_later(channel, self.reminders)
+        # Dispatch a "message received" event. Replies are handled by CNS.
+        self.chat.chat_received(channel, msg, status.account.username, status.account.id)
 
-            if the_reply.endswith('…') or the_reply.endswith('...'):
-                self.say_something_later(
-                    channel,
-                    when=1,
-                    status=my_response[-1]
-                )
-                return
+        # else:
+        #     if status:
+        #         the_reply = self.chat.get_reply(
+        #             channel,
+        #             msg,
+        #             status.account.username,
+        #             status.account.id
+        #         )
+        #         my_response = self.toot(
+        #             the_reply,
+        #             to_status=status
+        #         )
+        #     else:
+        #         the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders, send_chat=True)
 
-            # 5% chance of random interjection later
-            if random.random() < 0.05:
-                self.say_something_later(
-                    channel,
-                    when=random.randint(2, 5),
-                    status=my_response[-1]
-                )
+        #     # self.chat.summarize_later(channel, self.reminders)
+
+        #     if the_reply.endswith('…') or the_reply.endswith('...'):
+        #         self.say_something_later(
+        #             channel,
+        #             when=1,
+        #             status=my_response[-1]
+        #         )
+        #         return
+
+        #     # 5% chance of random interjection later
+        #     if random.random() < 0.05:
+        #         self.say_something_later(
+        #             channel,
+        #             when=random.randint(2, 5),
+        #             status=my_response[-1]
+        #         )
 
 class TheListener(StreamListener):
     ''' Handle streaming events from Mastodon.py '''
