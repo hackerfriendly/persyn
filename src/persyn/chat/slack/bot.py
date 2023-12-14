@@ -409,6 +409,7 @@ def main():
                                 resp = mastodon.client.status_post(
                                     toot,
                                     media_ids=media_ids,
+                                    visibility='unlisted',
                                     idempotency_key=sha256(blk['image_url'].encode()).hexdigest()
                                 )
                                 if not resp or 'url' not in resp:

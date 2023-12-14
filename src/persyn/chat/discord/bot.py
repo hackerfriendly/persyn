@@ -173,6 +173,7 @@ def fetch_and_post_to_masto(url, toot):
             resp = mastodon.client.status_post(
                 toot,
                 media_ids=media_ids,
+                visibility='unlisted',
                 idempotency_key=sha256(url.encode()).hexdigest()
             )
             if not resp or 'url' not in resp:
