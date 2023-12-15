@@ -105,17 +105,16 @@ class Mastodon():
             # Yadda yadda yadda
             self.reminders.add(channel, when, self.dispatch, args=[channel, '...', status])
 
-    def synthesize_image(self, channel, prompt, engine="stable-diffusion", style=None, model=None):
+    def synthesize_image(self, channel, prompt, engine="dall-e", model=None, width=None, height=None, style=None):
         ''' It's not AI art. It's _image synthesis_ '''
         self.chat.take_a_photo(
             channel,
             prompt,
             engine=engine,
-            style=style,
             model=model,
-            width=self.persyn_config.dreams.stable_diffusion.width,
-            height=self.persyn_config.dreams.stable_diffusion.height,
-            guidance=self.persyn_config.dreams.stable_diffusion.guidance
+            width=width,
+            height=height,
+            style=style
         )
         ents = self.chat.get_entities(prompt)
         if ents:
@@ -208,46 +207,57 @@ class Mastodon():
         ''' Handle commands and replies '''
 
         if msg.startswith('🎨'):
-            self.synthesize_image(channel, msg[1:].strip(), engine="stable-diffusion")
+            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e")
 
-        elif msg.startswith('🦜'):
-            prompt = msg[1:].strip()
-            style = self.chat.prompt_parrot(prompt)
-            log.warning(f"🦜 {style}")
-            self.synthesize_image(channel, prompt, engine="stable-diffusion", style=style)
+        elif msg.startswith('🖼️'):
+            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792)
 
-        else:
-            if status:
-                the_reply = self.chat.get_reply(
-                    channel,
-                    msg,
-                    status.account.username,
-                    status.account.id
-                )
-                my_response = self.toot(
-                    the_reply,
-                    to_status=status
-                )
-            else:
-                the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders, send_chat=True)
+        # Save the line
+        self.chat.recall.save_convo_line(
+            service='mastodon',
+            channel=channel,
+            msg=msg,
+            speaker_name=status.account.username,
+            speaker_id=status.account.id,
+            convo_id=self.chat.recall.convo_id('mastodon', channel),
+            verb='dialog'
+        )
 
-            # self.chat.summarize_later(channel, self.reminders)
+        # Dispatch a "message received" event. Replies are handled by CNS.
+        self.chat.chat_received(channel, msg, status.account.username, status.account.id)
 
-            if the_reply.endswith('…') or the_reply.endswith('...'):
-                self.say_something_later(
-                    channel,
-                    when=1,
-                    status=my_response[-1]
-                )
-                return
+        # else:
+        #     if status:
+        #         the_reply = self.chat.get_reply(
+        #             channel,
+        #             msg,
+        #             status.account.username,
+        #             status.account.id
+        #         )
+        #         my_response = self.toot(
+        #             the_reply,
+        #             to_status=status
+        #         )
+        #     else:
+        #         the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders, send_chat=True)
 
-            # 5% chance of random interjection later
-            if random.random() < 0.05:
-                self.say_something_later(
-                    channel,
-                    when=random.randint(2, 5),
-                    status=my_response[-1]
-                )
+        #     # self.chat.summarize_later(channel, self.reminders)
+
+        #     if the_reply.endswith('…') or the_reply.endswith('...'):
+        #         self.say_something_later(
+        #             channel,
+        #             when=1,
+        #             status=my_response[-1]
+        #         )
+        #         return
+
+        #     # 5% chance of random interjection later
+        #     if random.random() < 0.05:
+        #         self.say_something_later(
+        #             channel,
+        #             when=random.randint(2, 5),
+        #             status=my_response[-1]
+        #         )
 
 class TheListener(StreamListener):
     ''' Handle streaming events from Mastodon.py '''

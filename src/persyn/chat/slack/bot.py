@@ -14,6 +14,7 @@ import uuid
 import logging
 
 from hashlib import sha256
+from pathlib import Path
 
 import requests
 
@@ -36,6 +37,9 @@ from persyn.chat.mastodon.bot import Mastodon
 # Common chat library
 from persyn.chat.common import Chat
 
+# Upload files (for image caption processing)
+from persyn.dreams.dreams import upload_files
+
 # Username cache
 known_users = {}
 
@@ -44,6 +48,8 @@ known_bots = {}
 
 # Threaded reminders
 reminders = Reminders()
+
+rs = requests.Session()
 
 # Defined in main()
 app = None
@@ -81,15 +87,8 @@ def substitute_names(text):
     return text
 
 def get_caption(url):
-    ''' Fetch the image caption using CLIP Interrogator '''
-    log.warning("🖼  needs a caption")
-
-    resp = requests.get(url, headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}, timeout=20)
-    if not resp.ok:
-        log.error(f"🖼  Could not retrieve image: {resp.text}")
-        return None
-
-    return chat.get_caption(resp.content)
+    ''' Fetch the image caption using OpenAI CLIP '''
+    return chat.get_caption(url)
 
 def main():
     ''' Main event '''
@@ -159,9 +158,7 @@ def main():
     `goals`: See {persyn_config.id.name}'s current goals
 
     *Image generation:*
-    :art: _prompt_ : Generate a picture of _prompt_ using stable-diffusion v2
-    :frame_with_picture: _prompt_ : Generate a *high quality* picture of _prompt_ using stable-diffusion v2
-    :magic_wand: _prompt_ : Generate a *fancy* picture of _prompt_ using stable-diffusion v2
+    :art: _prompt_ : Generate a picture of _prompt_ using dall-e v3
     """)
 
     @app.message(re.compile(r"^goals$"))
@@ -179,19 +176,25 @@ def main():
     @app.message(re.compile(r"^:art:$"))
     def photo_stable_diffusion_summary(say, context): # pylint: disable=unused-argument
         ''' Take a stable diffusion photo of this conversation '''
+        if not persyn_config.dreams.stable_diffusion:
+            log.error('🎨 No Stable Diffusion support available, check your config.')
+            return
         channel = context['channel_id']
         chat.take_a_photo(
             channel,
             chat.get_summary(channel),
-            engine="stable-diffusion",
+            engine="dall-e",
             width=persyn_config.dreams.stable_diffusion.width,
             height=persyn_config.dreams.stable_diffusion.height,
-            guidance=persyn_config.dreams.stable_diffusion.guidance
+            style=persyn_config.dreams.stable_diffusion.quality
         )
 
     @app.message(re.compile(r"^:art:(.+)$"))
-    def stable_diffusion_picture(say, context): # pylint: disable=unused-argument
-        ''' Take a picture with stable diffusion '''
+    def dalle_picture(say, context): # pylint: disable=unused-argument
+        ''' Take a picture with Dall-E '''
+        if not persyn_config.dreams.dalle:
+            log.error('🎨 No DALL-E support available, check your config.')
+            return
         speaker_id = context['user_id']
         speaker_name = get_display_name(speaker_id)
         channel = context['channel_id']
@@ -200,10 +203,10 @@ def main():
         chat.take_a_photo(
             channel,
             prompt,
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width,
-            height=persyn_config.dreams.stable_diffusion.height,
-            guidance=persyn_config.dreams.stable_diffusion.guidance
+            engine="dall-e",
+            width=persyn_config.dreams.dalle.width,
+            height=persyn_config.dreams.dalle.height,
+            style=persyn_config.dreams.dalle.quality
         )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
@@ -212,8 +215,8 @@ def main():
             chat.inject_idea(channel, ents)
 
     @app.message(re.compile(r"^:frame_with_picture:(.+)$"))
-    def stable_diffusion_picture_hq(say, context): # pylint: disable=unused-argument
-        ''' Take a picture with stable diffusion '''
+    def dalle_portrait(say, context): # pylint: disable=unused-argument
+        ''' Take a picture with Dall-E '''
         speaker_id = context['user_id']
         speaker_name = get_display_name(speaker_id)
         channel = context['channel_id']
@@ -222,39 +225,12 @@ def main():
         chat.take_a_photo(
             channel,
             prompt,
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width * 2,
-            height=persyn_config.dreams.stable_diffusion.height * 2,
-            guidance=persyn_config.dreams.stable_diffusion.guidance
+            engine="dall-e",
+            width=1024,
+            height=1792,
         )
         say(f"OK, {speaker_name}.")
         say_something_later(say, channel, context, 3, ":camera_with_flash:")
-        ents = chat.get_entities(prompt)
-        if ents:
-            chat.inject_idea(channel, ents)
-
-    @app.message(re.compile(r"^:magic_wand:(.+)$"))
-    def prompt_parrot_picture(say, context): # pylint: disable=unused-argument
-        ''' Take a picture with stable diffusion '''
-        speaker_id = context['user_id']
-        speaker_name = get_display_name(speaker_id)
-        channel = context['channel_id']
-        prompt = context['matches'][0].strip()
-
-        parrot = chat.prompt_parrot(prompt)
-        log.warning(f"🦜 {parrot}")
-        chat.take_a_photo(
-            channel,
-            prompt,
-            engine="stable-diffusion",
-            width=persyn_config.dreams.stable_diffusion.width,
-            height=persyn_config.dreams.stable_diffusion.height,
-            guidance=persyn_config.dreams.stable_diffusion.guidance,
-            style=parrot
-        )
-        say(f"OK, {speaker_name}.")
-        say_something_later(say, channel, context, 3, ":camera_with_flash:")
-
         ents = chat.get_entities(prompt)
         if ents:
             chat.inject_idea(channel, ents)
@@ -264,7 +240,13 @@ def main():
         ''' Say a condensed summary of this channel '''
         save = bool(context['matches'][0])
         channel = context['channel_id']
-        say("💭 " + chat.get_summary(channel, save, include_keywords=False, photo=True))
+        say("💭 " + chat.get_summary(
+            channel=channel,
+            convo_id=None,
+            save=save,
+            include_keywords=False,
+            photo=True)
+        )
 
     @app.message(re.compile(r"^status$", re.I))
     def status(say, context):
@@ -334,9 +316,12 @@ def main():
             chat.inject_idea(channel, "The lights are off.")
 
     @app.message(re.compile(r"(.*)", re.I))
-    def catch_all(say, context):
-        ''' Default message handler. Prompt GPT and randomly arm a Timer for later reply. '''
+    def catch_all(_, context):
+        ''' Default message handler '''
+        service = app.client.auth_test().data['url']
         channel = context['channel_id']
+
+        log.debug(context)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
@@ -351,36 +336,23 @@ def main():
             if random.random() < 0.95:
                 return
 
-        the_reply = chat.get_reply(channel, msg, speaker_name, speaker_id, reminders, send_chat=True)
+        # Save the line
+        chat.recall.save_convo_line(
+            service=service,
+            channel=channel,
+            msg=msg,
+            speaker_name=get_display_name(speaker_id),
+            speaker_id=speaker_id,
+            convo_id=chat.recall.convo_id(service, channel),
+            verb='dialog'
+        )
 
-        # say(the_reply)
+        # Dispatch a "message received" event. Replies are handled by CNS.
+        chat.chat_received(channel, msg, speaker_name, speaker_id)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
         reminders.cancel(channel, name='summarizer')
-
-        # chat.summarize_later(channel, reminders)
-
-        if the_reply.endswith('…') or the_reply.endswith('...'):
-            say_something_later(
-                say,
-                channel,
-                context,
-                when=1
-            )
-            return
-
-        # # 5% chance of random interjection later
-        # rnd = random.random()
-        # if rnd < 0.05:
-        #     log.info(f"⏳ say something later in {rnd}...")
-        #     say_something_later(
-        #         say,
-        #         channel,
-        #         context,
-        #         when=random.randint(2, 5)
-        #     )
-
 
     @app.event("app_mention")
     def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
@@ -425,7 +397,7 @@ def main():
                             with tempfile.TemporaryDirectory() as tmpdir:
                                 media_ids = []
                                 for blk in msg['blocks']:
-                                    response = requests.get(blk['image_url'], timeout=30)
+                                    response = rs.get(blk['image_url'], timeout=30)
                                     response.raise_for_status()
                                     fname = f"{tmpdir}/{uuid.uuid4()}.{blk['image_url'][-3:]}"
                                     with open(fname, "wb") as f:
@@ -437,6 +409,7 @@ def main():
                                 resp = mastodon.client.status_post(
                                     toot,
                                     media_ids=media_ids,
+                                    visibility='unlisted',
                                     idempotency_key=sha256(blk['image_url'].encode()).hexdigest()
                                 )
                                 if not resp or 'url' not in resp:
@@ -475,13 +448,34 @@ def main():
             return
 
         for file in body['event']['files']:
-            caption = get_caption(file['url_private_download'])
+
+            # Download needs auth, so upload it to a public link
+            log.warning(f"Downloaded: {file['url_private_download']}")
+
+            response = rs.get(
+                file['url_private_download'],
+                headers={'Authorization': f'Bearer {persyn_config.chat.slack.bot_token}'}
+            )
+            response.raise_for_status()
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                image_id = uuid.uuid4()
+                fname = str(Path(tmpdir)/f"{image_id}.jpg")
+                with open(fname, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        f.write(chunk)
+
+                upload_files([fname], persyn_config)
+
+            log.warning(f"Uploaded: {persyn_config.dreams.upload.url_base}/{image_id}.jpg")
+
+            chat.inject_idea(channel, f"{speaker_name} uploads a picture.")
+            caption = get_caption(f"{persyn_config.dreams.upload.url_base}/{image_id}.jpg")
 
             if caption:
-                prefix = random.choice(["I see", "It looks like", "Looks like", "Might be", "I think it's"])
-                say(f"{prefix} {caption}")
+                say(caption)
 
-                chat.inject_idea(channel, caption, verb="imagines")
+                chat.inject_idea(channel, caption, verb="observes")
 
                 if not msg.strip():
                     msg = "..."

@@ -1,4 +1,4 @@
-''' OpenAI completion '''
+''' LLM completion '''
 # pylint: disable=invalid-name
 
 import re
@@ -13,7 +13,7 @@ import openai
 
 import numpy as np
 
-from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.llms.openai import OpenAI, BaseOpenAI
 from langchain.chains import LLMChain
 
@@ -31,11 +31,24 @@ def get_oai_embedding(text: str, model="text-embedding-ada-002", **kwargs) -> Li
 
     return openai.embeddings.create(input=[text], model=model, **kwargs).data[0].embedding
 
-def the_llm(**kwargs):
+def the_llm(config, **kwargs):
     ''' Construct the proper LLM object for model '''
     if kwargs['model'].startswith('gpt-'):
-        return ChatOpenAI(**kwargs)
-    return OpenAI(**kwargs)
+        return ChatOpenAI(
+            openai_api_key=config.completion.openai_api_key,
+            openai_organization=config.completion.openai_org,
+            **kwargs
+        )
+    if kwargs['model'].startswith('claude-'):
+        return ChatAnthropic(
+            anthropic_api_key=config.completion.anthropic_key,
+            **kwargs
+        )
+    return OpenAI(
+        openai_api_key=config.completion.openai_api_key,
+        openai_organization=config.completion.openai_org,
+        **kwargs
+    )
 
 class GPT():
     ''' Container for OpenAI completion requests '''
@@ -48,49 +61,44 @@ class GPT():
         self.forbidden = None
         self.bot_name = config.id.name
         self.bot_id = config.id.guid
-        self.min_score = config.completion.minimum_quality_score
 
-        self.completion_model = config.completion.completion_model
         self.chat_model = config.completion.chat_model
-        self.summary_model = config.completion.summary_model
+        self.reasoning_model = config.completion.reasoning_model
 
         self.nlp = spacy.load(config.spacy.model)
 
         self.stats = Counter()
 
-        openai.api_key = config.completion.api_key
-        openai.api_base = config.completion.api_base
+        openai.api_key = config.completion.openai_api_key
+        openai.api_base = config.completion.openai_api_base
         openai.organization = config.completion.openai_org
 
         self.completion_llm = the_llm(
-            model=self.completion_model,
-            temperature=self.config.completion.temperature,
+            self.config,
+            model=self.chat_model,
+            temperature=self.config.completion.chat_temperature,
             max_tokens=150,
-            openai_api_key=self.config.completion.api_key,
-            openai_organization=self.config.completion.openai_org
         )
         self.summary_llm = the_llm(
-            model=self.summary_model,
-            temperature=self.config.completion.temperature,
-            max_tokens=50,
-            openai_api_key=self.config.completion.api_key,
-            openai_organization=self.config.completion.openai_org
+            self.config,
+            model=self.reasoning_model,
+            temperature=self.config.completion.reasoning_temperature,
+            max_tokens=100,
         )
         self.feels_llm = the_llm(
-            model=self.completion_model,
-            temperature=self.config.completion.temperature,
+            self.config,
+            model=self.reasoning_model,
+            temperature=self.config.completion.chat_temperature,
             max_tokens=10,
-            openai_api_key=self.config.completion.api_key,
-            openai_organization=self.config.completion.openai_org,
         )
 
-        log.warning(f"🤖 completion model: {self.completion_model}")
-        log.warning(f"🤖 summary model: {self.summary_model}")
+        log.debug(f"🤖 chat model: {self.chat_model}")
+        log.debug(f"🤖 reasoning model: {self.reasoning_model}")
 
     def get_enc(self, model=None):
         ''' Return the encoder for model_name '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
 
         try:
             return tiktoken.encoding_for_model(model)
@@ -100,30 +108,39 @@ class GPT():
     def max_prompt_length(self, model=None):
         ''' Return the maximum number of tokens allowed for a model. '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
 
         try:
             return BaseOpenAI.modelname_to_contextsize(model)
         except ValueError as err:
+            # Anthropic
+            if model.startswith('claude-'):
+                if model == 'claude-2.1':
+                    return 200000
+                return 100000
+            # Beta OpenAI models
             if model == 'gpt-4-1106-preview':
                 return 128 * 1024
-            else:
-                raise err
+            # Unknown model
+            raise err
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
         return len(self.get_enc(model).encode(text))
 
     def paginate(self, f, max_tokens=None, prompt=None, max_reply_length=0):
         '''
-        Chunk text from iterable f. By default, fit the model's maximum prompt length.
+        Chunk text from iterable f, splitting on whitespace, chunk by tokens.
+        By default, fit the model's maximum prompt length.
         If prompt is provided, subtract that many tokens from the chunk length.
-        Lines containing no alphanumeric characters are removed.
         '''
         if max_tokens is None:
             max_tokens = self.max_prompt_length()
+
+        # 1 token minimum
+        max_tokens = max(1, max_tokens)
 
         if prompt:
             max_tokens = max_tokens - self.toklen(prompt)
@@ -131,27 +148,30 @@ class GPT():
         max_tokens = max_tokens - max_reply_length
 
         if isinstance(f, str):
-            f = f.split('\n')
+            f = f.split()
 
-        lines = []
-        for line in f:
-            line = line.strip()
-            if not line or not re.search('[a-zA-Z0-9]', line):
+        words = []
+        total = 0
+        for word in f:
+            tl = self.toklen(word)
+            if not tl:
                 continue
 
-            convo = ' '.join(lines)
-            if self.toklen(convo + line) > max_tokens:
-                yield convo
-                lines = [line]
+            if total + tl >= max_tokens:
+                ret = ' '.join(words)
+                total = tl
+                words = [word]
+                yield ret
             else:
-                lines.append(line)
+                total = total + tl
+                words.append(word)
 
-        if lines:
-            yield ' '.join(lines)
+        if words:
+            yield ' '.join(words)
 
     def validate_reply(self, text: str):
         '''
-        Filter or fix low quality OpenAI responses
+        Filter or fix low quality responses
         '''
         try:
             # No whitespace or surrounding quotes
@@ -201,7 +221,7 @@ class GPT():
     def truncate(self, text, model=None):
         ''' Truncate text to the max_prompt_length for this model '''
         if model is None:
-            model = self.completion_model
+            model = self.chat_model
 
         maxlen = self.max_prompt_length(model)
         if self.toklen(text) <= maxlen:
@@ -212,8 +232,17 @@ class GPT():
         return enc.decode(enc.encode(text)[:maxlen])
 
     def get_embedding(self, text, model='text-embedding-ada-002'):
-        ''' Return the embedding for text '''
-        return  np.array(get_oai_embedding(text, model=model), dtype=np.float32).tobytes()
+        ''' Return the embedding for text. Truncates text to the max size supported by the model. '''
+        # TODO: embedding model should determine its own size, but embedding models are not
+        # (yet?) in BaseOpenAI.modelname_to_contextsize()
+
+        return  np.array(
+            get_oai_embedding(
+                next(self.paginate(text, max_tokens=8192)),
+                model=model
+            ),
+            dtype=np.float32
+        ).tobytes()
 
     def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''
@@ -249,7 +278,7 @@ class GPT():
         log.warning("🧷 get_opinions:", entity)
         prompt = self.truncate(
             f"Briefly state {self.bot_name}'s opinion about {entity} from {self.bot_name}'s point of view, and convert pronouns and verbs to the first person.\n{context}",
-            model=self.summary_model
+            model=self.reasoning_model
         )
 
         template = """You are an expert at estimating opinions based on conversation.\n{prompt}"""
@@ -266,15 +295,46 @@ class GPT():
         '''
         prompt = self.truncate(
             f"In the following text, these three comma separated words best describe {self.bot_name}'s emotional state:\n{context}",
-            model=self.completion_model
+            model=self.chat_model
         )
 
-        template = """You are an expert at determining the emotional state of people engaging in conversation.\n{prompt}"""
+        template = """
+You are an expert at determining the emotional state of people engaging in conversation.
+{prompt}
+-----
+Your response should only include the three words, no other text.
+"""
         llm_chain = LLMChain.from_string(llm=self.feels_llm, template=template)
 
         reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
 
         log.warning(f"😁 sentiment of conversation: {reply}")
+
+        return reply
+
+    def fact_check(self, context):
+        '''
+        Ask the LLM to fact check the current convo.
+        '''
+        log.debug(f"✅ fact check: {context}")
+
+        prompt = self.truncate(
+            f"Examine all facts in the following conversation, pointing out any inconsistencies. Convert pronouns and verbs to the first person:\n{context}",
+            model=self.reasoning_model
+        )
+
+        template = """
+You are an experienced fact-checker, and are happy to validate any inconsistencies in a dialog.
+{prompt}
+"""
+        llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
+
+        reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
+
+        log.warning(f"✅ fact check: {reply}")
+
+        if 'NONE' in reply:
+            return None
 
         return reply
 
@@ -400,15 +460,15 @@ as told from the third-person point of view of {self.bot_name}.
             log.critical("OpenAI RateLimitError:", err)
             return ""
 
-    def get_summary(self, text, summarizer="Sum the following up in one sentence:"):
+    def get_summary(self, text, summarizer="Summarize the following in one sentence. Your response must include only the summary and no other text."):
         ''' Ask the LLM for a summary'''
         if not text:
             log.warning('get_summary():', "No text, skipping summary.")
             return ""
 
-        prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.summary_model)
-
-        template = """You are an expert at summarizing text.\n{prompt}"""
+        prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.reasoning_model)
+        log.warning(f'get_summary(): summarizing: {prompt}')
+        template = "{prompt}"
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
         reply = self.trim(llm_chain.predict(prompt=prompt).strip())
 
@@ -445,7 +505,7 @@ as told from the third-person point of view of {self.bot_name}.
         text,
         summarizer="Topics mentioned in the preceding paragraph include the following tags:"
         ):
-        ''' Ask OpenAI for keywords'''
+        ''' Ask for keywords'''
         keywords = self.get_summary(text, summarizer)
         log.debug(f"gpt get_keywords() raw: {keywords}")
 

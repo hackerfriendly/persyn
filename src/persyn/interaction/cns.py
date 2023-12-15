@@ -59,12 +59,18 @@ completion = None
 
 wikicache = {}
 
-def mastodon_msg(_, chat, channel, bot_name, caption, images):  # pylint: disable=unused-argument
+rs = requests.Session()
+
+def mastodon_msg(_, chat, channel, bot_name, msg, images):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
-    for image in images:
-        mastodon.fetch_and_post_image(
-            f"{persyn_config.dreams.upload.url_base}/{image}", f"{caption}\n#imagesynthesis #persyn"
-        )
+    if images:
+        for image in images:
+            mastodon.fetch_and_post_image(
+                f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn"
+            )
+    else:
+        # TODO: This can't respond to a specific thread, need to patch through to_status
+        mastodon.toot(msg)
 
 services = {
     'slack': slack_msg,
@@ -87,6 +93,59 @@ async def say_something(event):
     chat = Chat(persyn_config=persyn_config, service=event.service)
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
 
+async def chat_received(event):
+    ''' Somebody is talking to us '''
+    chat = Chat(persyn_config=persyn_config, service=event.service)
+
+    log.warning("💬 chat_received start")
+    # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
+
+    # TODO: Decide whether to delay reply, or to reply at all?
+
+    the_reply = chat.get_reply(
+        channel=event.channel,
+        speaker_name=event.speaker_name,
+        speaker_id=event.speaker_id,
+        msg=event.msg,
+        send_chat=True
+    )
+
+    # Time for self-examination.
+
+    # Update emotional state
+    vc = VibeCheck(
+        service=event.service,
+        channel=event.channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=None,
+        room=None
+    )
+    autobus.publish(vc)
+
+    # Check facts
+    fc = FactCheck(
+        service=event.service,
+        channel=event.channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid,
+        convo_id=None,
+        room=None
+    )
+    autobus.publish(fc)
+
+
+    # TODO: Should this be a priority queue?
+
+    # Dispatch an event to gather facts
+
+        # # Facts and opinions
+        # self.gather_facts(service, channel, entities)
+
+    #     self.check_goals(service, channel, convo)
+
+    log.warning("💬 chat_received done")
+
 async def new_idea(event):
     ''' Inject a new idea '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
@@ -105,7 +164,7 @@ async def summarize_channel(event):
         save=True,
         photo=event.photo,
         max_tokens=event.max_tokens,
-        model=persyn_config.completion.summary_model
+        model=persyn_config.completion.reasoning_model
     )
     if event.send_chat:
         services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
@@ -221,6 +280,11 @@ async def add_goal(event):
 
 async def check_feels(event):
     ''' Run sentiment analysis on ourselves. '''
+    if not event.room:
+        event.room = '\n'.join(recall.convo(event.service, event.channel))
+    if not event.convo_id:
+        event.convo_id = recall.convo_id(event.service, event.channel)
+
     feels = completion.get_feels(event.room)
     recall.save_convo_line(
         service=event.service,
@@ -232,6 +296,26 @@ async def check_feels(event):
         verb='feels'
     )
     log.warning("😄 Feeling:", feels)
+
+async def check_facts(event):
+    ''' Ask for a second opinion about our side of the conversation. '''
+    if not event.room:
+        event.room = '\n'.join(recall.convo(event.service, event.channel))
+    if not event.convo_id:
+        event.convo_id = recall.convo_id(event.service, event.channel)
+
+    facts = completion.fact_check(event.room)
+    if facts:
+        recall.save_convo_line(
+            service=event.service,
+            channel=event.channel,
+            msg=facts,
+            speaker_name=event.bot_name,
+            speaker_id=event.bot_id,
+            convo_id=event.convo_id,
+            verb='realizes'
+        )
+        log.warning("🧠 Thinking:", facts)
 
 async def build_knowledge_graph(event, max_opinions=3):
     ''' Build the knowledge graph. '''
@@ -254,6 +338,26 @@ async def build_knowledge_graph(event, max_opinions=3):
             entities=random.sample(list(so), k=min(max_opinions, len(so)))
         )
     )
+
+async def find_goals(event):
+    ''' Interrogate the conversation, looking for goals '''
+
+    preamble = f"-----\nIn the previous dialog, does {event.bot_name} express any desires or goals? "
+    prompt = preamble + """
+Answer in the first person and in JSON format using the following template with no other text or explanation:
+
+{
+  goals: ["LIST", "OF", "GOALS"]
+}
+
+If no goals or desires are expressed, return an empty JSON list in this format, with no other text:
+
+{
+  goals: []
+}
+
+Your response MUST return valid JSON.
+"""
 
 async def goals_achieved(event):
     ''' Have we achieved our goals? '''
@@ -302,7 +406,7 @@ async def goals_achieved(event):
 def text_from_url(url, selector='body'):
     ''' Return just the text from url. You probably want a better selector than <body>. '''
     try:
-        article = requests.get(url, timeout=30)
+        article = rs.get(url, timeout=30)
     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
         log.error(f"🗞️ Could not fetch article {url}", err)
         return ''
@@ -384,7 +488,7 @@ async def read_news(event):
     ''' Check our RSS feed. Read the first unread article. '''
     log.info("🗞️  Reading news feed:", event.url)
     try:
-        page = requests.get(event.url, timeout=30)
+        page = rs.get(event.url, timeout=30)
     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
         log.error(f"🗞️  Could not fetch RSS feed {event.url}", err)
         return
@@ -415,6 +519,21 @@ async def reflect_on(event):
     convo = '\n'.join(recall.convo(event.service, event.channel, feels=True))
     convo_id = recall.convo_id(event.service, event.channel)
     chat = Chat(persyn_config=persyn_config, service=event.service)
+
+    """
+    Given only the dialog above, what are the three most salient high-level question that can be asked about Anna?
+
+    What three actions can Anna take to answer those questions?
+
+    Please convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
+
+    {
+    "questions": ["THE QUESTIONS", "AS A LIST"],
+    "actions": ["THE ACTIONS", "AS A LIST"]
+    }
+
+    Your response should only include JSON, no other text. Your response MUST return valid JSON.
+    """
 
     questions = completion.get_reply(
         f"""{convo}
@@ -494,10 +613,16 @@ def generate_photo(event):
     chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1])
 
 @autobus.subscribe(SendChat)
-async def chat_event(event):
-    ''' Dispatch chat event w/ optional images. '''
+async def sendchat_event(event):
+    ''' Dispatch SendChat event w/ optional images. '''
     log.debug("SendChat received", event)
     await say_something(event)
+
+@autobus.subscribe(ChatReceived)
+async def chatreceived_event(event):
+    ''' Dispatch ChatReceived event '''
+    log.debug("ChatReceived received", event)
+    await chat_received(event)
 
 @autobus.subscribe(Idea)
 async def idea_event(event):
@@ -547,6 +672,12 @@ async def feels_event(event):
     log.debug("VibeCheck received", event)
     await check_feels(event)
 
+@autobus.subscribe(FactCheck)
+async def facts_event(event):
+    ''' Dispatch FactCheck event. '''
+    log.debug("FactCheck received", event)
+    await check_facts(event)
+
 @autobus.subscribe(KnowledgeGraph)
 async def kg_event(event):
     ''' Dispatch KnowledgeGraph event. '''
@@ -590,6 +721,8 @@ async def auto_summarize():
 
     for key in convos:
         (service, channel, convo_id) = key.split('|')
+        # TODO: Also check if the convo is too long, even if it hasn't expired
+
         # it should be stale and have more in it than a new_convo marker
         if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
             log.warning("💓 Convo expired:", key)

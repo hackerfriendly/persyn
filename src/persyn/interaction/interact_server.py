@@ -25,7 +25,7 @@ from persyn import autobus
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from persyn.interaction.messages import SendChat, ChatReceived, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -70,10 +70,39 @@ async def handle_reply(
         )
 
     ret = await asyncio.gather(in_thread(
-        interact.get_reply, [service, channel, msg, speaker_name, speaker_id, send_chat]
+        interact.retort, [service, channel, msg, speaker_name, speaker_id, send_chat]
     ))
     return {
         "reply": ret[0]
+    }
+
+@app.post("/chat_received/")
+async def handle_chat_received(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
+    speaker_name: str = Query(..., min_length=1, max_length=255),
+    speaker_id: str = Query(..., min_length=1, max_length=255),
+    msg: str = Query(..., min_length=1, max_length=5000),
+    ):
+    ''' Notify CNS that a message was received '''
+
+    if not msg.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Text must contain at least one non-space character."
+        )
+
+    event = ChatReceived(
+        service=service,
+        channel=channel,
+        speaker_name=speaker_name,
+        speaker_id=speaker_id,
+        msg=msg
+    )
+    autobus.publish(event)
+
+    return {
+        "success": True
     }
 
 @app.post("/summary/")
@@ -81,16 +110,14 @@ async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     save: Optional[bool] = Query(True),
-    max_tokens: Optional[int] = Query(200),
     include_keywords: Optional[bool] = Query(False),
     context_lines: Optional[int] = Query(0),
     dialog_only: Optional[bool] = Query(False),
-    model: Optional[str] = Query(None, min_length=1, max_length=64),
     convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
 ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, model, convo_id]
+        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, convo_id]
     ))
     return {
         "summary": ret[0]
@@ -137,7 +164,7 @@ async def handle_entities(
 async def handle_inject(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    idea: str = Form(..., min_length=1, max_length=65535),
+    idea: str = Form(..., min_length=1, max_length=2e6),
     verb: Optional[str] = Query('recalls', min_length=1, max_length=255),
 ):
     ''' Inject an idea into the stream of consciousness '''
@@ -320,8 +347,8 @@ async def wiki(
 async def vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: str = Query(..., min_length=1, max_length=255),
-    room: str = Form(..., max_length=65535),
+    convo_id: Optional[str] = Query("", min_length=1, max_length=255),
+    room: Optional[str] = Form("", max_length=2e6),
 ):
     ''' Ask the autobus to vibe check the room '''
     event = VibeCheck(
@@ -344,7 +371,7 @@ async def build_graph(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: str = Query(..., min_length=1, max_length=255),
-    convo: str = Form(..., max_length=65535),
+    convo: str = Form(..., max_length=2e6),
 ):
     ''' Add to this convo to the knowledge graph '''
     event = KnowledgeGraph(

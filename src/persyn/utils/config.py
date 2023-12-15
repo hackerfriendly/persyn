@@ -88,6 +88,20 @@ def load_config(cfg=None):
                 config['dreams']['stable_diffusion']['height'] = 512
             if 'guidance' not in config['dreams']['stable_diffusion']:
                 config['dreams']['stable_diffusion']['guidance'] = 14
+        else:
+            config['dreams']['stable_diffusion'] = None
+
+        if 'dalle' in config['dreams']:
+            if 'model' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['model'] = "dall-e-3"
+            if 'width' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['width'] = 1024
+            if 'height' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['height'] = 1024
+            if 'quality' not in config['dreams']['dalle']:
+                config['dreams']['dalle']['quality'] = "standard"
+        else:
+            config['dreams']['dalle'] = None
 
     if 'cns' in config and 'redis' not in config['cns']:
         config['cns']['redis'] = 'redis://localhost:6379/'
@@ -120,11 +134,10 @@ def load_config(cfg=None):
     if 'completion' in config:
         completion_defaults = {
             'engine': 'openai',
-            'api_base': 'https://api.openai.com/v1',
+            'openai_api_base': 'https://api.openai.com/v1',
             'openai_org': None,
-            'completion_model': 'text-davinci-003',
             'chat_model': 'gpt-3.5-turbo',
-            'summary_model': 'gpt-3.5-turbo'
+            'reasoning_model': 'gpt-4'
         }
         for setting, val in completion_defaults.items():
             if setting not in config['completion']:
@@ -133,7 +146,7 @@ def load_config(cfg=None):
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('interact', {'url': None})
     config.setdefault('web', {'default': 'body'})
-    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'parrot': {'url': None}, 'stable_diffusion': {'url': None}})
+    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}})
 
     # Check for required models
     persyn_config = PersynConfig(config)

@@ -23,7 +23,7 @@ interact = None
 def main():
     ''' Main event '''
     parser = argparse.ArgumentParser(
-        description='''Continue the train of thought on a chat channel.'''
+        description='''Give a bot a goal on a specific chat channel.'''
     )
     parser.add_argument(
         '--config',

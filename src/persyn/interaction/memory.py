@@ -194,12 +194,17 @@ class Recall():
             query_params = {"service": service, "channel": channel, "convo_id": convo_id}
 
         ret = []
+        realization = None
         for msg in self.redis.ft(self.convo_prefix).search(query, query_params).docs:
             if not getattr(msg, 'verb', None):
                 continue
 
             if msg.verb == 'new_convo':
                 continue
+            if msg.verb == 'realizes':
+                realization = f"{msg.speaker_name} {msg.verb}: {msg.msg}"
+                continue
+
             if msg.verb == 'dialog':
                 if raw:
                     ret.append(msg)
@@ -210,6 +215,9 @@ class Recall():
                     ret.append(msg)
                 else:
                     ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
+
+        if realization:
+            ret.append(realization)
 
         return ret
 

@@ -124,8 +124,6 @@ def main():
             log.info("🖼️  Starting captions")
             run_tmux_cmd(session_name, ['captions', args.config_file], args.tmux, gpu)
 
-    # TODO: parrot
-
     log.info(f"\n{cfg.id.name} is running. Attach with 👉 tmux{ccmode} attach -t {session_name}")
 
 if __name__ == '__main__':

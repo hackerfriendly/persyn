@@ -10,23 +10,15 @@ class LanguageModel():
         config
        ):
         self.config = config
-        self.engine = config.completion.engine
         self.bot_name = config.id.name
         self.stats = Counter()
 
-        if not hasattr(config.completion, 'api_key'):
-            raise RuntimeError('Please specify completion.api_key in your config file.')
-
-        if self.engine in ['openai', 'gooseai']:
-            self.model = gpt.GPT(
-                config=config,
-            )
-            self.max_prompt_length = self.model.max_prompt_length
-            self.toklen = self.model.toklen
-            self.paginate = self.model.paginate
-
-        else:
-            raise RuntimeError(f'Unknown engine: {self.engine}')
+        self.model = gpt.GPT(
+            config=config,
+        )
+        self.max_prompt_length = self.model.max_prompt_length
+        self.toklen = self.model.toklen
+        self.paginate = self.model.paginate
 
         self.nlp = self.model.nlp
 
@@ -47,6 +39,12 @@ class LanguageModel():
         Ask the model for sentiment analysis of the current convo.
         '''
         return self.model.get_feels(context)
+
+    def fact_check(self, context):
+        '''
+        Ask the model to fact check the current convo.
+        '''
+        return self.model.fact_check(context)
 
     def get_summary(self, text, summarizer="To sum it up in one sentence:"):
         ''' Ask the model for a summary'''
