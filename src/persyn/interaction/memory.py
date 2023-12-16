@@ -418,9 +418,10 @@ class Recall():
 
     def get_convo_by_id(self, convo_id, size=1000):
         ''' Return all Convo objects matching convo_id in chronological order '''
-        query = Query("(@convo_id:{$convo_id})").sort_by("convo_id").paging(0, size).dialect(2)
+        query = Query("(@convo_id:{$convo_id})").paging(0, size).dialect(2)
         query_params = {"convo_id": convo_id}
-        return self.redis.ft(self.convo_prefix).search(query, query_params).docs
+        # not sure how to sort by pk, so do it manually
+        return sorted(self.redis.ft(self.convo_prefix).search(query, query_params).docs, key=lambda k: k['pk'])
 
     def get_summary_by_id(self, convo_id):
         ''' Return the last summary for this convo_id '''
