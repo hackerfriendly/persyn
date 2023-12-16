@@ -98,6 +98,12 @@ async def chat_received(event):
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
     log.warning("💬 chat_received start")
+
+    convo_id = recall.convo_id(event.service, event.channel)
+    if convo_id not in recall.list_convos():
+        log.warning(f"😈 Rogue convo_id {convo_id}, adding to list of active convos")
+        recall.redis.sadd(recall.active_convos_prefix, f"{event.service}|{event.channel}|{convo_id}")
+
     # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
 
     # TODO: Decide whether to delay reply, or to reply at all?
@@ -123,16 +129,17 @@ async def chat_received(event):
     )
     autobus.publish(vc)
 
-    # Check facts
-    fc = FactCheck(
-        service=event.service,
-        channel=event.channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        convo_id=None,
-        room=None
-    )
-    autobus.publish(fc)
+    if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
+        # Check facts
+        fc = FactCheck(
+            service=event.service,
+            channel=event.channel,
+            bot_name=persyn_config.id.name,
+            bot_id=persyn_config.id.guid,
+            convo_id=None,
+            room=None
+        )
+        autobus.publish(fc)
 
 
     # TODO: Should this be a priority queue?
@@ -517,7 +524,7 @@ async def reflect_on(event):
     log.warning("🪩  Reflecting...")
 
     convo = '\n'.join(recall.convo(event.service, event.channel, feels=True))
-    convo_id = recall.convo_id(event.service, event.channel)
+    convo_id = event.convo_id or recall.convo_id(event.service, event.channel)
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
     """
@@ -711,7 +718,7 @@ async def photo_event(event):
 ##
 # recurring events
 ##
-@autobus.schedule(autobus.every(10).seconds)
+@autobus.schedule(autobus.every(5).seconds)
 async def auto_summarize():
     ''' Automatically summarize conversations when they expire. '''
     convos = [convo.decode() for convo in recall.list_convos()]
@@ -727,6 +734,9 @@ async def auto_summarize():
         if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
             log.warning("💓 Convo expired:", key)
 
+            # Remove it from the convo list
+            recall.redis.srem(f"{recall.active_convos_prefix}", key)
+
             if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
                 log.info("🪩 Reflecting:", convo_id)
                 event = Reflect(
@@ -734,7 +744,8 @@ async def auto_summarize():
                     bot_id=persyn_config.id.guid,
                     service=service,
                     channel=channel,
-                    send_chat=True
+                    send_chat=True,
+                    convo_id=convo_id
                 )
                 autobus.publish(event)
 
@@ -750,9 +761,6 @@ async def auto_summarize():
                     send_chat=False
                 )
                 autobus.publish(event)
-
-            # Remove it from the convo list
-            recall.redis.srem(f"{recall.active_convos_prefix}", key)
 
 @autobus.schedule(autobus.every(6).hours)
 async def plan_your_day():

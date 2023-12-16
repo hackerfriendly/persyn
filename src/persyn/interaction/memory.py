@@ -96,10 +96,7 @@ class Recall():
         self.news_prefix = f'persyn:{self.bot_id}:news'
 
         # sets
-        self.active_convos_prefix = f"{self.convo_prefix}:active_convos"
-
-        # clear any active convos
-        self.redis.delete(self.active_convos_prefix)
+        self.active_convos_prefix = f"persyn:{self.bot_id}:active_convos"
 
         # Create indices
         for cmd in [
@@ -322,15 +319,16 @@ class Recall():
         return elapsed(self.get_last_timestamp(service, channel), get_cur_ts()) > self.conversation_interval
 
     def convo_id(self, service, channel):
-        ''' Return the current convo id. Make a new convo if needed. '''
+        ''' Return the current convo id. Make a new convo if needed. Old convos are expired in cns.py. '''
+
+        ret = self.get_last_message(service, channel)
+        if not ret:
+            return None
 
         if self.expired(service, channel):
             return self.new_convo(service, channel)
 
-        ret = self.get_last_message(service, channel)
-        if ret:
-            return ret.convo_id
-        return None
+        return ret.convo_id
 
     @staticmethod
     def entity_id_to_epoch(entity_id):

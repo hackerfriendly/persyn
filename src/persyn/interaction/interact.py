@@ -183,11 +183,17 @@ Your response must only include the summary and no other text.
                 if hit.service == 'import_service':
                     log.info("📚 Hit found from import:", hit.channel)
                 the_summary = self.recall.get_summary_by_id(hit.convo_id)
-                # Hit a sentence? Inject the summary and the sentence.
+                # Hit a sentence? Inject the summary.
+                # if the_summary:
+                #     self.inject_idea(
+                #         service, channel,
+                #         f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
+                #         verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
+                #     )
                 if the_summary:
                     self.inject_idea(
                         service, channel,
-                        f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
+                        the_summary.summary,
                         verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
                     )
                 # No summary? Just inject the sentence.

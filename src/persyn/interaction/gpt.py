@@ -466,7 +466,7 @@ as told from the third-person point of view of {self.bot_name}.
             log.warning('get_summary():', "No text, skipping summary.")
             return ""
 
-        prompt=self.truncate(f"{summarizer}\n\n{text}", model=self.config.completion.reasoning_model)
+        prompt=self.truncate(f"{summarizer}\n\nHuman:\n{text}\n-----\nAssistant: ", model=self.config.completion.reasoning_model)
         log.warning(f'get_summary(): summarizing: {prompt}')
         template = "{prompt}"
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)

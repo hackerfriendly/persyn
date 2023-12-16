@@ -316,7 +316,7 @@ def main():
             chat.inject_idea(channel, "The lights are off.")
 
     @app.message(re.compile(r"(.*)", re.I))
-    def catch_all(_, context):
+    def catch_all(say, context): # pylint: disable=unused-argument
         ''' Default message handler '''
         service = app.client.auth_test().data['url']
         channel = context['channel_id']

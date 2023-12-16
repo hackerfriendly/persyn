@@ -150,6 +150,7 @@ class Reflect(autobus.Event):
     bot_name: str
     bot_id: str
     send_chat: Optional[bool] = True
+    convo_id: Optional[str]
 
 
 class Photo(autobus.Event):
