@@ -233,8 +233,7 @@ class LanguageModel():
 
     def get_embedding(self, text, model='text-embedding-ada-002'):
         ''' Return the embedding for text. Truncates text to the max size supported by the model. '''
-        # TODO: embedding model should determine its own size, but embedding models are not
-        # (yet?) in BaseOpenAI.modelname_to_contextsize()
+        # TODO: embedding model should determine its own size, but embedding models are not (yet?) in BaseOpenAI.modelname_to_contextsize()
 
         return  np.array(
             get_oai_embedding(

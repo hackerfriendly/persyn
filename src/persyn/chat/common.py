@@ -4,7 +4,6 @@ common.py
 Subroutines common to all chat services
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
-import base64
 import random
 
 import requests
@@ -66,7 +65,7 @@ class Chat():
     def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
-            log.error("∑ get_summary() called with no URL defined, skipping.")
+            log.error("∑ get_summary() called with no interact_url defined, skipping.")
             return None
 
         req = {
@@ -106,7 +105,7 @@ class Chat():
     def get_reply(self, channel, msg, speaker_name, speaker_id, reminders=None, send_chat=True):
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
-            log.error("💬 get_reply() called with no URL defined, skipping.")
+            log.error("💬 get_reply() called with no interact_url defined, skipping.")
             return None
 
         if not msg:
@@ -166,7 +165,7 @@ class Chat():
     def inject_idea(self, channel, idea, verb='notices'):
         ''' Directly inject an idea into the stream of consciousness. '''
         if not self.interact_url:
-            log.error("💉 inject_idea() called with no URL defined, skipping.")
+            log.error("💉 inject_idea() called with no interact_url defined, skipping.")
             return None
 
         req = {
@@ -236,7 +235,7 @@ class Chat():
     def get_nouns(self, text):
         ''' Ask interact for all the nouns in text, excluding the speakers. '''
         if not self.interact_url:
-            log.error("📓 get_nouns() called with no URL defined, skipping.")
+            log.error("📓 get_nouns() called with no interact_url defined, skipping.")
             return []
 
         req = {
@@ -254,7 +253,7 @@ class Chat():
     def get_entities(self, text):
         ''' Ask interact for all the entities in text, excluding the speakers. '''
         if not self.interact_url:
-            log.error("👽 get_entities() called with no URL defined, skipping.")
+            log.error("👽 get_entities() called with no interact_url defined, skipping.")
             return None
 
         req = {
@@ -272,7 +271,7 @@ class Chat():
     def get_status(self, channel):
         ''' Ask interact for status. '''
         if not self.interact_url:
-            log.error("🗿 get_status() called with no URL defined, skipping.")
+            log.error("🗿 get_status() called with no interact_url defined, skipping.")
             return None
 
         req = {
@@ -291,7 +290,7 @@ class Chat():
     def get_opinions(self, channel, topic, condense=True):
         ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
         if not self.interact_url:
-            log.error("📌 get_opinions() called with no URL defined, skipping.")
+            log.error("📌 get_opinions() called with no interact_url defined, skipping.")
             return []
 
         req = {
@@ -313,33 +312,10 @@ class Chat():
 
         return []
 
-    def list_goals(self, channel):
-        ''' Return the goals for this channel, if any. '''
-        if not self.interact_url:
-            log.error("🏆 list_goals() called with no URL defined, skipping.")
-            return []
-
-        req = {
-            "service": self.service,
-            "channel": channel
-        }
-        try:
-            reply = rs.post(f"{self.interact_url}/list_goals/", params=req, timeout=20)
-            reply.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /list_goals/ to interact: {err}")
-            return []
-
-        ret = reply.json()
-        if 'goals' in ret:
-            return ret['goals']
-
-        return []
-
     def opinion(self, channel, topic):
         ''' Form an opinion on topic '''
         if not self.interact_url:
-            log.error("🧷 opinion() called with no URL defined, skipping.")
+            log.error("🧷 opinion() called with no interact_url defined, skipping.")
             return None
 
         try:
@@ -380,7 +356,7 @@ class Chat():
     def chat_received(self, channel, msg, speaker_name, speaker_id):
         ''' Dispatch a ChatReceived event. '''
         if not self.interact_url:
-            log.error("💬 chat_received() called with no URL defined, skipping.")
+            log.error("💬 chat_received() called with no interact_url defined, skipping.")
             return None
 
         req = {

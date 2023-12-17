@@ -164,9 +164,10 @@ def main():
     @app.message(re.compile(r"^goals$"))
     def goals(say, context): # pylint: disable=unused-argument
         ''' What are we doing again? '''
+        service = app.client.auth_test().data['url']
         channel = context['channel_id']
 
-        current_goals = chat.list_goals(channel)
+        current_goals = chat.recall.list_goals(service, channel)
         if current_goals:
             for goal in current_goals:
                 say(f":goal_net: {goal}")

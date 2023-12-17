@@ -126,8 +126,9 @@ class Interact():
         summary = self.completion.get_summary(
             text=convo_text,
             summarizer=f"""
-Briefly summarize this dialog, and convert pronouns and verbs to the first person.
-Your response must only include the summary and no other text.
+Briefly summarize this text, and convert any pronouns or verbs spoken by {self.config.id.name} to the first person.rjf
+Consider only the text included, and ignore any references to events not covered in the text.
+Your response MUST only include the summary and no other commentary.
 """,
 
         )
@@ -147,9 +148,9 @@ Your response must only include the summary and no other text.
     def gather_memories(self, service, channel, entities, visited=None):
         '''
         Look for relevant convos and summaries using memory, relationship graphs, and entity matching.
-
-        TODO: weigh retrievals with "importance" and recency, a la Stanford Smallville
         '''
+        # TODO: weigh retrievals with "importance" and recency, a la Stanford Smallville
+
         if visited is None:
             visited = []
 
@@ -257,12 +258,12 @@ Your response must only include the summary and no other text.
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
-    def gather_facts(self, service, channel, entities):
+    def gather_opinions(self, service, channel, entities):
         '''
-        Gather facts (from Wikipedia) and opinions (from memory).
+        Gather opinions from memory.
 
-        This happens asynchronously via the event bus, so facts and opinions
-        might not be immediately available for conversation.
+        This happens asynchronously via the event bus, so opinions might not be immediately available
+        for conversation.
         '''
         if not entities:
             return
@@ -275,14 +276,13 @@ Your response must only include the summary and no other text.
             "entities": the_sample
         }
 
-        for endpoint in ['opine']:
-            log.warning(f"🧾 {endpoint} : {the_sample}")
-            try:
-                reply = rs.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
-                reply.raise_for_status()
-            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-                log.critical(f"🤖 Could not post /{endpoint}/ to interact: {err}")
-                return
+        log.warning(f"🧷 opine : {the_sample}")
+        try:
+            reply = rs.post(f"{self.config.interact.url}/opine/", params=req, timeout=10)
+            reply.raise_for_status()
+        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
+            log.critical(f"🤖 Could not post /opine/ to interact: {err}")
+            return
 
     def check_goals(self, service, channel, convo):
         ''' Have we achieved our goals? '''
@@ -344,12 +344,10 @@ Your response must only include the summary and no other text.
         '''
         log.info(f"💬 get_reply to: {msg}")
 
-        convo_id = self.recall.convo_id(service, channel)
-        convo = self.recall.convo(service, channel, feels=False)
+        # convo_id = self.recall.convo_id(service, channel)
+        convo = self.recall.convo(service, channel, feels=True)
 
-        lts = self.recall.get_last_timestamp(service, channel)
-        prompt = self.generate_prompt([], convo, service, channel, lts)
-
+        prompt = self.generate_prompt(service, channel)
 
         # TODO: vvv  Use this time to backfill context!  vvv
 
@@ -403,12 +401,18 @@ Your response must only include the summary and no other text.
             log.warning(f"🙅‍♀️ No goal yet for {service} | {channel}")
         return '\n'.join(ret)
 
-    def generate_prompt(self, summaries, convo, service, channel, lts=None):
+    def generate_prompt(self, service, channel):
         ''' Generate the model prompt '''
         newline = '\n'
         timediff = ''
+
+        lts = self.recall.get_last_timestamp(service, channel)
+
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
+
+        summaries = self.recall.summaries(service, channel, size=3)
+        convo = self.recall.convo(service, channel, feels=True)
 
         # triples = set()
         graph_summary = ''
@@ -430,15 +434,6 @@ Your response must only include the summary and no other text.
 {convo_text}
 {timediff}
 {self.config.id.name}:"""
-
-    def get_status(self, service, channel):
-        ''' status report '''
-        return self.generate_prompt(
-            self.recall.summaries(service, channel, size=3),
-            self.recall.convo(service, channel, feels=True),
-            service,
-            channel
-        )
 
     def extract_nouns(self, text):
         ''' return a list of all nouns (except pronouns) in text '''

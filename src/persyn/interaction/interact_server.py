@@ -130,7 +130,7 @@ async def handle_status(
     ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.get_status, [service, channel]
+        interact.generate_prompt, [service, channel]
     ))
     return {
         "status": ret[0]
@@ -212,7 +212,7 @@ async def handle_opinion(
     }
 
 @app.post("/add_goal/")
-async def add_goal(
+async def handle_add_goal(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
@@ -229,7 +229,7 @@ async def add_goal(
     }
 
 @app.post("/get_goals/")
-async def get_goals(
+async def handle_get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     size: Optional[int] = Query(10),
@@ -244,7 +244,7 @@ async def get_goals(
     }
 
 @app.post("/list_goals/")
-async def list_goals(
+async def handle_list_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     size: Optional[int] = Query(10),
@@ -259,7 +259,7 @@ async def list_goals(
     }
 
 @app.post("/check_goals/")
-async def check_goals(
+async def handle_check_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo: str = Query(..., max_length=65535),
@@ -282,7 +282,7 @@ async def check_goals(
 
 
 @app.post("/send_msg/")
-async def send_msg(
+async def handle_send_msg(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535)
@@ -303,7 +303,7 @@ async def send_msg(
 
 
 @app.post("/opine/")
-async def opine(
+async def handle_opine(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     entities: List[str] = Query(...)
@@ -323,7 +323,7 @@ async def opine(
     }
 
 @app.post("/wikipedia/")
-async def wiki(
+async def handle_wikipedia(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     entities: List[str] = Query(..., min_length=1, max_length=255)
@@ -344,7 +344,7 @@ async def wiki(
     }
 
 @app.post("/vibe_check/")
-async def vibe_check(
+async def handle_vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: Optional[str] = Query("", min_length=1, max_length=255),
@@ -367,7 +367,7 @@ async def vibe_check(
 
 
 @app.post("/build_graph/")
-async def build_graph(
+async def handle_build_graph(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: str = Query(..., min_length=1, max_length=255),
@@ -390,7 +390,7 @@ async def build_graph(
 
 
 @app.post("/read_news/")
-async def read_news(
+async def handle_read_news(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     url: str = Query(..., min_length=9, max_length=4096),
@@ -411,7 +411,7 @@ async def read_news(
 
 
 @app.post("/read_url/")
-async def read_url(
+async def handle_read_url(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     url: str = Query(..., min_length=9, max_length=4096),
