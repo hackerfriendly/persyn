@@ -278,7 +278,7 @@ class Recall():
             "msg": msg,
             "verb": verb,
             "pk": pk,
-            "emb": self.completion.model.get_embedding(msg)
+            "emb": self.completion.get_embedding(msg)
         }
 
         key = f"{self.convo_prefix}:{convo_id}:{pk}"
@@ -372,7 +372,7 @@ class Recall():
             "convo_id": convo_id,
             "summary": summary,
             "keywords": ','.join(keywords),
-            "emb": self.completion.model.get_embedding(summary)
+            "emb": self.completion.get_embedding(summary)
         }
 
         # Don't namespace on pk like we do for convo.
@@ -531,7 +531,7 @@ class Recall():
         Find conversations related to query using vector similarity
         '''
         # TODO: truncate to 8191 tokens HERE.
-        emb = self.completion.model.get_embedding(query)
+        emb = self.completion.get_embedding(query)
 
         if any_convo:
             service_channel = "((@service:{$service}))"
@@ -584,7 +584,7 @@ class Recall():
         Find summaries related to query using vector similarity
         '''
         # TODO: truncate to 8191 tokens HERE.
-        emb = self.completion.model.get_embedding(query)
+        emb = self.completion.get_embedding(query)
 
         if any_convo:
             service_channel = "((@service:{$service}))"

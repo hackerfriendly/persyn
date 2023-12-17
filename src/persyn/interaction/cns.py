@@ -326,25 +326,26 @@ async def check_facts(event):
 
 async def build_knowledge_graph(event, max_opinions=3):
     ''' Build the knowledge graph. '''
-    triples = completion.model.generate_triples(event.convo)
-    log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
-    recall.triples_to_kg(triples)
+    pass
+    # triples = completion.generate_triples(event.convo)
+    # log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
+    # recall.triples_to_kg(triples)
 
-    # Recall any relevant opinions about subjects and predicates
-    so = set()
-    for triple in triples:
-        so.add(triple[0])
-        so.add(triple[2])
+    # # Recall any relevant opinions about subjects and predicates
+    # so = set()
+    # for triple in triples:
+    #     so.add(triple[0])
+    #     so.add(triple[2])
 
-    await opine(
-        Opine(
-            service=event.service,
-            channel=event.channel,
-            bot_name=event.bot_name,
-            bot_id=event.bot_id,
-            entities=random.sample(list(so), k=min(max_opinions, len(so)))
-        )
-    )
+    # await opine(
+    #     Opine(
+    #         service=event.service,
+    #         channel=event.channel,
+    #         bot_name=event.bot_name,
+    #         bot_id=event.bot_id,
+    #         entities=random.sample(list(so), k=min(max_opinions, len(so)))
+    #     )
+    # )
 
 async def find_goals(event):
     ''' Interrogate the conversation, looking for goals '''

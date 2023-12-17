@@ -63,7 +63,7 @@ class Interact():
         self.recall = Recall(persyn_config)
 
         # Langchain
-        self.llm = self.completion.model.completion_llm
+        self.llm = self.completion.completion_llm
 
         # # zim / kiwix data sources
         # if self.config.get('zim'):
@@ -79,7 +79,7 @@ class Interact():
 
         # Other tools: introspection (assess software + hardware), Claude (ask for facts)
 
-        self.enc = self.completion.model.get_enc()
+        self.enc = self.completion.get_enc()
 
     def summarize_convo(
         self,
@@ -417,7 +417,7 @@ Your response must only include the summary and no other text.
         #     for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
         #         triples.add(triple)
         # if triples:
-        #     graph_summary = self.completion.model.triples_to_text(list(triples))
+        #     graph_summary = self.completion.triples_to_text(list(triples))
 
         # Is this just too much to think about?
         if self.completion.toklen(convo_text + newline.join(summaries)) > self.completion.max_prompt_length():

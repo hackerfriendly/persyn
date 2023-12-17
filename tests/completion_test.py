@@ -34,4 +34,4 @@ def test_keywords():
     This test does not actually use the language model.
     '''
     for k, v in test_cases.items():
-        assert completion.model.cleanup_keywords(k) == v
+        assert completion.cleanup_keywords(k) == v
