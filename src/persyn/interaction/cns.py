@@ -738,7 +738,7 @@ async def auto_summarize():
             recall.redis.srem(f"{recall.active_convos_prefix}", key)
 
             if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
-                log.info("🪩 Reflecting:", convo_id)
+                log.info("🪩  Reflecting:", convo_id)
                 event = Reflect(
                     bot_name=persyn_config.id.name,
                     bot_id=persyn_config.id.guid,

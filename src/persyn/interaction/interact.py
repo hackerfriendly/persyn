@@ -398,31 +398,36 @@ Your response MUST only include the summary and no other commentary.
         if goals:
             ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(goals)}")
         else:
-            log.warning(f"🙅‍♀️ No goal yet for {service} | {channel}")
+            log.debug(f"🙅‍♀️ No goal yet for {service} | {channel}")
         return '\n'.join(ret)
 
-    def generate_prompt(self, service, channel):
-        ''' Generate the model prompt '''
+    def generate_prompt(self, service, channel, fill=0.5):
+        ''' Generate the model prompt. Fill is the fraction of available context to backfill with memories and facts. '''
         newline = '\n'
         timediff = ''
 
         lts = self.recall.get_last_timestamp(service, channel)
-
         if lts and elapsed(lts, get_cur_ts()) > 600:
             timediff = f"It has been {ago(lts)} since they last spoke."
 
-        summaries = self.recall.summaries(service, channel, size=3)
-        convo = self.recall.convo(service, channel, feels=True)
+        convo_text = '\n'.join(self.recall.convo(service, channel, feels=True))
 
-        convo_text = '\n'.join(convo)
+        # Expand the prompt up to the fill fraction
+        max_tokens = int(self.completion.max_prompt_length() * fill)
 
-        the_prompt = f"""{self.default_prompt_prefix(service, channel)}
-{newline.join(summaries)}
-{convo_text}
-{timediff}
------
-"""
-#rjf
+        available_summaries = self.recall.summaries(service, channel, size=25)
+        summaries = []
+        the_prompt = f"""{self.default_prompt_prefix(service, channel)}\n{convo_text}\n{timediff}\n"""
+        while available_summaries[::-1]:
+            if self.completion.toklen(the_prompt) + self.completion.toklen(available_summaries[-1]) >= max_tokens:
+                break
+            summaries.append(available_summaries.pop())
+            the_prompt = f"""{self.default_prompt_prefix(service, channel)}\n{newline.join(summaries)}\n{convo_text}\n{timediff}\n"""
+
+        log.info(f"generate_prompt: filled {len(summaries)} summaries")
+
+        # TODO: also remember previous recent conversations?
+
         # Is this just too much to think about?
         if self.completion.toklen(convo_text + newline.join(summaries)) > self.completion.max_prompt_length():
             log.warning("🥱 generate_prompt(): prompt too long, truncating.")

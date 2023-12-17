@@ -481,7 +481,7 @@ You are an experienced fact-checker, and are happy to validate any inconsistenci
             log.warning('get_summary():', "No text, skipping summary.")
             return ""
 
-        prompt=self.truncate(f"{summarizer}\n\nHuman:\n{text}\n-----\nAssistant: ", model=self.config.completion.reasoning_model)
+        prompt=self.truncate(summarizer, model=self.config.completion.reasoning_model)
         log.warning(f'get_summary(): summarizing: {prompt}')
         template = "{prompt}"
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
