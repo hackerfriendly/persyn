@@ -268,7 +268,7 @@ async def dispatch(ctx):
   :frame_with_picture: _prompt_ : Generate a portrait of _prompt_ using dall-e v3
 """)
 
-    elif ctx.content == 'status':
+    elif ctx.content in ['status', ':question:', '❓']:
         status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel).split("\n")])).rstrip("> \n")
         if len(status) < 2000:
             await ctx.channel.send(status.strip())

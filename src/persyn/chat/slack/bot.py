@@ -249,7 +249,7 @@ def main():
             photo=True)
         )
 
-    @app.message(re.compile(r"^status$", re.I))
+    @app.message(re.compile(r"^(status|:question:)$", re.I))
     def status(say, context):
         ''' Say a condensed summary of this channel '''
         channel = context['channel_id']
