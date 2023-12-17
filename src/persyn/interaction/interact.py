@@ -126,7 +126,7 @@ class Interact():
         summary = self.completion.get_summary(
             text=convo_text,
             summarizer=f"""
-Briefly summarize this text, and convert any pronouns or verbs spoken by {self.config.id.name} to the first person.rjf
+Briefly summarize this text, and convert any pronouns or verbs spoken by {self.config.id.name} to the first person.
 Consider only the text included, and ignore any references to events not covered in the text.
 Your response MUST only include the summary and no other commentary.
 """,
@@ -414,26 +414,21 @@ Your response MUST only include the summary and no other commentary.
         summaries = self.recall.summaries(service, channel, size=3)
         convo = self.recall.convo(service, channel, feels=True)
 
-        # triples = set()
-        graph_summary = ''
         convo_text = '\n'.join(convo)
-        # for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
-        #     for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
-        #         triples.add(triple)
-        # if triples:
-        #     graph_summary = self.completion.triples_to_text(list(triples))
 
+        the_prompt = f"""{self.default_prompt_prefix(service, channel)}
+{newline.join(summaries)}
+{convo_text}
+{timediff}
+-----
+"""
+#rjf
         # Is this just too much to think about?
         if self.completion.toklen(convo_text + newline.join(summaries)) > self.completion.max_prompt_length():
             log.warning("🥱 generate_prompt(): prompt too long, truncating.")
             convo_text = self.enc.decode(self.enc.encode(convo_text)[:self.completion.max_prompt_length()])
 
-        return f"""{self.default_prompt_prefix(service, channel)}
-{newline.join(summaries)}
-{graph_summary}
-{convo_text}
-{timediff}
-{self.config.id.name}:"""
+        return the_prompt
 
     def extract_nouns(self, text):
         ''' return a list of all nouns (except pronouns) in text '''

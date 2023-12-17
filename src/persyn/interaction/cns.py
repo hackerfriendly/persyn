@@ -582,13 +582,12 @@ Questions only, no answers. Please convert pronouns and verbs to the first perso
                 if the_summary and the_summary not in convo:
                     context.append(f"""
                         {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
-                        f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}"""
+                        f"{the_summary.summary} From that conversation, {hit.msg}"""
                     )
                 # No summary? Just inject the sentence.
                 else:
                     context.append(f"""
-                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
-                        f"{hit.speaker_name} said: {hit.msg}"""
+                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
                     )
                 visited.append(hit.convo_id)
                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")

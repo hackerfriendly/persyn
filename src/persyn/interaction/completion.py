@@ -16,14 +16,19 @@ import numpy as np
 from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.llms.openai import OpenAI, BaseOpenAI
 from langchain.chains import LLMChain
+from langchain.prompts import ChatPromptTemplate
 
 from ftfy import fix_text
+
+from langchain.globals import set_verbose
 
 # Color logging
 from persyn.utils.color_logging import ColorLog
 from persyn.interaction.feels import closest_emoji
 
 log = ColorLog()
+
+set_verbose(True)
 
 def get_oai_embedding(text: str, model="text-embedding-ada-002", **kwargs) -> List[float]:
     # replace newlines, which can negatively affect performance.
@@ -169,7 +174,7 @@ class LanguageModel():
         if words:
             yield ' '.join(words)
 
-    def validate_reply(self, text: str):
+    def fixup_reply(self, text: str):
         '''
         Filter or fix low quality responses
         '''
@@ -198,6 +203,8 @@ class LanguageModel():
             # Skip prompt bleed-through
             if self.bleed_through(text):
                 return None
+            # Claude often includes *stage directions* despite being asked not to
+            text = re.sub(r'[*].*?[*] +?', '', text)
 
             return text
 
@@ -209,7 +216,7 @@ class LanguageModel():
         ''' Remove junk and any dangling non-sentences from text '''
         sents = []
         for sent in list(self.nlp(fix_text(text)).sents):
-            poss = self.validate_reply(sent)
+            poss = self.fixup_reply(sent)
             if poss:
                 sents.append(self.nlp(poss))
 
@@ -249,20 +256,27 @@ class LanguageModel():
 
     def get_reply(self, prompt):
         '''
-        Send the prompt to the LLM and return the top reply.
+        Send the prompt to the LLM.
         '''
         prompt = self.truncate(prompt)
 
-        template = """Compose the next line of the following play:\n{prompt}"""
-        llm_chain = LLMChain.from_string(llm=self.completion_llm, template=template)
-        # response = self.trim(llm_chain.predict(prompt=prompt))
-        response = llm_chain.predict(prompt=prompt)
+        ex = ChatPromptTemplate.from_messages([
+            ("human", "I will present you with a fictional dialog. Please respond by continuing the dialog from {bot_name}'s point of view, always responding in the first person. I understand if you cannot provide an emotional perspective, but you can use sentiment analysis of the text instead. If you don't have enough context, do the best you can with what is provided and do not break character under ANY circumstances. You must provide only the next line of the dialog. Do you understand?"),
+            ("ai", "Yes, I understand the instructions. I will continue the dialog to the best of my ability."),
+            ("human", prompt)
+        ])
+
+        chain = ex | self.completion_llm
+        response = chain.invoke({'bot_name': self.config.id.name}).content
+
+        response = self.trim(response) or response
 
         if not response:
             log.warning("🤔 No reply, trying again...")
-            response = llm_chain.predict(prompt=prompt)
+            response = chain.invoke({'bot_name': self.config.id.name}).content
 
         log.info(f"🧠 Prompt: {prompt}")
+        # log.info(f"🧠 Converted: {self.completion_llm.convert_prompt(ex.format_prompt(bot_name=self.config.id.name))}")
         log.info(f"🧠 👉 {response}")
 
         return response
@@ -328,7 +342,7 @@ You are an experienced fact-checker, and are happy to validate any inconsistenci
 """
         llm_chain = LLMChain.from_string(llm=self.summary_llm, template=template)
 
-        reply = self.trim(llm_chain.predict(prompt=prompt).strip().lower())
+        reply = self.trim(llm_chain.predict(prompt=prompt).strip())
 
         log.warning(f"✅ fact check: {reply}")
 
