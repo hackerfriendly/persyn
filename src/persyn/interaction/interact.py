@@ -14,6 +14,9 @@ import requests
 
 from pydantic import Field
 
+from langchain.agents import AgentType, initialize_agent
+from langchain.tools import Tool
+
 # Long and short term memory
 from persyn.interaction.memory import Recall
 
@@ -65,21 +68,87 @@ class Interact():
         # Langchain
         self.llm = self.completion.completion_llm
 
-        # # zim / kiwix data sources
-        # if self.config.get('zim'):
-        #     for cfgtool in self.config.zim:
-        #         log.info("💿 Loading zim:", cfgtool)
-        #         zim = Tool(
-        #                 name=str(cfgtool),
-        #                 func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
-        #                 description=self.config.zim.get(cfgtool).description
-        #             )
-        #         agent_tools.append(zim)
-        #         vector_tools.append(zim)
+        agent_tools = []
+        # zim / kiwix data sources
+        if self.config.get('zimx'):
+            for cfgtool in self.config.zim:
+                log.info("💿 Loading zim:", cfgtool)
+                zim = Tool(
+                        name=str(cfgtool),
+                        func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
+                        description=self.config.zim.get(cfgtool).description
+                    )
+                agent_tools.append(zim)
+
+        if self.config.completion.get('anthropic_key'):
+            def ask_claude(query: str) -> str:
+                """Ask Claude for help"""
+                return self.completion.ask_claude(str)
+            claude = Tool.from_function(
+                name="Claude",
+                func=ask_claude,
+                description="Ask Claude a question. Claude can check facts, do math, and offer general advice."
+            )
+            agent_tools.append(claude)
 
         # Other tools: introspection (assess software + hardware), Claude (ask for facts)
 
+        self.agent = initialize_agent(
+            agent_tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True
+        )
         self.enc = self.completion.get_enc()
+
+
+    def get_generic_agent_reply(self, prompt: str):
+        ''' Try to take an action using the agent '''
+        try:
+            ret = self.agent.run(prompt)
+        except Exception as err:
+            log.error("🕵️‍♂️  Agent generated an exception, skipping:", err)
+            return None
+
+        if ret == "Agent stopped due to iteration limit or time limit.":
+            log.warning("🕵️‍♂️ ", ret)
+            return None
+
+        log.warning("🕵️‍♂️  Found an answer:", ret)
+        return ret
+
+    def validate_agent_reply(self, agent_reply):
+        ''' Returns True if the question was answered, otherwise False. '''
+        if (
+            not agent_reply
+            or agent_reply == "Agent stopped due to iteration limit or time limit"
+        ):
+            return False
+
+        # TODO: encode "Yes" and "No", then ask llm if the question was answered
+
+        negatives = ["I cannot", "I can't", "I could not", "I couldn't", "is not mentioned", "isn't mentioned", "unable"]
+        if any(term in agent_reply for term in negatives):
+            return False
+
+        return True
+
+    def try_the_agent(self, prompt, service, channel):
+        '''
+        Let the langchain agent weigh in by injecting thoughts.
+        Agents do not speak directly.
+        '''
+
+        log.warning("🕵️  Consult the agent.")
+        reply = self.get_generic_agent_reply(prompt)
+
+        if self.validate_agent_reply(reply):
+            log.warning("🕵️  Generic agent success:", reply)
+            self.inject_idea(
+                service,
+                channel,
+                reply,
+                verb="thinks"
+            )
+        else:
+            log.warning("🤷 Generic agent was no help.")
 
     def summarize_convo(
         self,
@@ -411,6 +480,9 @@ Your response MUST only include the summary and no other commentary.
             timediff = f"It has been {ago(lts)} since they last spoke."
 
         convo_text = '\n'.join(self.recall.convo(service, channel, feels=True))
+
+        # Currently broken
+        # self.try_the_agent(convo_text, service, channel)
 
         # Expand the prompt up to the fill fraction
         max_tokens = int(self.completion.max_prompt_length() * fill)
