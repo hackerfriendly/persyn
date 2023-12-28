@@ -232,10 +232,14 @@ class Recall:
 
         combined_memory = CombinedMemory(memories=[summary_memory, kg_memory])
 
-        return { 'combined': combined_memory, 'redis': rds }
+        return {
+                'combined': combined_memory,
+                'summary': summary_memory,
+                'kg': kg_memory,
+                'redis': rds
+        }
 
-
-    def new_convo(self, service, channel) -> Convo:
+    def new_convo(self, service, channel, speaker_name=None) -> Convo:
         ''' Start a new conversation. '''
         convo = Convo(
             service=service,
@@ -245,6 +249,11 @@ class Recall:
 
         log.warning("⚠️  New convo:", convo)
         self.convos[str(convo)] = convo
+
+        if speaker_name:
+            self.redis.hset(f"{self.convo_prefix}:{convo.id}:meta", "initiator", speaker_name)
+            convo.memories['summary'].human_prefix = speaker_name
+            convo.memories['kg'].human_prefix = speaker_name
 
         return convo
 
@@ -256,19 +265,19 @@ class Recall:
             return convo_ids[-1].split('|', maxsplit=2)[-1]
         return None
 
-    def get_convo(self, service, channel, convo_id=None) -> Convo:
-        ''' If convo_id exists, fetch it. If not, start a new convo. '''
-        log.warning(f"get_convo(): {service} | {channel} | {convo_id}")
+    def get_convo(self, service, channel, convo_id=None) -> Union[Convo, None]:
+        ''' If convo_id exists, fetch it '''
         if convo_id is None:
             convo_id = self.current_convo_id(service, channel)
 
-        log.warning(f"Going with convo_id: {convo_id}")
         convo_key = f"{service}|{channel}|{convo_id}"
 
-        log.warning(self.convos)
+        log.debug(self.convos)
         if convo_id is None or convo_key not in self.convos:
-            log.warning(f"Couldn't find {convo_key}, starting fresh")
-            return self.new_convo(service, channel)
+            log.warning(f"🧵 Convo not found: {convo_key}")
+            return None
+
+        log.warning("🧵 Continuing convo:", convo_key)
 
         return self.convos[convo_key]
 

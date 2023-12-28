@@ -167,7 +167,7 @@ class LanguageModel:
         sents = []
         for sent in list(self.nlp(fix_text(text)).sents):
             if sent:
-                sents.append(self.nlp(sent))
+                sents.append(sent)
 
         if len(sents) > 1 and not sents[-1][-1].is_punct:
             sents.pop()

@@ -56,7 +56,7 @@ def root():
 async def handle_reply(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=5000),
+    msg: str = Query(..., min_length=1, max_length=65535),
     speaker_name: str = Query(..., min_length=1, max_length=255),
     send_chat: Optional[bool] = Query(True)
     ):
@@ -80,7 +80,7 @@ async def handle_chat_received(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     speaker_name: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=5000),
+    msg: str = Query(..., min_length=1, max_length=65535),
     ):
     ''' Notify CNS that a message was received '''
 
@@ -116,7 +116,7 @@ async def handle_status(
     ):
     ''' Return the reply '''
     ret = await asyncio.gather(in_thread(
-        interact.generate_prompt, [service, channel]
+        interact.status, [service, channel]
     ))
     return {
         "status": ret[0]

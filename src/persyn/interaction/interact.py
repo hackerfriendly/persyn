@@ -92,6 +92,23 @@ class Interact:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
+    @property
+    def template(self):
+        '''
+        Return the current prompt template.
+
+        Note that {kg} is used as a placeholder for knowledge graph memory but is never rendered.
+        It's overridden later in status() to provide the full prompt context.
+        '''
+        return f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
+{self.config.interact.character}
+""" + """
+{kg}
+
+{history}
+
+{human}: {input}
+{bot}:"""
 
     def retort(self, service, channel, msg, speaker_name, send_chat=True):  # pylint: disable=too-many-locals
         '''
@@ -103,21 +120,14 @@ class Interact:
         log.info(f"💬 get_reply to: {msg}")
 
         convo = self.recall.get_convo(service, channel)
-        template = f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
-{self.config.interact.character}
-""" + """
-{kg}
-{history}
+        if convo is None:
+            convo = self.recall.new_convo(service, channel, speaker_name)
 
-{human}: {input}
-{bot}:"""
         # {self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.
-
-        log.warning("template:", template)
 
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=template,
+            template=self.template,
             partial_variables={
                 "human": speaker_name,
                 "bot": self.config.id.name
@@ -131,11 +141,13 @@ class Interact:
             memory=convo.memories['combined']
         )
 
-        # Hand it to langchain
-        reply = chain.run(input=msg)
+        # Hand it to langchain.
+        # TODO: trim() should probably be an output parser.
+        reply = self.lm.trim(chain.run(input=msg))
         reply_id = str(ulid.ULID())
 
-        self.send_chat(service, channel, reply)
+        if send_chat:
+            self.send_chat(service, channel, reply)
 
         convo.memories['redis'].add_texts(
             texts=[msg, reply],
@@ -192,6 +204,26 @@ class Interact:
         return reply
 
 
+    def status(self, service, channel) -> str:
+        ''' Return the prompt and chat history for this channel '''
+
+        convo = self.recall.get_convo(service, channel)
+
+        prompt = PromptTemplate(
+            input_variables=["input"],
+            template=self.template,
+            partial_variables={
+                "human": convo.memories['summary'].human_prefix,
+                "bot": self.config.id.name
+            }
+        )
+
+        return prompt.format(
+            kg=convo.memories['summary'].moving_summary_buffer,
+            history=convo.memories['summary'].load_memory_variables({})['history'],
+            input='input'
+        )
+
     def extract_nouns(self, text):
         ''' return a list of all nouns (except pronouns) in text '''
         doc = self.lm.nlp(text)
@@ -217,7 +249,7 @@ class Interact:
 
         # Add to summary memory. Dialog is automatically handled by langchain.
         if verb != 'dialog':
-            convo.memories['combined'].memories[0].chat_memory.add_ai_message(f"({verb}) {idea}")
+            convo.memories['summary'].chat_memory.add_ai_message(f"({verb}) {idea}")
 
             # Add to redis
             convo.memories['redis'].add_texts(
