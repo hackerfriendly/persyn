@@ -99,10 +99,10 @@ async def chat_received(event):
 
     log.warning("💬 chat_received start")
 
-    convo_id = recall.convo_id(event.service, event.channel)
-    if convo_id not in recall.list_convos():
-        log.warning(f"😈 Rogue convo_id {convo_id}, adding to list of active convos")
-        recall.redis.sadd(recall.active_convos_prefix, f"{event.service}|{event.channel}|{convo_id}")
+    # convo_id = recall.convo_id(event.service, event.channel)
+    # if convo_id not in recall.list_convos():
+    #     log.warning(f"😈 Rogue convo_id {convo_id}, adding to list of active convos")
+    #     recall.redis.sadd(recall.active_convos_prefix, f"{event.service}|{event.channel}|{convo_id}")
 
     # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
 
@@ -111,35 +111,34 @@ async def chat_received(event):
     the_reply = chat.get_reply(
         channel=event.channel,
         speaker_name=event.speaker_name,
-        speaker_id=event.speaker_id,
         msg=event.msg,
         send_chat=True
     )
 
     # Time for self-examination.
 
-    # Update emotional state
-    vc = VibeCheck(
-        service=event.service,
-        channel=event.channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        convo_id=None,
-        room=None
-    )
-    autobus.publish(vc)
+    # # Update emotional state
+    # vc = VibeCheck(
+    #     service=event.service,
+    #     channel=event.channel,
+    #     bot_name=persyn_config.id.name,
+    #     bot_id=persyn_config.id.guid,
+    #     convo_id=None,
+    #     room=None
+    # )
+    # autobus.publish(vc)
 
-    if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
-        # Check facts
-        fc = FactCheck(
-            service=event.service,
-            channel=event.channel,
-            bot_name=persyn_config.id.name,
-            bot_id=persyn_config.id.guid,
-            convo_id=None,
-            room=None
-        )
-        autobus.publish(fc)
+    # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
+    #     # Check facts
+    #     fc = FactCheck(
+    #         service=event.service,
+    #         channel=event.channel,
+    #         bot_name=persyn_config.id.name,
+    #         bot_id=persyn_config.id.guid,
+    #         convo_id=None,
+    #         room=None
+    #     )
+    #     autobus.publish(fc)
 
 
     # TODO: Should this be a priority queue?
@@ -182,8 +181,7 @@ async def elaborate(event):
     chat.get_reply(
         channel=event.channel,
         msg='...',
-        speaker_name=event.bot_name,
-        speaker_id=event.bot_id
+        speaker_name=event.bot_name
     )
 
 async def opine(event):
@@ -298,7 +296,6 @@ async def check_feels(event):
         channel=event.channel,
         msg=feels,
         speaker_name=event.bot_name,
-        speaker_id=event.bot_id,
         convo_id=event.convo_id,
         verb='feels'
     )
@@ -318,7 +315,6 @@ async def check_facts(event):
             channel=event.channel,
             msg=facts,
             speaker_name=event.bot_name,
-            speaker_id=event.bot_id,
             convo_id=event.convo_id,
             verb='realizes'
         )
@@ -451,8 +447,7 @@ async def read_web(event):
         reply = chat.get_reply(
             channel=event.channel,
             msg='...',
-            speaker_name=event.bot_name,
-            speaker_id=event.bot_id
+            speaker_name=event.bot_name
         )
         services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, reply)
         return

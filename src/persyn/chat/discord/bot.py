@@ -196,7 +196,6 @@ async def schedule_reply(ctx):
         channel=channel,
         msg=ctx.content,
         speaker_name=ctx.author.name,
-        speaker_id=ctx.author.id,
         convo_id=chat.recall.convo_id('discord', channel),
         verb='dialog'
     )

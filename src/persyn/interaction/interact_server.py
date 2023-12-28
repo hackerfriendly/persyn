@@ -57,7 +57,6 @@ async def handle_reply(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=5000),
-    speaker_id: str = Query(..., min_length=1, max_length=255),
     speaker_name: str = Query(..., min_length=1, max_length=255),
     send_chat: Optional[bool] = Query(True)
     ):
@@ -70,7 +69,7 @@ async def handle_reply(
         )
 
     ret = await asyncio.gather(in_thread(
-        interact.retort, [service, channel, msg, speaker_name, speaker_id, send_chat]
+        interact.retort, [service, channel, msg, speaker_name, send_chat]
     ))
     return {
         "reply": ret[0]
@@ -81,7 +80,6 @@ async def handle_chat_received(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     speaker_name: str = Query(..., min_length=1, max_length=255),
-    speaker_id: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=5000),
     ):
     ''' Notify CNS that a message was received '''
@@ -96,7 +94,6 @@ async def handle_chat_received(
         service=service,
         channel=channel,
         speaker_name=speaker_name,
-        speaker_id=speaker_id,
         msg=msg
     )
     autobus.publish(event)
@@ -107,21 +104,10 @@ async def handle_chat_received(
 
 @app.post("/summary/")
 async def handle_summary(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    save: Optional[bool] = Query(True),
-    include_keywords: Optional[bool] = Query(False),
-    context_lines: Optional[int] = Query(0),
-    dialog_only: Optional[bool] = Query(False),
     convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
 ):
-    ''' Return the reply '''
-    ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, convo_id]
-    ))
-    return {
-        "summary": ret[0]
-    }
+    ''' Return the most recent summary from convo_id '''
+    raise NotImplementedError
 
 @app.post("/status/")
 async def handle_status(

@@ -218,7 +218,6 @@ class Mastodon():
             channel=channel,
             msg=msg,
             speaker_name=status.account.username,
-            speaker_id=status.account.id,
             convo_id=self.chat.recall.convo_id('mastodon', channel),
             verb='dialog'
         )

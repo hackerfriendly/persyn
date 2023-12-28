@@ -102,7 +102,7 @@ class Chat():
 
         return " :spiral_note_pad: :interrobang: "
 
-    def get_reply(self, channel, msg, speaker_name, speaker_id, reminders=None, send_chat=True):
+    def get_reply(self, channel, msg, speaker_name, reminders=None, send_chat=True):
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
             log.error("💬 get_reply() called with no interact_url defined, skipping.")
@@ -119,7 +119,6 @@ class Chat():
             "channel": channel,
             "msg": msg,
             "speaker_name": speaker_name,
-            "speaker_id": speaker_id,
             "send_chat": send_chat
         }
         try:
@@ -128,7 +127,7 @@ class Chat():
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
             if reminders:
-                reminders.add(channel, 5, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name, speaker_id])
+                reminders.add(channel, 5, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name])
             return random.choice(excuses)
 
         resp = response.json()
@@ -353,7 +352,7 @@ class Chat():
         log.warning(f"🖼️  {response.choices[0].message.content}")
         return response.choices[0].message.content
 
-    def chat_received(self, channel, msg, speaker_name, speaker_id):
+    def chat_received(self, channel, msg, speaker_name):
         ''' Dispatch a ChatReceived event. '''
         if not self.interact_url:
             log.error("💬 chat_received() called with no interact_url defined, skipping.")
@@ -363,7 +362,6 @@ class Chat():
             "service": self.service,
             "channel": channel,
             "speaker_name": speaker_name,
-            "speaker_id": speaker_id,
             "msg": msg
         }
         try:

@@ -80,10 +80,9 @@ def test_short_ids():
 #     service = "my_service"
 #     channel = "channel_a"
 #     speaker_name = "test_name"
-#     speaker_id = "test_id"
 
 #     # This is computed using persyn_config.id.guid. If it changes, this value needs updating.
-#     eid = recall.name_to_entity_id(service, channel, speaker_id)
+#     eid = recall.name_to_entity_id(service, channel)
 #     assert eid == "HzfSLNaCdxgdzcbxPZw6aE"
 
 #     other_eids = set([
@@ -101,11 +100,11 @@ def test_short_ids():
 #     # assert not recall.entity_id_to_name(eid)
 
 #     # Store it. Returns seconds since it was first stored.
-#     # assert recall.save_entity(service, channel, speaker_name, speaker_id)[1] == 0
+#     # assert recall.save_entity(service, channel, speaker_name)[1] == 0
 #     # assert recall.save_entity(service, channel, speaker_name)[1] == 0
 #     # sleep(1.1)
-#     # assert recall.save_entity(service, channel, speaker_name, speaker_id)[1] > 1
-#     # assert recall.save_entity(service, channel, speaker_name, speaker_id)[1] < 8
+#     # assert recall.save_entity(service, channel, speaker_name)[1] > 1
+#     # assert recall.save_entity(service, channel, speaker_name)[1] < 8
 
 #     # Should match
 #     assert recall.entity_id_to_name(eid) == speaker_name
@@ -115,7 +114,6 @@ def test_short_ids():
 #     assert doc['service'] == service
 #     assert doc['channel'] == channel
 #     assert doc['speaker_name'] == speaker_name
-#     assert doc['speaker_id'] == speaker_id
 
 def cleanup():
     ''' Delete everything with the test bot_id '''
@@ -138,7 +136,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
         service=service,
         channel=channel_a,
         msg="message_a",
-        speaker_id="speaker_id",
         speaker_name="speaker_name",
     )
 
@@ -148,7 +145,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
         channel=channel_a,
         convo_id=str(doc1.convo_id),
         msg="message_b",
-        speaker_id="speaker_id",
         speaker_name="speaker_name",
     )
     assert doc1.convo_id == doc2.convo_id
@@ -161,7 +157,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
         channel=channel_a,
         convo_id=new_convo_id,
         msg="message_c",
-        speaker_id="speaker_id",
         speaker_name="speaker_name",
     )
     assert doc3.convo_id == new_convo_id
@@ -173,7 +168,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
             service=service,
             channel=f"channel_loop_{i}",
             msg="message_loop_a",
-            speaker_id="speaker_id",
             speaker_name="speaker_name",
         )
         assert doc4
@@ -184,7 +178,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
                 channel=f"channel_loop_{i}",
                 convo_id=str(doc4.convo_id),
                 msg=f"message_loop_b{j}",
-                speaker_id="speaker_id",
                 speaker_name="speaker_name",
             )
             assert doc4.convo_id == doc5.convo_id
@@ -194,7 +187,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
                 channel=f"channel_loop_{i}",
                 convo_id=str(doc4.convo_id),
                 msg=f"message_loop_c{j}",
-                speaker_id="speaker_id",
                 speaker_name="speaker_name",
             )
             assert doc5.convo_id == doc6.convo_id
@@ -208,7 +200,6 @@ def test_generate_convos(service="my_service", channel_a="channel_a", channel_b=
                 channel=f"channel_loop_{i}",
                 convo_id=str(doc4.convo_id),
                 msg=f"message_loop_d{j}",
-                speaker_id="speaker_id",
                 speaker_name="speaker_name",
             )
             assert doc4.convo_id == doc7.convo_id
@@ -277,8 +268,7 @@ def test_recall():
         service,
         channel,
         msg="message_another",
-        speaker_name="speaker_name_1",
-        speaker_id="speaker_id"
+        speaker_name="speaker_name_1"
     ).convo_id
 
     # contains the summary + new convo
@@ -297,7 +287,6 @@ def test_recall():
         channel,
         msg="message_yet_another",
         speaker_name="speaker_name_2",
-        speaker_id="speaker_id",
         convo_id=convo_id
     )
 

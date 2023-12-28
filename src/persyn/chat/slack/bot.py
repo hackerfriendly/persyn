@@ -196,8 +196,7 @@ def main():
         if not persyn_config.dreams.dalle:
             log.error('🎨 No DALL-E support available, check your config.')
             return
-        speaker_id = context['user_id']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(context['user_id'])
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
@@ -218,8 +217,7 @@ def main():
     @app.message(re.compile(r"^:frame_with_picture:(.+)$"))
     def dalle_portrait(say, context): # pylint: disable=unused-argument
         ''' Take a picture with Dall-E '''
-        speaker_id = context['user_id']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(context['user_id'])
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
@@ -337,19 +335,8 @@ def main():
             if random.random() < 0.95:
                 return
 
-        # Save the line
-        chat.recall.save_convo_line(
-            service=service,
-            channel=channel,
-            msg=msg,
-            speaker_name=get_display_name(speaker_id),
-            speaker_id=speaker_id,
-            convo_id=chat.recall.convo_id(service, channel),
-            verb='dialog'
-        )
-
         # Dispatch a "message received" event. Replies are handled by CNS.
-        chat.chat_received(channel, msg, speaker_name, speaker_id)
+        chat.chat_received(channel, msg, speaker_name)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
@@ -359,11 +346,10 @@ def main():
     def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
         ''' Reply to @mentions '''
         channel = body['event']['channel']
-        speaker_id = body['event']['user']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(body['event']['user'])
         msg = substitute_names(body['event']['text'])
 
-        chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+        chat.get_reply(channel, msg, speaker_name, send_chat=True)
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -440,8 +426,7 @@ def main():
             log.warning("Message event with no user. 🤷")
             return
 
-        speaker_id = body['event']['user']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(body['event']['user'])
         msg = substitute_names(body['event']['text'])
 
         if 'files' not in body['event']:
@@ -481,7 +466,7 @@ def main():
                 if not msg.strip():
                     msg = "..."
 
-                chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+                chat.get_reply(channel, msg, speaker_name, send_chat=True)
 
             else:
                 say(

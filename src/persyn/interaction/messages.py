@@ -21,7 +21,6 @@ class ChatReceived(autobus.Event):
     service: str
     channel: str
     speaker_name: str
-    speaker_id: str
     msg: str
 
 

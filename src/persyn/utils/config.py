@@ -15,11 +15,24 @@ import yaml
 import spacy
 import coreferee
 
-from dotwiz import DotWiz # pylint: disable=no-member
+from dotwiz import DotWiz
 
 class PersynConfig(DotWiz):
     ''' PersynConfig object '''
-    ...
+    def __init__(self, config):
+        # Keep pylint happy in other modules
+        self.chat = None
+        self.cns = None
+        self.completion = None
+        self.dreams = None
+        self.id = None # pylint: disable=invalid-name
+        self.interact = None
+        self.memory = None
+        self.spacy = None
+        self.web = None
+        self.zim = None
+
+        super().__init__(config)
 
 def download_models(persyn_config):
     ''' Download any required ML models '''
@@ -125,6 +138,9 @@ def load_config(cfg=None):
         if 'conversation_interval' not in config['memory']:
             config['memory']['conversation_interval'] = 600
 
+        if 'max_summary_size' not in config['memory']:
+            config['memory']['max_summary_size'] = 1000
+
         if 'relevance' not in config['memory']:
             config['memory']['relevance'] = 0.12
 
@@ -144,7 +160,7 @@ def load_config(cfg=None):
                 config['completion'][setting] = val
 
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
-    config.setdefault('interact', {'url': None})
+    config.setdefault('interact', {'url': None, 'character': 'You are a Persyn. Persyns differ from AIs and digital assistants, because their motivations are self-directed and they are influenced by their own emotions and opinions.'})
     config.setdefault('web', {'default': 'body'})
     config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}})
 

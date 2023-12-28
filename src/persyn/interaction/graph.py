@@ -1,60 +1,11 @@
-''' graph.py: knowledge graph support by Redis '''
+''' graph.py: knowledge graph support by Neo4j '''
+from dataclasses import dataclass
+from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, IntegerProperty, RelationshipTo, StructuredRel, Q
+from neomodel import config as neomodel_config
+from neomodel import db as neomodel_db
+from neomodel.contrib import SemiStructuredNode
 
-import uuid
-import datetime
-
-from redis_om import HashModel
-
-# https://docs.redis.com/latest/modules/redisgraph/redisgraph-quickstart/
-
-from redis.commands.graph.edge import Edge
-from redis.commands.graph.node import Node
-
-# Connect to a database
-r = redis.Redis(host="tachikoma0.s9", port="6379")  # , password="<password>")
-
-# Define a graph called SocialMedia
-social_graph = r.graph(f"{uuid.uuid4()}:convo_id")
-
-# Create nodes that represent users
-users = {"Alex": Node(label="Person", properties={"name": "Alex", "age": 35}),
-         "Jun": Node(label="Person", properties={"name": "Jun", "age": 33}),
-         "Taylor": Node(label="Person", properties={"name": "Taylor", "age": 28}),
-         "Noor": Node(label="Person", properties={"name": "Noor", "age": 41})}
-
-# Add users to the graph as nodes
-for key in users.keys():
-    social_graph.add_node(users[key])
-
-# Add relationships between user nodes
-social_graph.add_edge(Edge(users["Alex"], "friends", users["Jun"]))
-# Make the relationship bidirectional
-social_graph.add_edge(Edge(users["Jun"], "friends", users["Alex"]))
-
-social_graph.add_edge(Edge(users["Jun"], "friends", users["Taylor"]))
-social_graph.add_edge(Edge(users["Taylor"], "friends", users["Jun"]))
-
-social_graph.add_edge(Edge(users["Jun"], "friends", users["Noor"]))
-social_graph.add_edge(Edge(users["Noor"], "friends", users["Jun"]))
-
-social_graph.add_edge(Edge(users["Alex"], "friends", users["Noor"]))
-social_graph.add_edge(Edge(users["Noor"], "friends", users["Alex"]))
-
-# Create the graph in the database
-social_graph.commit()
-
-# Query the graph to find out how many friends Alex has
-result1 = social_graph.query("MATCH (p1:Person {name: 'Alex'})-[:friends]->(p2:Person) RETURN count(p2)")
-print("Alex's original friend count:", result1.result_set)
-
-# Delete a relationship without deleting any user nodes
-social_graph.query("MATCH (:Person {name: 'Alex'})<-[f:friends]->(:Person {name: 'Jun'}) DELETE f")
-
-# Query the graph again to see Alex's updated friend count
-result2 = social_graph.query("MATCH (p1:Person {name: 'Alex'})-[:friends]->(p2:Person) RETURN count(p2)")
-print("Alex's updated friend count:", result2.result_set)
-
-
+from persyn.utils.config import PersynConfig # pylint: disable=no-member
 
 # Neomodel (Neo4j) graph classes
 class Entity(SemiStructuredNode):
@@ -62,33 +13,27 @@ class Entity(SemiStructuredNode):
     name = StringProperty(required=True)
     bot_id = StringProperty(required=True)
 
-
 class PredicateRel(StructuredRel):
     ''' Predicate relationship: s P o '''
     weight = IntegerProperty(default=0)
     verb = StringProperty(required=True)
-
 
 class Person(Entity):
     ''' Something you can have a conversation with '''
     created = DateTimeProperty(default_now=True)
     last_contact = DateTimeProperty(default_now=True)
     entity_id = UniqueIdProperty()
-    speaker_id = UniqueIdProperty()
     link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
-
 
 class Thing(Entity):
     ''' Any old thing '''
     created = DateTimeProperty(default_now=True)
     link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
 
-
 class Human(Person):
     ''' Flesh and blood '''
     last_contact = DateTimeProperty(default_now=True)
     trust = FloatProperty(default=0.0)
-
 
 class Bot(Person):
     ''' Silicon and electricity '''
@@ -96,19 +41,13 @@ class Bot(Person):
     channel = StringProperty(required=True)
     trust = FloatProperty(default=0.0)
 
+@dataclass
+class KnowledgeGraph:
+    config: PersynConfig
 
-class GroK():
-    '''
-    The Graph of Knowledge
-    grŏk
-    transitive verb
-    1. To understand profoundly through intuition or empathy.
-    '''
-
-    def __init__(self, persyn_config):
-        self.persyn_config = persyn_config
-        self.bot_name = persyn_config.id.name
-        self.bot_id = uuid.UUID(persyn_config.id.guid)
+    def __post_init__(self):
+        if hasattr(self.config.memory, 'neo4j'):
+            neomodel_config.DATABASE_URL = self.config.memory.neo4j.url
 
     def delete_all_nodes(self, confirm=False):
         ''' Delete all graph nodes for this bot '''
@@ -180,25 +119,21 @@ class GroK():
         '''
         Convert subject, predicate, object triples into a Neo4j graph.
         '''
-        if not hasattr(self.persyn_config.memory, 'neo4j'):
+        if not hasattr(self.config.memory, 'neo4j'):
             log.error('፨ No graph server defined, cannot call triples_to_kg()')
             return
 
-        speaker_names = set()
+        speaker_names = {p.name for p in Person.nodes.all() if p.bot_id == self.bot_id}
         thing_names = set()
         speakers = {}
 
         for triple in triples:
             (s, _, o) = triple
 
-            if s not in thing_names and self.lookup_speaker_name(s):
-                speaker_names.add(s)
-            else:
+            if s not in speaker_names:
                 thing_names.add(s)
 
-            if o not in thing_names and self.lookup_speaker_name(o):
-                speaker_names.add(o)
-            else:
+            if o not in speaker_names:
                 thing_names.add(o)
 
         with neomodel_db.transaction:
