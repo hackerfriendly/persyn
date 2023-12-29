@@ -15,6 +15,8 @@ from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.llms.openai import OpenAI, BaseOpenAI
 from langchain.globals import set_verbose
 from langchain.embeddings import OpenAIEmbeddings
+from langchain.prompts import PromptTemplate
+from langchain.schema import StrOutputParser
 
 from ftfy import fix_text
 
@@ -205,6 +207,25 @@ class LanguageModel:
             ).data[0].embedding,
             dtype=np.float32
         ).tobytes()
+
+    def summarize_text(self, text, summarizer="Summarize the following in one or two sentences. Your response must include only the summary and no other text:"):
+        ''' Ask the LLM for a summary'''
+        if not text:
+            log.warning('summarize_text():', "No text, skipping summary.")
+            return ""
+
+        log.warning(f'summarize_text(): summarizing: {text}')
+        prompt = PromptTemplate.from_template(summarizer + "\n{input}")
+        chain = prompt | self.summary_llm | StrOutputParser()
+
+        reply = self.trim(chain.invoke({"input": text}))
+
+        # To the right of the Speaker: (if any)
+        if re.match(r'^[\w\s]{1,12}:\s', reply):
+            reply = reply.split(':')[1].strip()
+
+        log.warning("summarize_text():", reply)
+        return reply
 
     def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''

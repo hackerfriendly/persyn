@@ -4,6 +4,8 @@ interact.py
 The limbic system library.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order
+import re
+
 from dataclasses import dataclass
 
 import ulid
@@ -153,7 +155,7 @@ class Interact:
             texts=[
                 msg,
                 reply,
-                convo.memories['summary'].load_memory_variables({})['history']
+                convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
             ],
             metadatas=[
                 {
@@ -283,6 +285,16 @@ class Interact:
                 ],
                 keys=[f"{convo.id}:{str(ulid.ULID())}"]
             )
+
+    def summarize_channel(self, service, channel, convo_id=None) -> str:
+        ''' Summarize a channel in a few sentences. '''
+        if convo_id is None:
+            convo_id = self.recall.get_last_convo_id(service, channel)
+
+        if convo_id is None:
+            return ""
+
+        return self.lm.summarize_text(self.recall.fetch_summary(convo_id))
 
         # if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel, feels=True)):
         #     log.warning("🤌  Already had this idea, skipping:", idea)

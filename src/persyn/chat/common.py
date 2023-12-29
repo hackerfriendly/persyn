@@ -71,12 +71,7 @@ class Chat():
         req = {
             "service": self.service,
             "channel": channel,
-            "convo_id": convo_id,
-            "save": save,
-            "max_tokens": max_tokens,
-            "include_keywords": include_keywords,
-            "context_lines": context_lines,
-            "model": model
+            "convo_id": convo_id
         }
         try:
             reply = rs.post(f"{self.interact_url}/summary/", params=req, timeout=60)

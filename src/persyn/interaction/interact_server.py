@@ -104,10 +104,17 @@ async def handle_chat_received(
 
 @app.post("/summary/")
 async def handle_summary(
+    service: str = Query(..., min_length=1, max_length=255),
+    channel: str = Query(..., min_length=1, max_length=255),
     convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
 ):
     ''' Return the most recent summary from convo_id '''
-    raise NotImplementedError
+    ret = await asyncio.gather(in_thread(
+        interact.summarize_channel, [service, channel, convo_id]
+    ))
+    return {
+        "summary": ret[0]
+    }
 
 @app.post("/status/")
 async def handle_status(
