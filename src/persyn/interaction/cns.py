@@ -8,7 +8,6 @@ The central nervous system. Listen for events on the event bus and inject result
 import argparse
 import logging
 import os
-import random
 
 import requests
 
@@ -34,7 +33,7 @@ from persyn.chat.simple import slack_msg, discord_msg
 from persyn.chat.mastodon.bot import Mastodon
 
 # Time
-from persyn.interaction.chrono import ago
+from persyn.interaction.chrono import ago, get_cur_ts, elapsed
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
@@ -97,7 +96,8 @@ async def chat_received(event):
     ''' Somebody is talking to us '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
-    log.warning("💬 chat_received start")
+    start = get_cur_ts()
+    log.warning("💬 chat_received")
 
     # convo_id = recall.convo_id(event.service, event.channel)
     # if convo_id not in recall.list_convos():
@@ -150,7 +150,7 @@ async def chat_received(event):
 
     #     self.check_goals(service, channel, convo)
 
-    log.warning("💬 chat_received done")
+    log.warning("💬 chat_received done in:", elapsed(start, get_cur_ts()))
 
 async def new_idea(event):
     ''' Inject a new idea '''
@@ -576,13 +576,13 @@ Questions only, no answers. Please convert pronouns and verbs to the first perso
                 # Hit a sentence? Inject the summary and the sentence.
                 if the_summary and the_summary not in convo:
                     context.append(f"""
-                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago,
+                        {persyn_config.id.name} remembers that {ago(recall.id_to_timestamp(hit.convo_id))} ago,
                         f"{the_summary.summary} From that conversation, {hit.msg}"""
                     )
                 # No summary? Just inject the sentence.
                 else:
                     context.append(f"""
-                        {persyn_config.id.name} remembers that {ago(recall.entity_id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
+                        {persyn_config.id.name} remembers that {ago(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
                     )
                 visited.append(hit.convo_id)
                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
@@ -716,46 +716,45 @@ async def photo_event(event):
 @autobus.schedule(autobus.every(5).seconds)
 async def auto_summarize():
     ''' Automatically summarize conversations when they expire. '''
-    convos = [convo.decode() for convo in recall.list_convos()]
+    convos = recall.list_convo_ids()
 
     if convos:
-        log.info("💓 Active convos:", convos)
+        for convo_id in convos:
+            remaining = persyn_config.memory.conversation_interval - elapsed(recall.id_to_timestamp(recall.get_last_message_id(convo_id)), get_cur_ts())
+            log.info(f"💓 Active convo: {convo_id} ({int(remaining)} seconds left)")
 
-    for key in convos:
-        (service, channel, convo_id) = key.split('|')
-        # TODO: Also check if the convo is too long, even if it hasn't expired
+    # for key in convos:
+    #     (service, channel, convo_id) = key.split('|')
+    #     # TODO: Also check if the convo is too long, even if it hasn't expired
 
-        # it should be stale and have more in it than a new_convo marker
-        if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
-            log.warning("💓 Convo expired:", key)
+    #     # it should be stale and have more in it than a new_convo marker
+    #     if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
+    #         log.warning("💓 Convo expired:", key)
 
-            # Remove it from the convo list
-            recall.redis.srem(f"{recall.active_convos_prefix}", key)
+    #         if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
+    #             log.info("🪩  Reflecting:", convo_id)
+    #             event = Reflect(
+    #                 bot_name=persyn_config.id.name,
+    #                 bot_id=persyn_config.id.guid,
+    #                 service=service,
+    #                 channel=channel,
+    #                 send_chat=True,
+    #                 convo_id=convo_id
+    #             )
+    #             autobus.publish(event)
 
-            if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
-                log.info("🪩  Reflecting:", convo_id)
-                event = Reflect(
-                    bot_name=persyn_config.id.name,
-                    bot_id=persyn_config.id.guid,
-                    service=service,
-                    channel=channel,
-                    send_chat=True,
-                    convo_id=convo_id
-                )
-                autobus.publish(event)
-
-                log.info("💓 Summarizing:", convo_id)
-                event = Summarize(
-                    bot_name=persyn_config.id.name,
-                    bot_id=persyn_config.id.guid,
-                    service=service,
-                    channel=channel,
-                    convo_id=convo_id,
-                    photo=True,
-                    max_tokens=30,
-                    send_chat=False
-                )
-                autobus.publish(event)
+    #             log.info("💓 Summarizing:", convo_id)
+    #             event = Summarize(
+    #                 bot_name=persyn_config.id.name,
+    #                 bot_id=persyn_config.id.guid,
+    #                 service=service,
+    #                 channel=channel,
+    #                 convo_id=convo_id,
+    #                 photo=True,
+    #                 max_tokens=30,
+    #                 send_chat=False
+    #             )
+    #             autobus.publish(event)
 
 @autobus.schedule(autobus.every(6).hours)
 async def plan_your_day():

@@ -208,7 +208,7 @@ class LanguageModel:
             dtype=np.float32
         ).tobytes()
 
-    def summarize_text(self, text, summarizer="Summarize the following in one or two sentences. Your response must include only the summary and no other text:"):
+    def summarize_text(self, text, summarizer="Summarize the following in one sentence. Your response must include only the summary and no other text:"):
         ''' Ask the LLM for a summary'''
         if not text:
             log.warning('summarize_text():', "No text, skipping summary.")

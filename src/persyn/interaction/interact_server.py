@@ -25,7 +25,7 @@ from persyn import autobus
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, ChatReceived, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from persyn.interaction.messages import SendChat, ChatReceived, Opine, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -60,7 +60,7 @@ async def handle_reply(
     speaker_name: str = Query(..., min_length=1, max_length=255),
     send_chat: Optional[bool] = Query(True)
     ):
-    ''' Return the reply '''
+    ''' Get a reply to a message posted to a channel '''
 
     if not msg.strip():
         raise HTTPException(
@@ -121,7 +121,7 @@ async def handle_status(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     ):
-    ''' Return the reply '''
+    ''' Get the channel status, as it would be seen by /reply/ '''
     ret = await asyncio.gather(in_thread(
         interact.status, [service, channel]
     ))
@@ -133,7 +133,7 @@ async def handle_status(
 async def handle_nouns(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Return the reply '''
+    ''' Extract nouns from a string '''
     ret = await asyncio.gather(in_thread(
         interact.extract_nouns, [text]
     ))
@@ -145,7 +145,7 @@ async def handle_nouns(
 async def handle_entities(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Return the reply '''
+    ''' Extract entities from a string '''
     ret = await asyncio.gather(in_thread(
         interact.extract_entities, [text]
     ))
@@ -174,10 +174,9 @@ async def handle_opinion(
     channel: str = Query(..., min_length=1, max_length=255),
     topic: str = Query(..., min_length=1, max_length=16384),
     size: Optional[int] = Query(10),
-    summarize: Optional[bool] = Query(True),
-    max_tokens: Optional[int] = Query(50)
+    summarize: Optional[bool] = Query(True)
     ):
-    ''' Get our opinion about topic '''
+    ''' Get our opinion about a topic '''
 
     ret = await asyncio.gather(in_thread(
         interact.surmise, [service, channel, topic, size]
@@ -210,7 +209,7 @@ async def handle_add_goal(
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Add a goal in a given context '''
+    ''' Add a goal to a channel '''
     ret = []
     if goal.strip():
         ret = await asyncio.gather(in_thread(
@@ -227,7 +226,7 @@ async def handle_get_goals(
     channel: str = Query(..., min_length=1, max_length=255),
     size: Optional[int] = Query(10),
 ):
-    ''' Fetch the current goals for a given context '''
+    ''' Fetch the current goals for a given channel '''
     ret = await asyncio.gather(in_thread(
         interact.get_goals, [service, channel, None, size]
     ))
@@ -242,7 +241,7 @@ async def handle_list_goals(
     channel: str = Query(..., min_length=1, max_length=255),
     size: Optional[int] = Query(10),
 ):
-    ''' List the current goals for a given context '''
+    ''' List the current goals for a channel '''
     ret = await asyncio.gather(in_thread(
         interact.list_goals, [service, channel, size]
     ))
@@ -258,7 +257,7 @@ async def handle_check_goals(
     convo: str = Query(..., max_length=65535),
     goals: List[str] = Query(...)
 ):
-    ''' Ask the autobus check whether goals have been achieved '''
+    ''' Check whether goals have been achieved for this channel, via the autobus '''
     event = CheckGoals(
         service=service,
         channel=channel,
@@ -303,27 +302,6 @@ async def handle_opine(
 ):
     ''' Ask the autobus to gather opinions about entities '''
     event = Opine(
-        service=service,
-        channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        entities=entities
-    )
-    autobus.publish(event)
-
-    return {
-        "success": True
-    }
-
-@app.post("/wikipedia/")
-async def handle_wikipedia(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    entities: List[str] = Query(..., min_length=1, max_length=255)
-):
-    ''' Summarize some Wikipedia pages '''
-
-    event = Wikipedia(
         service=service,
         channel=channel,
         bot_name=persyn_config.id.name,

@@ -267,6 +267,9 @@ class Interact:
         '''
         convo = self.recall.get_convo(service, channel)
 
+        if not convo:
+            convo = self.recall.load_convo(service, channel)
+
         # Add to summary memory. Dialog is automatically handled by langchain.
         if verb != 'dialog':
             convo.memories['summary'].chat_memory.add_ai_message(f"({verb}) {idea}")

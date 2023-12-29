@@ -3,12 +3,11 @@
 import uuid
 
 from dataclasses import dataclass
-from typing import Union, Any, Optional
+from typing import Union, List, Any, Optional
 
 import ulid
 
 import redis
-from redis.commands.search.query import Query
 
 from langchain.memory import (
     CombinedMemory,
@@ -59,7 +58,6 @@ class Recall:
 
         self.bot_name = self.config.id.name
         self.bot_id = uuid.UUID(self.config.id.guid)
-        self.bot_ulid = ulid.ULID().from_uuid(self.bot_id)
 
         self.conversation_interval = conversation_interval or self.config.memory.conversation_interval
         self.max_summary_size = self.config.memory.max_summary_size
@@ -82,15 +80,9 @@ class Recall:
         # Convenience ids. Useful when browsing with RedisInsight.
         self.redis.hset(f"{pre}:whoami", "bot_name", self.bot_name)
         self.redis.hset(f"{pre}:whoami", "bot_id", str(self.bot_id))
-        self.redis.hset(f"{pre}:whoami", "bot_ulid", str(self.bot_ulid))
 
         # Container for current conversations
         self.convos = {}
-
-    def list_convos(self):
-        ''' Return the set of all active convos for all services + channels '''
-        # TODO: filter for active convos only
-        return self.convos.keys()
 
     # def judge(self, service, channel, topic, opinion, convo_id):
     #     ''' Judge not, lest ye be judged '''
@@ -211,13 +203,31 @@ class Recall:
 
         return convo
 
+    def list_convo_ids(self, active_only=True) -> List[str]:
+        ''' List active convo_ids, from newest to oldest. If active_only = False, include expired convos. '''
+        ret = []
+        for convo in sorted(self.redis.keys(f'{self.convo_prefix}:*:meta'), reverse=True):
+            convo_id = convo.decode().split(':')[3]
+            if not active_only or not self.convo_expired(convo_id=convo_id):
+                ret.append(convo_id)
+
+        return ret
+
     def get_last_convo_id(self, service, channel) -> str:
         ''' Returns the most recent convo id for this service + channel from Redis '''
         for convo in sorted(self.redis.keys(f'{self.convo_prefix}:*:meta'), reverse=True):
             convo_id = convo.decode().split(':')[3]
             if self.fetch_convo_meta(convo_id, 'service') == service and self.fetch_convo_meta(convo_id, 'channel') == channel:
-                log.warning('Got last_convo_id:', convo_id)
                 return convo_id
+        log.debug('No last_convo_id for:', f"{service}|{channel}")
+        return None
+
+    def get_last_message_id(self, convo_id) -> str:
+        ''' Returns the most recent message for this convo_id from Redis '''
+        message_ids = sorted(self.redis.keys(f"{self.convo_prefix}:{convo_id}:lines:*"), reverse=True)
+        if message_ids:
+            return message_ids[0].decode().split(':')[-1]
+        log.debug('No last message for:', convo_id)
         return None
 
     def load_convo(self, service, channel, convo_id=None) -> None:
@@ -228,10 +238,7 @@ class Recall:
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
 
-        # No previous convo? Bail.
-        if convo_id is None:
-            return
-
+        # If convo_id is not found, this will start a fresh one.
         convo = self.new_convo(
             service,
             channel,
@@ -247,11 +254,16 @@ class Recall:
             # No convos? Load one from Redis
             self.load_convo(service, channel)
 
-        convo_ids = sorted([k for k in self.convos if k.startswith(f'{service}|{channel}|')])
-        # TODO: check for expiration
-        if convo_ids:
-            return convo_ids[-1].split('|', maxsplit=2)[-1]
-        return None
+        convos = sorted([k for k in self.convos if k.startswith(f'{service}|{channel}|')])
+        if not convos:
+            return None
+
+        convo_id = convos[-1].split('|', maxsplit=2)[-1]
+        if self.convo_expired(convo_id=convo_id):
+            log.warning("⏲️ Convo expired:", convo_id)
+            return None
+
+        return convo_id
 
     def get_convo(self, service, channel, convo_id=None) -> Union[Convo, None]:
         ''' If convo_id exists, fetch it '''
@@ -265,108 +277,35 @@ class Recall:
             log.warning(f"🧵 Convo not found: {convo_key}")
             return None
 
-        log.warning("🧵 Continuing convo:", convo_key)
-
         return self.convos[convo_key]
 
-    def expired(self, service, channel):
-        ''' True if time elapsed since the last convo line is > conversation_interval, else False '''
-        return elapsed(self.get_last_timestamp(service, channel), get_cur_ts()) > self.conversation_interval
-
-    def convo_id(self, service, channel):
-        ''' Return the current convo id. Make a new convo if needed. Old convos are expired in cns.py. '''
-
-        ret = self.get_last_message(service, channel)
-        if not ret:
-            return None
-
-        if self.expired(service, channel):
-            return self.new_convo(service, channel)
-
-        return ret.convo_id
+    def expired(self, the_id=None):
+        ''' True if time elapsed since the given ulid > conversation_interval, else False '''
+        return elapsed(self.id_to_timestamp(the_id), get_cur_ts()) > self.conversation_interval
 
     @staticmethod
-    def entity_id_to_epoch(entity_id):
+    def id_to_epoch(the_id) -> float:
         ''' Extract the epoch seconds from a ULID '''
-        if entity_id is None:
+        if the_id is None:
             return 0
 
-        if isinstance(entity_id, str):
-            return ulid.ULID().from_str(entity_id).timestamp
+        if isinstance(the_id, str):
+            return ulid.ULID().from_str(the_id).timestamp
 
-        return entity_id.timestamp
+        return the_id.timestamp
 
-    def entity_id_to_timestamp(self, entity_id):
+    def id_to_timestamp(self, the_id):
         ''' Extract the timestamp from a ULID '''
-        return get_cur_ts(self.entity_id_to_epoch(entity_id))
+        return get_cur_ts(self.id_to_epoch(the_id))
 
-    def get_last_timestamp(self, service, channel):
+    def convo_expired(self, service=None, channel=None, convo_id=None) -> bool:
         '''
-        Get the timestamp of the last message, or the current ts if there is none.
+        True if the timestamp of the last message for this convo is expired, else False.
         '''
-        msg = self.get_last_message(service, channel)
-        if msg:
-            try:
-                return get_cur_ts(epoch=ulid.ULID().from_str(msg.pk).timestamp)
-            except AttributeError:
-                log.warning("‼️ entity_id_to_epoch(): no pk for msg:", msg)
+        if convo_id is None and any([service, channel]) is None:
+            raise RuntimeError("You must specify a convo_id or both service and channel.")
 
-        return get_cur_ts()
+        if convo_id is None:
+            convo_id = self.get_last_convo_id(service, channel)
 
-
-    def get_last_message(self, service, channel):
-        ''' Return the last message seen on this channel '''
-        query = (
-            Query(
-                """(@service:{$service}) (@channel:{$channel})"""
-            )
-            .return_fields(
-                "service",
-                "channel",
-                "convo_id",
-                "speaker_name",
-                "msg",
-                "verb",
-                "pk",
-                "id",
-            )
-            .sort_by("convo_id", asc=False)
-            .paging(0, 1)
-            .dialect(2)
-        )
-        query_params = {"service": service, "channel": channel}
-
-        ret = self.redis.ft(self.convo_prefix).search(query, query_params).docs
-        if not ret:
-            return None
-
-        return ret[0]
-
-
-    def get_summary_by_id(self, convo_id):
-        ''' Return the last summary for this convo_id '''
-        query = Query("(@convo_id:{$convo_id})").sort_by("convo_id", asc=False).paging(0, 1).dialect(2)
-        query_params = {"convo_id": convo_id}
-        try:
-            return self.redis.ft(self.summary_prefix).search(query, query_params).docs[0]
-        except IndexError:
-            return None
-
-    @staticmethod
-    def entity_key(service, channel, name):
-        ''' Unique string for each service + channel + name '''
-        return f"{str(service).strip()}|{str(channel).strip()}|{str(name).strip()}"
-
-    @staticmethod
-    def uuid_to_entity(the_uuid):
-        ''' Return the equivalent short ID (str) for a uuid (str) '''
-        return str(ulid.ULID().from_uuid(the_uuid))
-
-    @staticmethod
-    def entity_to_uuid(entity_id):
-        ''' Return the equivalent UUID (str) for a short ID (str) '''
-        return ulid.ULID().from_str(str(entity_id)).to_uuid()
-
-    def name_to_entity_id(self, service, channel, name):
-        ''' One distinct short UUID per bot_id + service + channel + name '''
-        return self.uuid_to_entity(uuid.uuid5(self.bot_id, self.entity_key(service, channel, name)))
+        return self.expired(self.get_last_message_id(convo_id))
