@@ -3,7 +3,7 @@
 import uuid
 
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, Any, Optional
 
 import ulid
 
@@ -30,9 +30,11 @@ class Convo:
     ''' Container class for conversations. '''
     service: str
     channel: str
+    convo_id: Optional[str] = None
 
     def __post_init__(self):
-        self.convo_id = ulid.ULID()
+        if self.convo_id is None:
+            self.convo_id = ulid.ULID()
         self.id = str(self.convo_id)
         self.memories = {}
 
@@ -100,85 +102,6 @@ class Recall:
     #     log.warning(f"📌 opinion on {topic}")
     #     return self.lookup_opinions(service, channel, topic, size)
 
-    def convo(self, service, channel, convo_id=None, feels=False, verb=None, raw=False, size=1000):
-        '''
-        Return an entire convo.
-
-        If convo_id is None, use the current convo (if any).
-
-        If feels is True, also include feelings.
-
-        If verb is not None, filter to only include messages with a matching verb.
-
-        If raw is true, return convo objects. Otherwise return a list of strings.
-        '''
-        raise NotImplementedError
-        # if convo_id is None:
-        #     lm = self.get_last_message(service, channel)
-        #     if not lm:
-        #         return []
-        #     convo_id = lm.convo_id
-
-        # if verb:
-        #     query = (
-        #         Query(
-        #             """(@service:{$service}) (@channel:{$channel}) (@convo_id:{$convo_id}) (@verb:{$verb})"""
-        #         )
-        #         .return_fields(
-        #             "speaker_name",
-        #             "msg",
-        #             "verb",
-        #             "convo_id"
-        #         )
-        #         .sort_by("convo_id", asc=True)
-        #         .paging(0, size)
-        #         .dialect(2)
-        #     )
-        #     query_params = {"service": service, "channel": channel, "convo_id": convo_id, "verb": verb}
-        # else:
-        #     query = (
-        #         Query(
-        #             """(@service:{$service}) (@channel:{$channel}) (@convo_id:{$convo_id})"""
-        #         )
-        #         .return_fields(
-        #             "speaker_name",
-        #             "msg",
-        #             "verb",
-        #             "convo_id"
-        #         )
-        #         .sort_by("convo_id", asc=True)
-        #         .paging(0, size)
-        #         .dialect(2)
-        #     )
-        #     query_params = {"service": service, "channel": channel, "convo_id": convo_id}
-
-        # ret = []
-        # realization = None
-        # for msg in self.redis.ft(self.convo_prefix).search(query, query_params).docs:
-        #     if not getattr(msg, 'verb', None):
-        #         continue
-
-        #     if msg.verb == 'new_convo':
-        #         continue
-        #     if msg.verb == 'realizes':
-        #         realization = f"{msg.speaker_name} {msg.verb}: {msg.msg}"
-        #         continue
-
-        #     if msg.verb == 'dialog':
-        #         if raw:
-        #             ret.append(msg)
-        #         else:
-        #             ret.append(f"{msg.speaker_name}: {msg.msg}")
-        #     elif feels or msg.verb != 'feels':
-        #         if raw:
-        #             ret.append(msg)
-        #         else:
-        #             ret.append(f"{msg.speaker_name} {msg.verb}: {msg.msg}")
-
-        # if realization:
-        #     ret.append(realization)
-
-        # return ret
 
     def feels(self, convo_id):
         '''
@@ -239,26 +162,91 @@ class Recall:
                 'redis': rds
         }
 
-    def new_convo(self, service, channel, speaker_name=None) -> Convo:
+    def decode_dict(self, d) -> dict:
+        ''' Decode a dict fetched from Redis '''
+        ret = {}
+        for (k, v) in d.items():
+            ret[k.decode()] = v.decode()
+        return ret
+
+    def set_convo_meta(self, convo_id, k, v) -> None:
+        ''' Set metadata for a conversation '''
+        self.redis.hset(f"{self.convo_prefix}:{convo_id}:meta", k, v)
+
+    def fetch_convo_meta(self, convo_id, k=None) -> Any:
+        ''' Fetch a metadata key from a conversation in Redis. If k is not provided, return all metadata. '''
+        if k is None:
+            return self.decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
+        return self.redis.hget(f"{self.convo_prefix}:{convo_id}:meta", k).decode()
+
+    def fetch_summary(self, convo_id) -> str:
+        ''' Fetch a conversation summary. '''
+        ret = self.redis.hget(f"{self.convo_prefix}:{convo_id}:summary", "content")
+        if ret:
+            return ret.decode()
+        log.warning("👎 No summary found for:", convo_id)
+        return ""
+
+    def new_convo(self, service, channel, speaker_name=None, convo_id=None) -> Convo:
         ''' Start a new conversation. '''
         convo = Convo(
             service=service,
-            channel=channel
+            channel=channel,
+            convo_id=convo_id
         )
         convo.memories=self.create_lc_memories()
 
-        log.warning("⚠️  New convo:", convo)
+        if convo_id:
+            log.warning("👉 Continuing convo:", convo)
+        else:
+            log.warning("⚠️  New convo:", convo)
         self.convos[str(convo)] = convo
 
         if speaker_name:
-            self.redis.hset(f"{self.convo_prefix}:{convo.id}:meta", "initiator", speaker_name)
+            self.set_convo_meta(convo.id, "service", service)
+            self.set_convo_meta(convo.id, "channel", channel)
+            self.set_convo_meta(convo.id, "initiator", speaker_name)
             convo.memories['summary'].human_prefix = speaker_name
             convo.memories['kg'].human_prefix = speaker_name
 
         return convo
 
+    def get_last_convo_id(self, service, channel) -> str:
+        ''' Returns the most recent convo id for this service + channel from Redis '''
+        for convo in sorted(self.redis.keys(f'{self.convo_prefix}:*:meta'), reverse=True):
+            convo_id = convo.decode().split(':')[3]
+            if self.fetch_convo_meta(convo_id, 'service') == service and self.fetch_convo_meta(convo_id, 'channel') == channel:
+                log.warning('Got last_convo_id:', convo_id)
+                return convo_id
+        return None
+
+    def load_convo(self, service, channel, convo_id=None) -> None:
+        '''
+        Load the convo_id for this service + channel from Redis.
+        If convo_id is None, load the most recent convo (if any).
+        '''
+        if convo_id is None:
+            convo_id = self.get_last_convo_id(service, channel)
+
+        # No previous convo? Bail.
+        if convo_id is None:
+            return
+
+        convo = self.new_convo(
+            service,
+            channel,
+            speaker_name=self.fetch_convo_meta(convo_id, 'initiator'),
+            convo_id=convo_id
+        )
+
+        convo.memories['summary'].moving_summary_buffer = self.fetch_summary(convo_id)
+
     def current_convo_id(self, service, channel) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
+        if not self.convos:
+            # No convos? Load one from Redis
+            self.load_convo(service, channel)
+
         convo_ids = sorted([k for k in self.convos if k.startswith(f'{service}|{channel}|')])
         # TODO: check for expiration
         if convo_ids:

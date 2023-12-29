@@ -150,24 +150,42 @@ class Interact:
             self.send_chat(service, channel, reply)
 
         convo.memories['redis'].add_texts(
-            texts=[msg, reply],
+            texts=[
+                msg,
+                reply,
+                convo.memories['summary'].load_memory_variables({})['history']
+            ],
             metadatas=[
                 {
                     "service": service,
                     "channel": channel,
                     "convo_id": convo.id,
                     "speaker_name": speaker_name,
-                    "verb": "dialog"
+                    "verb": "dialog",
+                    "role": "human"
                 },
                 {
                     "service": service,
                     "channel": channel,
                     "convo_id": convo.id,
                     "speaker_name": self.config.id.name,
-                    "verb": "dialog"
+                    "verb": "dialog",
+                    "role": "bot"
+                },
+                {
+                    "service": service,
+                    "channel": channel,
+                    "convo_id": convo.id,
+                    "speaker_name": self.config.id.name,
+                    "verb": "summary",
+                    "role": "bot"
                 }
             ],
-            keys=[f"{convo.id}:{msg_id}", f"{convo.id}:{reply_id}"]
+            keys=[
+                f"{convo.id}:lines:{msg_id}",
+                f"{convo.id}:lines:{reply_id}",
+                f"{convo.id}:summary"
+            ]
         )
 
         # vvvv OLD CODE BELOW vvvv
