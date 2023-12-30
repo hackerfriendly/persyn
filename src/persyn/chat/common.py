@@ -344,8 +344,9 @@ class Chat():
         max_tokens=200,
         )
 
-        log.warning(f"🖼️  {response.choices[0].message.content}")
-        return response.choices[0].message.content
+        caption = self.recall.lm.trim(response.choices[0].message.content)
+        log.warning(f"🖼️  {caption}")
+        return caption
 
     def chat_received(self, channel, msg, speaker_name):
         ''' Dispatch a ChatReceived event. '''
