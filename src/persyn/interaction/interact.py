@@ -144,17 +144,24 @@ class Interact:
         )
 
         # Hand it to langchain.
-        # TODO: trim() should probably be an output parser.
-        reply = self.lm.trim(chain.run(input=msg))
+        # trim() should probably be an output parser, but I can't make that work with memories.
+        # So just rewrite history instead.
+        reply = chain.run(input=msg)
         reply_id = str(ulid.ULID())
 
+        trimmed = self.lm.trim(reply)
+        if trimmed != reply:
+            for mem in chain.memory.memories:
+                if mem.chat_memory.messages:
+                    mem.chat_memory.messages[-1].content = trimmed
+
         if send_chat:
-            self.send_chat(service, channel, reply)
+            self.send_chat(service, channel, trimmed)
 
         convo.memories['redis'].add_texts(
             texts=[
                 msg,
-                reply,
+                trimmed,
                 convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
             ],
             metadatas=[

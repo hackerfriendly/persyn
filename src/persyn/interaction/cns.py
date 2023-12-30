@@ -721,7 +721,7 @@ async def auto_summarize():
     if convos:
         for convo_id in convos:
             remaining = persyn_config.memory.conversation_interval - elapsed(recall.id_to_timestamp(recall.get_last_message_id(convo_id)), get_cur_ts())
-            log.info(f"💓 Active convo: {convo_id} ({int(remaining)} seconds left)")
+            log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
 
     # for key in convos:
     #     (service, channel, convo_id) = key.split('|')

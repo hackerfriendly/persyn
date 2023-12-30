@@ -230,7 +230,7 @@ class Recall:
         log.debug('No last message for:', convo_id)
         return None
 
-    def load_convo(self, service, channel, convo_id=None) -> None:
+    def load_convo(self, service, channel, convo_id=None) -> Convo:
         '''
         Load the convo_id for this service + channel from Redis.
         If convo_id is None, load the most recent convo (if any).
@@ -247,11 +247,12 @@ class Recall:
         )
 
         convo.memories['summary'].moving_summary_buffer = self.fetch_summary(convo_id)
+        return self.get_convo(service, channel)
 
     def current_convo_id(self, service, channel) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
         if not self.convos:
-            # No convos? Load one from Redis
+            # No convos? Load one from Redis (or make a new one)
             self.load_convo(service, channel)
 
         convos = sorted([k for k in self.convos if k.startswith(f'{service}|{channel}|')])
