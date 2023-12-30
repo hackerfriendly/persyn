@@ -97,8 +97,6 @@ class VibeCheck(autobus.Event):
     channel: str
     bot_name: str
     bot_id: str
-    convo_id: Optional[str]
-    room: Optional[str]
 
 
 class FactCheck(autobus.Event):

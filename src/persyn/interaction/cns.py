@@ -117,16 +117,14 @@ async def chat_received(event):
 
     # Time for self-examination.
 
-    # # Update emotional state
-    # vc = VibeCheck(
-    #     service=event.service,
-    #     channel=event.channel,
-    #     bot_name=persyn_config.id.name,
-    #     bot_id=persyn_config.id.guid,
-    #     convo_id=None,
-    #     room=None
-    # )
-    # autobus.publish(vc)
+    # Update emotional state
+    vc = VibeCheck(
+        service=event.service,
+        channel=event.channel,
+        bot_name=persyn_config.id.name,
+        bot_id=persyn_config.id.guid
+    )
+    autobus.publish(vc)
 
     # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
     #     # Check facts
@@ -225,49 +223,6 @@ async def opine(event):
                 verb=f"thinks about {entity}"
             )
 
-async def wikipedia_summary(event):
-    ''' Summarize some wikipedia pages '''
-    chat = Chat(persyn_config=persyn_config, service=event.service)
-
-    for entity in event.entities:
-        if not entity.strip() or entity in STOP_WORDS:
-            continue
-
-        log.warning(f'📚 Look up "{entity}" on Wikipedia')
-
-        entity = entity.strip().lower()
-
-        # Missing? Look it up.
-        # None? Ignore it.
-        # Present? Use it.
-        if entity in wikicache and wikicache[entity] is not None:
-            log.warning(f'🤑 wiki cache hit: "{entity}"')
-        else:
-            wiki = None
-            try:
-                if wikipedia.page(entity, auto_suggest=False).original_title.lower() != entity.lower():
-                    log.warning(f"❎ no exact match found for {entity}")
-                    continue
-
-                log.warning(f"✅ found {entity}")
-                wiki = wikipedia.summary(entity, sentences=3)
-
-                summary = completion.nlp(completion.get_summary(
-                    text=f"This Wikipedia article:\n{wiki}",
-                    summarizer="Can be briefly summarized as: "
-                ))
-                # 3 sentences max please.
-                wikicache[entity] = ' '.join([s.text for s in summary.sents][:3])
-
-            except WikipediaException:
-                log.warning(f"❎ no unambiguous wikipedia entry found for {entity}")
-                wikicache[entity] = None
-                continue
-
-        if entity in wikicache and wikicache[entity] is not None:
-            chat.inject_idea(event.channel, wikicache[entity], verb="recalls")
-
-
 async def add_goal(event):
     ''' Add a new goal '''
     if not event.goal.strip():
@@ -285,20 +240,12 @@ async def add_goal(event):
 
 async def check_feels(event):
     ''' Run sentiment analysis on ourselves. '''
-    if not event.room:
-        event.room = '\n'.join(recall.convo(event.service, event.channel))
-    if not event.convo_id:
-        event.convo_id = recall.convo_id(event.service, event.channel)
-
-    feels = completion.get_feels(event.room)
-    recall.save_convo_line(
-        service=event.service,
-        channel=event.channel,
-        msg=feels,
-        speaker_name=event.bot_name,
-        convo_id=event.convo_id,
-        verb='feels'
+    convo_id = recall.get_last_convo_id(event.service, event.channel)
+    feels = completion.summarize_text(
+        recall.fetch_summary(convo_id),
+        summarizer=f"""In the following text, these three words best describe {persyn_config.id.name}'s emotional state. You MUST include only three comma separated words:"""
     )
+    recall.set_convo_meta(convo_id, "feels", feels)
     log.warning("😄 Feeling:", feels)
 
 async def check_facts(event):
@@ -649,12 +596,6 @@ async def opine_event(event):
     ''' Dispatch opine event. '''
     log.debug("Opine received", event)
     await opine(event)
-
-@autobus.subscribe(Wikipedia)
-async def wiki_event(event):
-    ''' Dispatch wikipedia event. '''
-    log.debug("Wikipedia received", event)
-    await wikipedia_summary(event)
 
 @autobus.subscribe(CheckGoals)
 async def check_goals_event(event):

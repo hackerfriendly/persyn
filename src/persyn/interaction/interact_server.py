@@ -317,9 +317,7 @@ async def handle_opine(
 @app.post("/vibe_check/")
 async def handle_vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: Optional[str] = Query("", min_length=1, max_length=255),
-    room: Optional[str] = Form("", max_length=2e6),
+    channel: str = Query(..., min_length=1, max_length=255)
 ):
     ''' Ask the autobus to vibe check the room '''
     event = VibeCheck(
@@ -327,8 +325,6 @@ async def handle_vibe_check(
         channel=channel,
         bot_name=persyn_config.id.name,
         bot_id=persyn_config.id.guid,
-        convo_id=convo_id,
-        room=room
     )
     autobus.publish(event)
 

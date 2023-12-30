@@ -95,30 +95,6 @@ class Recall:
     #     return self.lookup_opinions(service, channel, topic, size)
 
 
-    def feels(self, convo_id):
-        '''
-        Return the last known feels for this convo_id.
-        '''
-        raise NotImplementedError
-        # query = (
-        #     Query(
-        #         """(@convo_id:{$convo_id}) (@verb:{feels})"""
-        #     )
-        #     .return_fields(
-        #         "msg"
-        #     )
-        #     .sort_by("convo_id", asc=False)
-        #     .paging(0, 1)
-        #     .dialect(2)
-        # )
-        # query_params = {"convo_id": convo_id}
-
-        # ret = self.redis.ft(self.convo_prefix).search(query, query_params).docs
-        # if ret:
-        #     return ret[0].msg
-
-        # return "nothing in particular"
-
     def create_lc_memories(self) -> dict:
         ''' Create a fresh set of langchain memories. '''
         summary_memory =  ConversationSummaryBufferMemory(
@@ -167,9 +143,12 @@ class Recall:
 
     def fetch_convo_meta(self, convo_id, k=None) -> Any:
         ''' Fetch a metadata key from a conversation in Redis. If k is not provided, return all metadata. '''
-        if k is None:
-            return self.decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
-        return self.redis.hget(f"{self.convo_prefix}:{convo_id}:meta", k).decode()
+        try:
+            if k is None:
+                return self.decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
+            return self.redis.hget(f"{self.convo_prefix}:{convo_id}:meta", k).decode()
+        except AttributeError:
+            return None
 
     def fetch_summary(self, convo_id) -> str:
         ''' Fetch a conversation summary. '''

@@ -28,8 +28,6 @@ from persyn.utils.config import PersynConfig
 
 rs = requests.Session()
 
-# TODO: demolish this and replace with langchain.
-
 @dataclass
 class Interact:
     '''
@@ -94,8 +92,7 @@ class Interact:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
-    @property
-    def template(self):
+    def template(self, context="") -> str:
         '''
         Return the current prompt template.
 
@@ -104,13 +101,21 @@ class Interact:
         '''
         return f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
 {self.config.interact.character}
-""" + """
+""" + context + """
 {kg}
-
 {history}
 
 {human}: {input}
 {bot}:"""
+
+    def add_context(self, convo_id):
+        ''' Additional context for the prompt '''
+        context = []
+
+        # Sentiment analysis
+        context.append(f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo_id, 'feels') or 'nothing in particular'}.")
+
+        return '\n'.join(context)
 
     def retort(self, service, channel, msg, speaker_name, send_chat=True):  # pylint: disable=too-many-locals
         '''
@@ -125,11 +130,9 @@ class Interact:
         if convo is None:
             convo = self.recall.new_convo(service, channel, speaker_name)
 
-        # {self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.
-
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=self.template,
+            template=self.template(self.add_context(convo.id)),
             partial_variables={
                 "human": speaker_name,
                 "bot": self.config.id.name
@@ -238,7 +241,7 @@ class Interact:
 
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=self.template,
+            template=self.template(self.add_context(convo.id)),
             partial_variables={
                 "human": convo.memories['summary'].human_prefix,
                 "bot": self.config.id.name
