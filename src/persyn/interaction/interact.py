@@ -238,6 +238,8 @@ class Interact:
         ''' Return the prompt and chat history for this channel '''
 
         convo = self.recall.get_convo(service, channel)
+        if convo is None:
+            convo = self.recall.load_convo(service, channel)
 
         prompt = PromptTemplate(
             input_variables=["input"],
@@ -249,7 +251,7 @@ class Interact:
         )
 
         return prompt.format(
-            kg=convo.memories['summary'].moving_summary_buffer,
+            kg='', #convo.memories['summary'].moving_summary_buffer,
             history=convo.memories['summary'].load_memory_variables({})['history'],
             input='input'
         )

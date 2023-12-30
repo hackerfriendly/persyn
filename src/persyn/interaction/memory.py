@@ -160,6 +160,10 @@ class Recall:
 
     def new_convo(self, service, channel, speaker_name=None, convo_id=None) -> Convo:
         ''' Start a new conversation. '''
+
+        if convo_id and self.convo_expired(convo_id=convo_id):
+            convo_id = None
+
         convo = Convo(
             service=service,
             channel=channel,
@@ -206,8 +210,8 @@ class Recall:
         message_ids = sorted(self.redis.keys(f"{self.convo_prefix}:{convo_id}:lines:*"), reverse=True)
         if message_ids:
             return message_ids[0].decode().split(':')[-1]
-        log.debug('No last message for:', convo_id)
-        return None
+        # No messages yet, just return the convo_id
+        return convo_id
 
     def load_convo(self, service, channel, convo_id=None) -> Convo:
         '''
@@ -226,7 +230,7 @@ class Recall:
         )
 
         convo.memories['summary'].moving_summary_buffer = self.fetch_summary(convo_id)
-        return self.get_convo(service, channel)
+        return self.get_convo(service, channel, convo_id)
 
     def current_convo_id(self, service, channel) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
@@ -240,7 +244,7 @@ class Recall:
 
         convo_id = convos[-1].split('|', maxsplit=2)[-1]
         if self.convo_expired(convo_id=convo_id):
-            log.warning("⏲️ Convo expired:", convo_id)
+            log.warning("⏲️  Convo expired:", convo_id)
             return None
 
         return convo_id
@@ -254,7 +258,7 @@ class Recall:
 
         log.debug(self.convos)
         if convo_id is None or convo_key not in self.convos:
-            log.warning(f"🧵 Convo not found: {convo_key}")
+            log.warning(f"🧵 Convo not found: {convo_id}")
             return None
 
         return self.convos[convo_key]

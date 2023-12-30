@@ -8,6 +8,7 @@ The central nervous system. Listen for events on the event bus and inject result
 import argparse
 import logging
 import os
+import asyncio
 
 import requests
 
@@ -613,6 +614,7 @@ async def goals_event(event):
 async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
     log.debug("VibeCheck received", event)
+    # asyncio.sleep(3)
     await check_feels(event)
 
 @autobus.subscribe(FactCheck)
