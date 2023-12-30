@@ -166,6 +166,7 @@ class LanguageModel:
 
     def trim(self, text):
         ''' Remove junk and any dangling non-sentences from text '''
+        # FIXME: Numbered lists are only truncated to the last number, eg. 1. <something>\n2.
         sents = []
         for sent in list(self.nlp(fix_text(text)).sents):
             if sent:
