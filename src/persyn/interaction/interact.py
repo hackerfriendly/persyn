@@ -153,20 +153,37 @@ class Interact:
             summary = self.recall.fetch_summary(convo_id)
             log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30] + "...")
 
-            last_ts = self.recall.id_to_timestamp(convo_id)
-            if chrono.elapsed(last_ts) > 7200:
-                preamble = f" a conversation from {chrono.ago(last_ts)} ago:\n---\n"
-            else:
-                preamble = ""
+            preamble = self.get_time_preamble(convo_id)
 
             self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n---\n", verb="recalls")
             break
 
-        # Recent summaries
+        # Recent summaries + conversation
+        max_tokens = int(self.lm.max_prompt_length() * 0.3)
+        to_append = []
+        for k in sorted(rds.client.keys(f"{self.recall.convo_prefix}:{convo.id[:3]}*:meta"), reverse=True):
+            convo_id = k.decode().split(':')[3]
+            to_append.append(
+                f"recalls {self.get_time_preamble(convo_id)}\n{self.recall.fetch_summary(convo_id)}"
+            )
+            if self.lm.chat_llm.get_num_tokens(
+                convo.memories['summary'].load_memory_variables({})['history']
+                + '\n'.join(context)
+                + '\n'.join(to_append)
+            ) >= max_tokens:
+                break
 
-        # Recent conversation
+        context = context + to_append[::-1]
+        log.warning(f"Added {len(to_append)} summaries")
 
         return '\n'.join(context)
+
+    def get_time_preamble(self, convo_id) -> str:
+        ''' Return an appropriate time elapsed preamble '''
+        last_ts = self.recall.id_to_timestamp(convo_id)
+        if chrono.elapsed(last_ts) > 7200:
+            return f" a conversation from {chrono.ago(last_ts)} ago:\n"
+        return ""
 
     def current_dialog(self, convo) -> str:
         ''' Return the current dialog from convo '''
