@@ -3,8 +3,11 @@
 import datetime as dt
 import humanize
 
-def elapsed(ts1, ts2):
+def elapsed(ts1, ts2=None):
     ''' Elapsed seconds between two timestamps (str in isoformat) '''
+    if ts2 is None:
+        ts2 = str(dt.datetime.now(dt.timezone.utc))
+
     return abs((dt.datetime.fromisoformat(ts2) - dt.datetime.fromisoformat(ts1)).total_seconds())
 
 def get_cur_ts(epoch=None):

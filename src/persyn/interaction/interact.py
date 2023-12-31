@@ -108,7 +108,13 @@ class Interact:
 {bot}:"""
 
     def add_context(self, convo):
-        ''' Additional context for the prompt '''
+        '''
+        Additional context for the prompt.
+
+        For transient things (eg. feelings, opinions) just append to the context.
+
+        For more permanent things, add to the convo memories.
+        '''
         context = []
 
         # Sentiment analysis
@@ -136,15 +142,24 @@ class Interact:
             ret.remove(doc)
 
             convo_id = doc[0].metadata['id'].split(':')[3]
+            warned = set()
             if convo_id in convo.visited:
-                log.warning(f"🤌  Already visited this convo:", convo_id)
+                if convo_id not in warned:
+                    log.warning("🤌  Already visited this convo:", convo_id)
+                warned.add(convo_id)
                 continue
 
             convo.visited.add(convo_id)
             summary = self.recall.fetch_summary(convo_id)
-            log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30])
-            # TODO: Include "three days ago, Anna remembers..."
-            context.append(summary)
+            log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30] + "...")
+
+            last_ts = self.recall.id_to_timestamp(convo_id)
+            if chrono.elapsed(last_ts) > 7200:
+                preamble = f" a conversation from {chrono.ago(last_ts)} ago:\n---\n"
+            else:
+                preamble = ""
+
+            self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n---\n", verb="recalls")
             break
 
         # Recent summaries
