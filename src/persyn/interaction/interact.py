@@ -108,12 +108,19 @@ class Interact:
 {human}: {input}
 {bot}:"""
 
-    def add_context(self, convo_id):
+    def add_context(self, convo):
         ''' Additional context for the prompt '''
         context = []
 
         # Sentiment analysis
-        context.append(f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo_id, 'feels') or 'nothing in particular'}.")
+        context.append(f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'}.")
+
+        # Relevant memories
+        # log.warning(convo.memories['redis'].similarity_search_with_score('interesting', k=3, filter={"verb": "summary"}))
+#rjf
+        # Recent summaries
+
+        # Recent conversation
 
         return '\n'.join(context)
 
@@ -132,7 +139,7 @@ class Interact:
 
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=self.template(self.add_context(convo.id)),
+            template=self.template(self.add_context(convo)),
             partial_variables={
                 "human": speaker_name,
                 "bot": self.config.id.name
@@ -234,16 +241,15 @@ class Interact:
         return reply
 
 
-    def status(self, service, channel) -> str:
+    def status(self, service, channel, speaker_name) -> str:
         ''' Return the prompt and chat history for this channel '''
-
         convo = self.recall.get_convo(service, channel)
         if convo is None:
-            convo = self.recall.load_convo(service, channel)
+            convo = self.recall.new_convo(service, channel, speaker_name)
 
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=self.template(self.add_context(convo.id)),
+            template=self.template(self.add_context(convo)),
             partial_variables={
                 "human": convo.memories['summary'].human_prefix,
                 "bot": self.config.id.name
@@ -278,9 +284,9 @@ class Interact:
         Directly inject an idea into recall memory.
         '''
         convo = self.recall.get_convo(service, channel)
-
-        if not convo:
-            convo = self.recall.load_convo(service, channel)
+        if convo is None:
+            # So we're talking to ourself?
+            convo = self.recall.new_convo(service, channel, self.config.id.name)
 
         # Add to summary memory. Dialog is automatically handled by langchain.
         if verb != 'dialog':

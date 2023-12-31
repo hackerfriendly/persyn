@@ -201,7 +201,7 @@ async def schedule_reply(ctx):
     )
 
     # Dispatch a "message received" event. Replies are handled by CNS.
-    chat.chat_received(channel, ctx.content, ctx.author.name, ctx.author.id)
+    chat.chat_received(channel, ctx.content, ctx.author.name)
 
     # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
     # if not channel.startswith('dm|'):
@@ -223,7 +223,7 @@ async def handle_attachments(ctx):
             if not msg.strip():
                 msg = "..."
 
-            chat.get_reply(channel, msg, ctx.author.name, ctx.author.id, send_chat=True)
+            chat.get_reply(channel, msg, ctx.author.name, send_chat=True)
 
         else:
             await ctx.channel.send(
@@ -268,7 +268,7 @@ async def dispatch(ctx):
 """)
 
     elif ctx.content in ['status', ':question:', '❓']:
-        status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel).split("\n")])).rstrip("> \n")
+        status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel, ctx.author.name).split("\n")])).rstrip("> \n")
         if len(status) < 2000:
             await ctx.channel.send(status.strip())
         else:

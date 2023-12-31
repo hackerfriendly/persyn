@@ -149,7 +149,7 @@ async def chat_received(event):
 
     #     self.check_goals(service, channel, convo)
 
-    log.warning("💬 chat_received done in:", elapsed(start, get_cur_ts()))
+    log.warning("💬 chat_received done in:", f"{elapsed(start, get_cur_ts()):0.2f} sec")
 
 async def new_idea(event):
     ''' Inject a new idea '''
@@ -242,6 +242,9 @@ async def add_goal(event):
 async def check_feels(event):
     ''' Run sentiment analysis on ourselves. '''
     convo_id = recall.get_last_convo_id(event.service, event.channel)
+    if convo_id is None:
+        log.warning("😑 No convo, nothing to feel.")
+        return
     feels = completion.summarize_text(
         recall.fetch_summary(convo_id),
         summarizer=f"""In the following text, these three words best describe {persyn_config.id.name}'s emotional state. You MUST include only three comma separated words:"""

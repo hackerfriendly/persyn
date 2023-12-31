@@ -251,7 +251,9 @@ def main():
     def status(say, context):
         ''' Say a condensed summary of this channel '''
         channel = context['channel_id']
-        say("\n".join([f"> {line}" for line in chat.get_status(channel).split("\n")]))
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
+        say("\n".join([f"> {line}" for line in chat.get_status(channel, speaker_name).split("\n")]))
 
     @app.message(re.compile(r"^nouns$", re.I))
     def nouns(say, context):

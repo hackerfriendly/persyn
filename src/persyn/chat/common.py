@@ -262,7 +262,7 @@ class Chat():
 
         return reply.json()['entities']
 
-    def get_status(self, channel):
+    def get_status(self, channel, speaker_name):
         ''' Ask interact for status. '''
         if not self.interact_url:
             log.error("🗿 get_status() called with no interact_url defined, skipping.")
@@ -271,6 +271,7 @@ class Chat():
         req = {
             "service": self.service,
             "channel": channel,
+            "speaker_name": speaker_name
         }
         try:
             reply = rs.post(f"{self.interact_url}/status/", params=req, timeout=30)

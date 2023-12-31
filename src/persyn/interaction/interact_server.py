@@ -120,10 +120,11 @@ async def handle_summary(
 async def handle_status(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
+    speaker_name: str = Query(..., min_length=1, max_length=255),
     ):
     ''' Get the channel status, as it would be seen by /reply/ '''
     ret = await asyncio.gather(in_thread(
-        interact.status, [service, channel]
+        interact.status, [service, channel, speaker_name]
     ))
     return {
         "status": ret[0]

@@ -69,13 +69,19 @@ class Recall:
         # indices
         pre = f'persyn2:{self.bot_id}'
         self.convo_prefix = f'{pre}:convo'
-        self.summary_prefix = f'{pre}:summary'
         self.opinion_prefix = f'{pre}:opinion'
         self.goal_prefix = f'{pre}:goal'
         self.news_prefix = f'{pre}:news'
 
-        # sets
-        self.active_convos_prefix = f"{pre}:active_convos"
+        self.index_schema = {
+            "tag": [
+                {"name":"role"},
+                {"name":"service"},
+                {"name":"channel"},
+                {"name":"verb"},
+                {"name":"speaker_name"}
+            ]
+        }
 
         # Convenience ids. Useful when browsing with RedisInsight.
         self.redis.hset(f"{pre}:whoami", "bot_name", self.bot_name)
@@ -83,6 +89,7 @@ class Recall:
 
         # Container for current conversations
         self.convos = {}
+
 
     # def judge(self, service, channel, topic, opinion, convo_id):
     #     ''' Judge not, lest ye be judged '''
@@ -116,9 +123,10 @@ class Recall:
 
         rds = Redis(
             redis_url=self.config.memory.redis,
-            index_name=f"persyn-{self.config.id.guid}-convo",
+            index_name=self.convo_prefix,
+            index_schema=self.index_schema,
             embedding=self.lm.embeddings,
-            key_prefix=self.convo_prefix
+            key_prefix=self.convo_prefix,
         )
 
         combined_memory = CombinedMemory(memories=[summary_memory, kg_memory])
@@ -158,31 +166,26 @@ class Recall:
         log.warning("👎 No summary found for:", convo_id)
         return ""
 
-    def new_convo(self, service, channel, speaker_name=None, convo_id=None) -> Convo:
-        ''' Start a new conversation. '''
-
-        if convo_id and self.convo_expired(convo_id=convo_id):
-            convo_id = None
-
+    def new_convo(self, service, channel, speaker_name, convo_id=None) -> Convo:
+        ''' Start a new conversation. If convo_id is not supplied, generate a new one. '''
         convo = Convo(
             service=service,
             channel=channel,
             convo_id=convo_id
         )
-        convo.memories=self.create_lc_memories()
 
         if convo_id:
             log.warning("👉 Continuing convo:", convo)
         else:
             log.warning("⚠️  New convo:", convo)
-        self.convos[str(convo)] = convo
 
-        if speaker_name:
-            self.set_convo_meta(convo.id, "service", service)
-            self.set_convo_meta(convo.id, "channel", channel)
-            self.set_convo_meta(convo.id, "initiator", speaker_name)
-            convo.memories['summary'].human_prefix = speaker_name
-            convo.memories['kg'].human_prefix = speaker_name
+        self.set_convo_meta(convo.id, "service", service)
+        self.set_convo_meta(convo.id, "channel", channel)
+        self.set_convo_meta(convo.id, "initiator", speaker_name)
+
+        convo.memories=self.create_lc_memories()
+        convo.memories['summary'].human_prefix = speaker_name
+        convo.memories['kg'].human_prefix = speaker_name
 
         return convo
 
@@ -213,54 +216,71 @@ class Recall:
         # No messages yet, just return the convo_id
         return convo_id
 
-    def load_convo(self, service, channel, convo_id=None) -> Convo:
+    def load_convo(self, service, channel, convo_id=None) -> Union[Convo, None]:
         '''
-        Load the convo_id for this service + channel from Redis.
-        If convo_id is None, load the most recent convo (if any).
+        Load a Convo from Redis.
+        If convo_id is None, load the most recent convo from service + channel (if any).
+        If no convo is found, return None.
         '''
+        if convo_id is None and any([service, channel]) is None:
+            raise RuntimeError("load_convo(): specify a convo_id or service + channel")
+
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
 
-        # If convo_id is not found, this will start a fresh one.
-        convo = self.new_convo(
-            service,
-            channel,
-            speaker_name=self.fetch_convo_meta(convo_id, 'initiator'),
-            convo_id=convo_id
-        )
+        if convo_id is None:
+            return None
 
+        speaker_name = self.fetch_convo_meta(convo_id, "initiator")
+
+        convo = self.new_convo(service, channel, speaker_name, convo_id)
         convo.memories['summary'].moving_summary_buffer = self.fetch_summary(convo_id)
-        return self.get_convo(service, channel, convo_id)
+
+        self.convos[str(convo)] = convo
+
+        return convo
 
     def current_convo_id(self, service, channel) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
         if not self.convos:
-            # No convos? Load one from Redis (or make a new one)
-            self.load_convo(service, channel)
+            # No convos? Load from Redis.
+            if not self.load_convo(service, channel):
+                log.warning("🤷 No previous convo for:", f"{service}|{channel}")
+                return None
 
-        convos = sorted([k for k in self.convos if k.startswith(f'{service}|{channel}|')])
+        convos = sorted([k for k in self.convos if k.startswith(f'{service}|{channel}|')], reverse=True)
         if not convos:
             return None
 
-        convo_id = convos[-1].split('|', maxsplit=2)[-1]
-        if self.convo_expired(convo_id=convo_id):
-            log.warning("⏲️  Convo expired:", convo_id)
+        for convo in convos:
+            convo_id = convo.split('|', maxsplit=2)[-1]
+            if self.convo_expired(convo_id=convo_id):
+                log.warning("⏲️  Convo expired:", convo_id)
+                self.convos.pop(convo)
+                convos.pop(0)
+
+        if not convos:
             return None
 
         return convo_id
 
     def get_convo(self, service, channel, convo_id=None) -> Union[Convo, None]:
-        ''' If convo_id exists, fetch it '''
+        '''
+        Get a Convo by convo_id or the most recent from service + channel.
+        If none exists, return None.
+        '''
         if convo_id is None:
             convo_id = self.current_convo_id(service, channel)
+
+        if convo_id is None:
+            return None
 
         convo_key = f"{service}|{channel}|{convo_id}"
 
         log.debug(self.convos)
-        if convo_id is None or convo_key not in self.convos:
-            log.warning(f"🧵 Convo not found: {convo_id}")
-            return None
 
+        if convo_key not in self.convos:
+            self.load_convo(service, channel, convo_id)
         return self.convos[convo_key]
 
     def expired(self, the_id=None):
