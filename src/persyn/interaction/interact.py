@@ -123,12 +123,12 @@ class Interact:
 
         ret = rds.similarity_search_with_score(
             self.current_dialog(convo),
-            k=20,
+            k=100,
             distance_threshold=self.config.memory.relevance,
             # FIXME: applying a filter and distance_threshold throws ResponseError: Invalid attribute yield_distance_as
             # filter=this_channel
         )
-        log.warning(ret)
+        log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
 
         # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
         while ret:
@@ -137,12 +137,13 @@ class Interact:
 
             convo_id = doc[0].metadata['id'].split(':')[3]
             if convo_id in convo.visited:
-                log.warning(f"🤌 Already visited this convo:", convo_id)
+                log.warning(f"🤌  Already visited this convo:", convo_id)
                 continue
 
             convo.visited.add(convo_id)
             summary = self.recall.fetch_summary(convo_id)
-            log.warning("✅ Found relevant memory with score:", doc[1])
+            log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30])
+            # TODO: Include "three days ago, Anna remembers..."
             context.append(summary)
             break
 

@@ -29,11 +29,17 @@ class Convo:
     ''' Container class for conversations. '''
     service: str
     channel: str
-    id: Optional[str] = str(ulid.ULID())
+    id: Optional[str] = None
 
     def __post_init__(self):
+        ''' validate id '''
+        if self.id is None:
+            self.id = str(ulid.ULID())
+        else:
+            self.id = str(ulid.ULID().from_str(self.id))
+
         self.memories = {}              # langchain working memories
-        self.visited = set()            # other convo_ids and ideas we have visited
+        self.visited = set([self.id])   # other convo_ids and ideas we have visited
 
     def __repr__(self):
         return f"service='{self.service}', channel='{self.channel}', id='{self.id}'"
@@ -123,7 +129,7 @@ class Recall:
             redis_url=self.config.memory.redis,
             index_name=self.convo_prefix,
             index_schema=self.index_schema,
-            embedding=self.lm.embeddings,
+            embedding=self.lm.embeddings, # FIXME: 8192 context limit?
             key_prefix=self.convo_prefix,
         )
 

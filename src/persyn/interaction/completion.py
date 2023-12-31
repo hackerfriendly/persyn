@@ -26,8 +26,7 @@ from persyn.utils.config import PersynConfig
 
 log = ColorLog()
 
-set_verbose(True)
-
+# set_verbose(True)
 
 def setup_llm(config, **kwargs):
     ''' Construct the proper LLM or Chat object for model '''
