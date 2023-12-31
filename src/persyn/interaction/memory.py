@@ -29,13 +29,11 @@ class Convo:
     ''' Container class for conversations. '''
     service: str
     channel: str
-    convo_id: Optional[str] = None
+    id: Optional[str] = str(ulid.ULID())
 
     def __post_init__(self):
-        if self.convo_id is None:
-            self.convo_id = ulid.ULID()
-        self.id = str(self.convo_id)
-        self.memories = {}
+        self.memories = {}              # langchain working memories
+        self.visited = set()            # other convo_ids and ideas we have visited
 
     def __repr__(self):
         return f"service='{self.service}', channel='{self.channel}', id='{self.id}'"
@@ -171,7 +169,7 @@ class Recall:
         convo = Convo(
             service=service,
             channel=channel,
-            convo_id=convo_id
+            id=convo_id
         )
 
         if convo_id:

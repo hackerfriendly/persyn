@@ -3,16 +3,15 @@ interact.py
 
 The limbic system library.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order
-import re
-
 from dataclasses import dataclass
+import random
 
 import ulid
 import requests
 
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
+from langchain.vectorstores.redis import RedisTag
 
 from persyn.interaction import chrono
 
@@ -39,7 +38,7 @@ class Interact:
     def __post_init__(self):
 
         # Pick a language model for completion
-        self.lm = LanguageModel(self.config)
+        self.lm = LanguageModel(self.config) # pylint: disable=invalid-name
 
         # Then create the Recall object (conversation management)
         self.recall = Recall(self.config)
@@ -116,13 +115,46 @@ class Interact:
         context.append(f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'}.")
 
         # Relevant memories
-        # log.warning(convo.memories['redis'].similarity_search_with_score('interesting', k=3, filter={"verb": "summary"}))
-#rjf
+        # Available metadata: service, channel, role, speaker_name, verb
+        summaries_only = RedisTag("verb") == "summary"
+        this_channel = (RedisTag("service") == convo.service) & (RedisTag("channel") == convo.channel)
+
+        rds = convo.memories['redis']
+
+        ret = rds.similarity_search_with_score(
+            self.current_dialog(convo),
+            k=20,
+            distance_threshold=self.config.memory.relevance,
+            # FIXME: applying a filter and distance_threshold throws ResponseError: Invalid attribute yield_distance_as
+            # filter=this_channel
+        )
+        log.warning(ret)
+
+        # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
+        while ret:
+            doc = random.sample(ret, k=1)[0]
+            ret.remove(doc)
+
+            convo_id = doc[0].metadata['id'].split(':')[3]
+            if convo_id in convo.visited:
+                log.warning(f"🤌 Already visited this convo:", convo_id)
+                continue
+
+            convo.visited.add(convo_id)
+            summary = self.recall.fetch_summary(convo_id)
+            log.warning("✅ Found relevant memory with score:", doc[1])
+            context.append(summary)
+            break
+
         # Recent summaries
 
         # Recent conversation
 
         return '\n'.join(context)
+
+    def current_dialog(self, convo) -> str:
+        ''' Return the current dialog from convo '''
+        return convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
 
     def retort(self, service, channel, msg, speaker_name, send_chat=True):  # pylint: disable=too-many-locals
         '''
@@ -154,11 +186,11 @@ class Interact:
         )
 
         # Hand it to langchain.
-        # trim() should probably be an output parser, but I can't make that work with memories.
-        # So just rewrite history instead.
         reply = chain.run(input=msg)
         reply_id = str(ulid.ULID())
 
+        # trim() should probably be an output parser, but I can't make that work with memories.
+        # So just rewrite history instead.
         trimmed = self.lm.trim(reply)
         if trimmed != reply:
             for mem in chain.memory.memories:
@@ -172,7 +204,7 @@ class Interact:
             texts=[
                 msg,
                 trimmed,
-                convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
+                self.current_dialog(convo)
             ],
             metadatas=[
                 {
@@ -195,7 +227,7 @@ class Interact:
                     "service": service,
                     "channel": channel,
                     "convo_id": convo.id,
-                    "speaker_name": self.config.id.name,
+                    "speaker_name": "narrator",
                     "verb": "summary",
                     "role": "bot"
                 }
@@ -238,7 +270,7 @@ class Interact:
 
         log.info(f"💬 get_reply done: {reply}")
 
-        return reply
+        return trimmed
 
 
     def status(self, service, channel, speaker_name) -> str:
