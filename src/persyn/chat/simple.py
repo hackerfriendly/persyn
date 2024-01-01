@@ -69,7 +69,7 @@ def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
     req = {
         "username": persyn_config.id.name,
         # webhook is a different user id from the main bot, so set the avatar accordingly
-        "avatar_url": getattr(persyn_config.id, "avatar", "https://hackerfriendly.com/pub/anna/anna.png")
+        "avatar_url": getattr(persyn_config.id, "avatar", persyn_config.id.avatar)
     }
 
     if images:
