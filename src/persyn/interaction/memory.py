@@ -83,7 +83,8 @@ class Recall:
                 {"name":"service"},
                 {"name":"channel"},
                 {"name":"verb"},
-                {"name":"speaker_name"}
+                {"name":"speaker_name"},
+                {"name":"expired"}
             ]
         }
 
@@ -316,4 +317,19 @@ class Recall:
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
 
-        return self.expired(self.get_last_message_id(convo_id))
+        if convo_id is None:
+            return True
+
+        # Cache whether the convo is expired
+        if self.fetch_convo_meta(convo_id, "expired") == "True":
+            return True
+
+        last_msg_id = self.get_last_message_id(convo_id)
+        if last_msg_id is None:
+            return True
+
+        if self.expired(last_msg_id):
+            self.set_convo_meta(convo_id, "expired", "True")
+            return True
+
+        return False
