@@ -18,7 +18,7 @@ from persyn.utils.color_logging import log
 
 rs = requests.Session()
 
-def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
+def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None, extra=None):
     ''' Post a message to Slack with optional images '''
 
     # TODO: Why does this call take ~three seconds to show up in the channel?
@@ -64,7 +64,7 @@ def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
         log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
         chat.inject_idea(channel, msg, verb='dialog')
 
-def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
+def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None, extra=None):
     ''' Post an image to Discord '''
     req = {
         "username": persyn_config.id.name,

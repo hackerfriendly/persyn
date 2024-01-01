@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import asyncio
+import json
 
 import requests
 
@@ -61,8 +62,11 @@ wikicache = {}
 
 rs = requests.Session()
 
-def mastodon_msg(_, chat, channel, bot_name, msg, images):  # pylint: disable=unused-argument
+def mastodon_msg(_, chat, channel, bot_name, msg, images, extra):  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
+    if extra is None:
+        extra = '{}'
+
     if images:
         for image in images:
             mastodon.fetch_and_post_image(
@@ -70,7 +74,7 @@ def mastodon_msg(_, chat, channel, bot_name, msg, images):  # pylint: disable=un
             )
     else:
         # TODO: This can't respond to a specific thread, need to patch through to_status
-        mastodon.toot(msg)
+        mastodon.toot(msg, kwargs=json.loads(extra))
 
 services = {
     'slack': slack_msg,
@@ -91,7 +95,7 @@ def get_service(service):
 async def say_something(event):
     ''' Send a message to a service + channel '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
-    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images)
+    services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images, event.extra)
 
 async def chat_received(event):
     ''' Somebody is talking to us '''
@@ -113,7 +117,8 @@ async def chat_received(event):
         channel=event.channel,
         speaker_name=event.speaker_name,
         msg=event.msg,
-        send_chat=True
+        send_chat=True,
+        extra=event.extra
     )
 
     # Time for self-examination.

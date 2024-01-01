@@ -62,7 +62,7 @@ class Chat():
             organization=persyn_config.completion.openai_org
         )
 
-    def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
+    def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None, extra=None):
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
             log.error("∑ get_summary() called with no interact_url defined, skipping.")
@@ -91,13 +91,14 @@ class Chat():
                     engine="dall-e",
                     width=self.persyn_config.dreams.dalle.width,
                     height=self.persyn_config.dreams.dalle.height,
-                    style=self.persyn_config.dreams.dalle.quality
+                    style=self.persyn_config.dreams.dalle.quality,
+                    extra=extra
                 )
             return summary
 
         return " :spiral_note_pad: :interrobang: "
 
-    def get_reply(self, channel, msg, speaker_name, reminders=None, send_chat=True):
+    def get_reply(self, channel, msg, speaker_name, reminders=None, send_chat=True, extra=None):
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
             log.error("💬 get_reply() called with no interact_url defined, skipping.")
@@ -114,7 +115,8 @@ class Chat():
             "channel": channel,
             "msg": msg,
             "speaker_name": speaker_name,
-            "send_chat": send_chat
+            "send_chat": send_chat,
+            "extra": extra
         }
         try:
             response = rs.post(f"{self.interact_url}/reply/", params=req, timeout=60)
@@ -137,7 +139,8 @@ class Chat():
                 engine="dall-e",
                 width=self.persyn_config.dreams.dalle.width,
                 height=self.persyn_config.dreams.dalle.height,
-                style=self.persyn_config.dreams.dalle.quality
+                style=self.persyn_config.dreams.dalle.quality,
+                extra=extra
             )
 
         return reply
@@ -190,7 +193,8 @@ class Chat():
         steps=None,
         width=None,
         height=None,
-        guidance=None):
+        guidance=None,
+        extra=None):
 
         ''' Pick an image engine and generate a photo '''
         if not self.dreams_url:
@@ -213,7 +217,8 @@ class Chat():
             "steps": steps,
             "width": width,
             "height": height,
-            "guidance": guidance
+            "guidance": guidance,
+            "extra": extra
         }
         try:
             reply = rs.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
@@ -349,8 +354,8 @@ class Chat():
         log.warning(f"🖼️  {caption}")
         return caption
 
-    def chat_received(self, channel, msg, speaker_name):
-        ''' Dispatch a ChatReceived event. '''
+    def chat_received(self, channel, msg, speaker_name, extra=None):
+        ''' Dispatch a ChatReceived event. Extra is optional JSON for service options (Discord DM, Masto visibility, etc.) '''
         if not self.interact_url:
             log.error("💬 chat_received() called with no interact_url defined, skipping.")
             return None
@@ -359,7 +364,8 @@ class Chat():
             "service": self.service,
             "channel": channel,
             "speaker_name": speaker_name,
-            "msg": msg
+            "msg": msg,
+            "extra": extra
         }
         try:
             reply = rs.post(f"{self.interact_url}/chat_received/", params=req, timeout=60)

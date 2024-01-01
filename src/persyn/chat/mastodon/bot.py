@@ -8,9 +8,9 @@ Chat with your persyn on Mastodon.
 import argparse
 import logging
 import os
-import random
 import tempfile
 import uuid
+import json
 
 from pathlib import Path
 from hashlib import sha256
@@ -32,6 +32,8 @@ from persyn.interaction.reminders import Reminders
 
 # Common chat library
 from persyn.chat.common import Chat
+
+# TODO: Fix for new persyn chat!
 
 class Mastodon():
     ''' Wrapper for handling Mastodon calls using a Persyn config '''
@@ -95,17 +97,17 @@ class Mastodon():
         ''' Helper to see if we're logged in '''
         return self.client is not None
 
-    def say_something_later(self, channel, when=1, what=None, status=None):
+    def say_something_later(self, channel, when=1, what=None, status=None, extra=None):
         ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
         self.reminders.cancel(channel)
 
         if what:
-            self.reminders.add(channel, when, self.toot, args=[what, status])
+            self.reminders.add(channel, when, self.toot, args=[what, status, json.loads(extra)])
         else:
             # Yadda yadda yadda
-            self.reminders.add(channel, when, self.dispatch, args=[channel, '...', status])
+            self.reminders.add(channel, when, self.dispatch, args=[channel, '...', status, extra])
 
-    def synthesize_image(self, channel, prompt, engine="dall-e", model=None, width=None, height=None, style=None):
+    def synthesize_image(self, channel, prompt, engine="dall-e", model=None, width=None, height=None, style=None, extra=None):
         ''' It's not AI art. It's _image synthesis_ '''
         self.chat.take_a_photo(
             channel,
@@ -114,7 +116,8 @@ class Mastodon():
             model=model,
             width=width,
             height=height,
-            style=style
+            style=style,
+            extra=extra
         )
         ents = self.chat.get_entities(prompt)
         if ents:
@@ -128,11 +131,14 @@ class Mastodon():
         ''' Extract just the text from a message (no HTML or @username) '''
         return BeautifulSoup(msg, features="lxml").text.strip().replace(f'@{self.client.me().username} ','')
 
-    def fetch_and_post_image(self, url, msg):
+    def fetch_and_post_image(self, url, msg, extra=None):
         ''' Download the image at URL and post it to Mastodon '''
         if not self.client:
             log.error(f"🚫 Mastodon not configured, cannot post image: {url}, {msg}")
             return
+
+        if extra is None:
+            extra = '{}'
 
         media_ids = []
         try:
@@ -149,7 +155,8 @@ class Mastodon():
                 resp = self.client.status_post(
                     msg,
                     media_ids=media_ids,
-                    idempotency_key=sha256(url.encode()).hexdigest()
+                    idempotency_key=sha256(url.encode()).hexdigest(),
+                    **json.loads(extra)
                 )
                 if not resp or 'url' not in resp:
                     raise RuntimeError(resp)
@@ -191,6 +198,9 @@ class Mastodon():
 
         Returns a list of all status messages posted.
         '''
+        if 'visibility' not in kwargs:
+            kwargs['visibility'] = 'unlisted'
+
         rets = []
         for post in self.paginate(status):
             if to_status:
@@ -203,44 +213,17 @@ class Mastodon():
 
         return rets
 
-    def dispatch(self, channel, msg, status=None):
+    def dispatch(self, channel, msg, status=None, extra=None):
         ''' Handle commands and replies '''
 
         if msg.startswith('🎨'):
-            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e")
+            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", extra=extra)
 
         elif msg.startswith('🖼️'):
-            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792)
-
-        # Save the line
-        self.chat.recall.save_convo_line(
-            service='mastodon',
-            channel=channel,
-            msg=msg,
-            speaker_name=status.account.username,
-            convo_id=self.chat.recall.convo_id('mastodon', channel),
-            verb='dialog'
-        )
+            self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792, extra=extra)
 
         # Dispatch a "message received" event. Replies are handled by CNS.
-        self.chat.chat_received(channel, msg, status.account.username, status.account.id)
-
-        # else:
-        #     if status:
-        #         the_reply = self.chat.get_reply(
-        #             channel,
-        #             msg,
-        #             status.account.username,
-        #             status.account.id
-        #         )
-        #         my_response = self.toot(
-        #             the_reply,
-        #             to_status=status
-        #         )
-        #     else:
-        #         the_reply = self.chat.get_reply(channel, msg, self.persyn_config.id.name, self.persyn_config.id.guid, self.reminders, send_chat=True)
-
-        #     # self.chat.summarize_later(channel, self.reminders)
+        self.chat.chat_received(channel, msg, status.account.username, extra)
 
         #     if the_reply.endswith('…') or the_reply.endswith('...'):
         #         self.say_something_later(
@@ -294,7 +277,8 @@ class TheListener(StreamListener):
         msg = self.masto.get_text(notification.status.content)
         log.info(f"📬 {notification.status.account.acct}:", msg)
 
-        self.masto.dispatch(self.channel, msg, notification.status)
+        self.masto.dispatch(self.channel, msg, notification.status, json.dumps({"visibility": notification.status.visibility}))
+        log.info("Dispatched reply with visibility:", notification.status.visibility)
 
     def handle_heartbeat(self):
         log.debug("💓")

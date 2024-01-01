@@ -171,7 +171,7 @@ class LanguageModel:
             if sent:
                 sents.append(sent)
 
-        if len(sents) > 1 and not sents[-1][-1].is_punct:
+        if len(sents) > 1 and str(sents[-1][-1]) not in ['.','?','!']:
             sents.pop()
 
         return ' '.join([sent.text for sent in sents])

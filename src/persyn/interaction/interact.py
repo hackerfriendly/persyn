@@ -74,14 +74,15 @@ class Interact:
         #     agent_tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True
         # )
 
-    def send_chat(self, service, channel, msg):
+    def send_chat(self, service, channel, msg, extra=None):
         '''
         Send a chat message via the autobus.
         '''
         req = {
             "service": service,
             "channel": channel,
-            "msg": msg
+            "msg": msg,
+            "extra": extra
         }
 
         try:
@@ -189,7 +190,7 @@ class Interact:
         ''' Return the current dialog from convo '''
         return convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
 
-    def retort(self, service, channel, msg, speaker_name, send_chat=True):  # pylint: disable=too-many-locals
+    def retort(self, service, channel, msg, speaker_name, send_chat=True, extra=None):  # pylint: disable=too-many-locals
         '''
         Get a completion for the given channel.
 
@@ -231,7 +232,7 @@ class Interact:
                     mem.chat_memory.messages[-1].content = trimmed
 
         if send_chat:
-            self.send_chat(service, channel, trimmed)
+            self.send_chat(service, channel, trimmed, extra)
 
         convo.memories['redis'].add_texts(
             texts=[

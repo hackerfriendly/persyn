@@ -58,7 +58,8 @@ async def handle_reply(
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535),
     speaker_name: str = Query(..., min_length=1, max_length=255),
-    send_chat: Optional[bool] = Query(True)
+    send_chat: Optional[bool] = Query(True),
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
     ):
     ''' Get a reply to a message posted to a channel '''
 
@@ -69,7 +70,7 @@ async def handle_reply(
         )
 
     ret = await asyncio.gather(in_thread(
-        interact.retort, [service, channel, msg, speaker_name, send_chat]
+        interact.retort, [service, channel, msg, speaker_name, send_chat, extra]
     ))
     return {
         "reply": ret[0]
@@ -81,6 +82,7 @@ async def handle_chat_received(
     channel: str = Query(..., min_length=1, max_length=255),
     speaker_name: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535),
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
     ):
     ''' Notify CNS that a message was received '''
 
@@ -94,7 +96,8 @@ async def handle_chat_received(
         service=service,
         channel=channel,
         speaker_name=speaker_name,
-        msg=msg
+        msg=msg,
+        extra=extra
     )
     autobus.publish(event)
 
@@ -278,7 +281,8 @@ async def handle_check_goals(
 async def handle_send_msg(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=65535)
+    msg: str = Query(..., min_length=1, max_length=65535),
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
 ):
     ''' Send a chat message via the autobus '''
     event = SendChat(
@@ -286,7 +290,8 @@ async def handle_send_msg(
         channel=channel,
         bot_name=persyn_config.id.name,
         bot_id=persyn_config.id.guid,
-        msg=msg
+        msg=msg,
+        extra=extra
     )
     autobus.publish(event)
 

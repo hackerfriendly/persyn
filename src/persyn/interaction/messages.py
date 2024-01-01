@@ -4,9 +4,9 @@ CNS autobus messages
 # pylint: disable=too-few-public-methods
 
 from typing import Optional, List
-from persyn import autobus
+from persyn.autobus import Event
 
-class SendChat(autobus.Event):
+class SendChat(Event):
     ''' Post text or images '''
     service: str
     channel: str
@@ -14,17 +14,19 @@ class SendChat(autobus.Event):
     bot_id: str
     msg: str
     images: Optional[list[str]]
+    extra: Optional[str]
 
 
-class ChatReceived(autobus.Event):
+class ChatReceived(Event):
     ''' Chat was received from a service + channel '''
     service: str
     channel: str
     speaker_name: str
     msg: str
+    extra: Optional[str]
 
 
-class Idea(autobus.Event):
+class Idea(Event):
     ''' Inject an idea '''
     service: str
     channel: str
@@ -34,7 +36,7 @@ class Idea(autobus.Event):
     verb: str
 
 
-class Summarize(autobus.Event):
+class Summarize(Event):
     ''' Summarize the current channel immediately. '''
     service: str
     channel: str
@@ -46,7 +48,7 @@ class Summarize(autobus.Event):
     send_chat: Optional[bool] = True
 
 
-class Elaborate(autobus.Event):
+class Elaborate(Event):
     ''' Continue the train of thought. '''
     service: str
     channel: str
@@ -54,7 +56,7 @@ class Elaborate(autobus.Event):
     bot_id: str
 
 
-class Opine(autobus.Event):
+class Opine(Event):
     ''' Recall your opinion about entities. '''
     service: str
     channel: str
@@ -63,7 +65,7 @@ class Opine(autobus.Event):
     entities: List[str]
 
 
-class Wikipedia(autobus.Event):
+class Wikipedia(Event):
     ''' Summarize some Wikipedia pages. '''
     service: str
     channel: str
@@ -72,7 +74,7 @@ class Wikipedia(autobus.Event):
     entities: List[str]
 
 
-class CheckGoals(autobus.Event):
+class CheckGoals(Event):
     ''' Check progress against goals. '''
     service: str
     channel: str
@@ -82,7 +84,7 @@ class CheckGoals(autobus.Event):
     goals: List[str]
 
 
-class AddGoal(autobus.Event):
+class AddGoal(Event):
     ''' Add a new goal. '''
     service: str
     channel: str
@@ -91,7 +93,7 @@ class AddGoal(autobus.Event):
     goal: str
 
 
-class VibeCheck(autobus.Event):
+class VibeCheck(Event):
     ''' How we feelin'? '''
     service: str
     channel: str
@@ -99,7 +101,7 @@ class VibeCheck(autobus.Event):
     bot_id: str
 
 
-class FactCheck(autobus.Event):
+class FactCheck(Event):
     ''' How we thinkin'? '''
     service: str
     channel: str
@@ -109,7 +111,7 @@ class FactCheck(autobus.Event):
     room: Optional[str]
 
 
-class KnowledgeGraph(autobus.Event):
+class KnowledgeGraph(Event):
     '''
     The best lack all conviction, while the worst are full of passionate intensity.
     '''
@@ -121,7 +123,7 @@ class KnowledgeGraph(autobus.Event):
     convo: str
 
 
-class News(autobus.Event):
+class News(Event):
     ''' What's happening in the big world? '''
     service: str
     channel: str
@@ -130,7 +132,7 @@ class News(autobus.Event):
     url: str
 
 
-class Web(autobus.Event):
+class Web(Event):
     ''' Be sure to surf responsibly. '''
     service: str
     channel: str
@@ -140,7 +142,7 @@ class Web(autobus.Event):
     reread: bool
 
 
-class Reflect(autobus.Event):
+class Reflect(Event):
     ''' Reflect on the current channel. '''
     service: str
     channel: str
@@ -150,7 +152,7 @@ class Reflect(autobus.Event):
     convo_id: Optional[str]
 
 
-class Photo(autobus.Event):
+class Photo(Event):
     ''' Generate a photo. '''
     service: str
     channel: str
