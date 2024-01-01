@@ -33,8 +33,6 @@ from persyn.interaction.reminders import Reminders
 # Common chat library
 from persyn.chat.common import Chat
 
-# TODO: Fix for new persyn chat!
-
 class Mastodon():
     ''' Wrapper for handling Mastodon calls using a Persyn config '''
 
@@ -275,10 +273,9 @@ class TheListener(StreamListener):
             return
 
         msg = self.masto.get_text(notification.status.content)
-        log.info(f"📬 {notification.status.account.acct}:", msg)
+        log.info(f"📬 {notification.status.account.acct} ({notification.status.visibility}):", msg)
 
         self.masto.dispatch(self.channel, msg, notification.status, json.dumps({"visibility": notification.status.visibility}))
-        log.info("Dispatched reply with visibility:", notification.status.visibility)
 
     def handle_heartbeat(self):
         log.debug("💓")
