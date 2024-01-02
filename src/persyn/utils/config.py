@@ -3,7 +3,7 @@ config.py
 
 Simple configuration management with pyyaml.
 
-Loads a yaml file and returns a SimpleNamespace.
+Loads a yaml file and returns a DotWiz object (like a SimpleNamespace but easier to manage).
 '''
 import os
 from pathlib import Path

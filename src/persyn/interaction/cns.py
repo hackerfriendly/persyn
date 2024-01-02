@@ -73,7 +73,6 @@ def mastodon_msg(_, chat, channel, bot_name, msg, images, extra):  # pylint: dis
                 f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn", extra
             )
     else:
-        # TODO: This can't respond to a specific thread, need to patch through to_status
         mastodon.toot(msg, kwargs=json.loads(extra))
 
 services = {

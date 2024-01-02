@@ -8,12 +8,14 @@ Chat with your persyn on Mastodon.
 import argparse
 import logging
 import os
+import re
 import tempfile
 import uuid
 import json
 
 from pathlib import Path
 from hashlib import sha256
+from types import SimpleNamespace
 
 from mastodon import Mastodon as MastoNative, MastodonError, MastodonMalformedEventError, StreamListener
 from bs4 import BeautifulSoup
@@ -188,7 +190,7 @@ class Mastodon():
 
         return posts
 
-    def toot(self, status, to_status=None, **kwargs):
+    def toot(self, msg, to_status=None, kwargs=None):
         '''
         Quick send a toot or reply.
 
@@ -196,31 +198,78 @@ class Mastodon():
 
         Returns a list of all status messages posted.
         '''
-        if 'visibility' not in kwargs:
-            kwargs['visibility'] = 'unlisted'
+        try:
 
-        rets = []
-        for post in self.paginate(status):
-            if to_status:
-                rets.append(self.client.status_reply(to_status, post, **kwargs))
-                log.info("🎺 Posted reply:", rets[-1].url)
+            log.warning(f"toot(): {msg} {to_status} {kwargs}")
+            if 'visibility' not in kwargs:
+                kwargs['visibility'] = 'unlisted'
+
+            # FIXME: private chat is broken because of this monstrosity. Figure out how to get to_status here from dispatch().
+            if to_status or 'to_status' in kwargs:
+                if not to_status:
+                    kwargs['to_status']['account'] = SimpleNamespace(**kwargs['to_status']['account'])
+                    to_status = SimpleNamespace(**kwargs['to_status'])
+                    kwargs.pop('to_status')
+
+                kwargs['in_reply_to_id'] = to_status.id
+                kwargs['visibility'] = to_status.visibility
+                if to_status.visibility == 'direct' and f"@{to_status.account.acct}" not in msg:
+                    log.warning("forgot the @")
+                    if to_status.account.acct in msg:
+                        log.warning("time for sub")
+                        msg = re.sub(rf'\b({to_status.account.acct})\b', f'@{to_status.account.acct}', msg, count=1)
+                        log.warning(f"got: {msg}")
+                    else:
+                        log.warning("time for append")
+                        msg = f"@{to_status.account.acct} {msg}"
+                        log.warning(f"got: {msg}")
             else:
-                rets.append(self.client.status_post(post, **kwargs))
-                log.info("🎺 Posted:", rets[-1].url)
-                to_status = rets[-1]
+                log.warning("toot(): to_status is not available")
 
-        return rets
 
-    def dispatch(self, channel, msg, status=None, extra=None):
+            log.error(f"toot(): {msg} {kwargs}")
+
+            rets = []
+            for post in self.paginate(msg):
+                if to_status:
+                    rets.append(self.client.status_reply(to_status, post, **kwargs))
+                    log.info("🎺 Posted reply:", rets[-1].url)
+                else:
+                    rets.append(self.client.status_post(post, **kwargs))
+                    log.info("🎺 Posted:", rets[-1].url)
+                    to_status = rets[-1]
+
+            log.error(f"toot(): returning {rets}")
+            return rets
+        except Exception as e:
+            log.error(e)
+
+    def dispatch(self, channel, msg, to_status=None, extra=None):
         ''' Handle commands and replies '''
+        if extra is None:
+            extra = '{}'
 
-        if status:
+        if to_status:
             extra = json.loads(extra)
-            extra['in_reply_to_id'] = status.id
-            extra['visibility'] = status.visibility
-            if status.visibility == 'direct' and status.account.acct not in msg:
-                msg = f"{msg} @{status.account.acct}"
+            extra['in_reply_to_id'] = to_status.id
+            extra['visibility'] = to_status.visibility
+            # Can't copy the entire status as it contains nonserializable datetime objects
+            extra['to_status'] = {
+                'id': to_status.id,
+                'visibility': to_status.visibility,
+                'account': {
+                    'acct': to_status.account.acct
+                }
+            }
+
+            if to_status.visibility == 'direct' and f'@{to_status.account.acct}' not in msg:
+                if to_status.account.acct in msg:
+                    msg = re.sub(rf'\b({to_status.account.acct})\b', f'@{to_status.account.acct}', msg, count=1)
+                else:
+                    msg = f"@{to_status.account.acct} {msg}"
             extra = json.dumps(extra)
+        else:
+            log.warning("dispatch(): to_status is not available")
 
         if msg.startswith('🎨'):
             self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", extra=extra)
@@ -229,7 +278,7 @@ class Mastodon():
             self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792, extra=extra)
 
         # Dispatch a "message received" event. Replies are handled by CNS.
-        self.chat.chat_received(channel, msg, status.account.username, extra)
+        self.chat.chat_received(channel, msg, to_status.account.username, extra)
 
         #     if the_reply.endswith('…') or the_reply.endswith('...'):
         #         self.say_something_later(
