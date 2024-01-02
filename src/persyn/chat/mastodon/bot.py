@@ -214,6 +214,14 @@ class Mastodon():
     def dispatch(self, channel, msg, status=None, extra=None):
         ''' Handle commands and replies '''
 
+        if status:
+            extra = json.loads(extra)
+            extra['in_reply_to_id'] = status.id
+            extra['visibility'] = status.visibility
+            if status.visibility == 'direct' and status.account.acct not in msg:
+                msg = f"{msg} @{status.account.acct}"
+            extra = json.dumps(extra)
+
         if msg.startswith('🎨'):
             self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", extra=extra)
 

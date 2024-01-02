@@ -70,7 +70,7 @@ def mastodon_msg(_, chat, channel, bot_name, msg, images, extra):  # pylint: dis
     if images:
         for image in images:
             mastodon.fetch_and_post_image(
-                f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn"
+                f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn", extra
             )
     else:
         # TODO: This can't respond to a specific thread, need to patch through to_status
