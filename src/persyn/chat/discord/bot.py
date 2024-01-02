@@ -50,6 +50,8 @@ intents = discord.Intents.default()
 intents.message_content = True # pylint: disable=assigning-non-slot
 app = discord.Client(intents=intents)
 
+# TODO: Fix for new persyn chat! Discord channels are fubar!
+
 @app.event
 async def on_ready():
     ''' Ready player 0! '''
@@ -117,10 +119,11 @@ def it_me(author_id):
     return author_id in [app.user.id, persyn_config.chat.discord.webhook_id]
 
 def get_channel(ctx):
-    ''' Return the unique identifier for this guild+channel or DM '''
+    ''' Return the unique identifier for this guild/channel or DM '''
+    # Note: Don't use | as a separator here as it confuses memory.py
     if getattr(ctx, 'guild'):
-        return f"{ctx.guild.id}|{ctx.channel.id}"
-    return f"dm|{ctx.author.id}|{ctx.channel.id}"
+        return f"{ctx.guild.id}/{ctx.channel.id}"
+    return f"dm/{ctx.author.id}/{ctx.channel.id}"
 
 def say_something_later(ctx, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
@@ -188,17 +191,7 @@ async def schedule_reply(ctx):
     ''' Gather a reply and say it when ready '''
     channel = get_channel(ctx)
 
-    log.warning("⏰ schedule_reply")
-
-    # Save the line
-    chat.recall.save_convo_line(
-        service='discord',
-        channel=channel,
-        msg=ctx.content,
-        speaker_name=ctx.author.name,
-        convo_id=chat.recall.convo_id('discord', channel),
-        verb='dialog'
-    )
+    log.warning("⏰ schedule_reply():", ctx.content)
 
     # Dispatch a "message received" event. Replies are handled by CNS.
     chat.chat_received(channel, ctx.content, ctx.author.name)
@@ -290,7 +283,7 @@ async def dispatch(ctx):
         await ctx.channel.send("💭 " + chat.get_summary(channel, save=True, include_keywords=True, photo=False))
 
     elif ctx.content == 'nouns':
-        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(channel))))
+        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(channel, ctx.author.name))))
 
     else:
         reminders.add(channel, 0, schedule_reply, f'reply-{uuid.uuid4()}', args=[ctx])
