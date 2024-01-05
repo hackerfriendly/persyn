@@ -101,7 +101,7 @@ class Interact:
         '''
         return f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
 {self.config.interact.character}
-""" + context + """
+""" + context.replace('{', '(').replace('}', ')') + """
 {kg}
 {history}
 
@@ -152,20 +152,22 @@ class Interact:
 
             convo.visited.add(convo_id)
             summary = self.recall.fetch_summary(convo_id)
-            log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30] + "...")
-
-            preamble = self.get_time_preamble(convo_id)
-
-            self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n---\n", verb="recalls")
-            break
+            if summary:
+                log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30] + "...")
+                preamble = self.get_time_preamble(convo_id)
+                self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n\n\n", verb="recalls")
+                break
 
         # Recent summaries + conversation
         max_tokens = int(self.lm.max_prompt_length() * 0.3)
         to_append = []
         for k in sorted(rds.client.keys(f"{self.recall.convo_prefix}:{convo.id[:3]}*:meta"), reverse=True):
             convo_id = k.decode().split(':')[3]
+            summary = self.recall.fetch_summary(convo_id)
+            if not summary:
+                continue
             to_append.append(
-                f"recalls {self.get_time_preamble(convo_id)}\n{self.recall.fetch_summary(convo_id)}"
+                f"recalls{self.get_time_preamble(convo_id)}\n{summary}"
             )
             if self.lm.chat_llm.get_num_tokens(
                 convo.memories['summary'].load_memory_variables({})['history']
@@ -351,8 +353,7 @@ class Interact:
         '''
         convo = self.recall.get_convo(service, channel)
         if convo is None:
-            # So we're talking to ourself?
-            convo = self.recall.new_convo(service, channel, self.config.id.name)
+            return
 
         # Add to summary memory. Dialog is automatically handled by langchain.
         if verb != 'dialog':

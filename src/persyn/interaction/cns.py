@@ -667,11 +667,14 @@ async def photo_event(event):
 async def auto_summarize():
     ''' Automatically summarize conversations when they expire. '''
     convos = recall.list_convo_ids()
-
     if convos:
         for convo_id in convos:
+            if recall.convo_expired(convo_id=convo_id):
+                log.warning(f"Expired convo {convo_id} detected, skipping.")
+
             remaining = persyn_config.memory.conversation_interval - elapsed(recall.id_to_timestamp(recall.get_last_message_id(convo_id)), get_cur_ts())
-            log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
+            if remaining >= 5:
+                log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
 
     # for key in convos:
     #     (service, channel, convo_id) = key.split('|')

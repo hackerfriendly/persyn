@@ -16,6 +16,7 @@ from langchain.memory import (
 )
 
 from langchain.vectorstores.redis import Redis
+from redis.commands.search.query import Query
 
 from persyn.interaction.chrono import elapsed, get_cur_ts
 from persyn.interaction.completion import LanguageModel
@@ -77,15 +78,21 @@ class Recall:
         self.goal_prefix = f'{pre}:goal'
         self.news_prefix = f'{pre}:news'
 
-        self.index_schema = {
+        self.convo_schema = {
             "tag": [
-                {"name":"role"},
                 {"name":"service"},
                 {"name":"channel"},
-                {"name":"verb"},
+                {"name":"expired"},
+                {"name":"role"},
                 {"name":"speaker_name"},
-                {"name":"expired"}
+                {"name":"verb"},
+                {"name":"initiator"}
+            ],
+            "text": [
+                {"name":"convo_id"},
+                {"name":"feels"}
             ]
+
         }
 
         # Convenience ids. Useful when browsing with RedisInsight.
@@ -95,6 +102,22 @@ class Recall:
         # Container for current conversations
         self.convos = {}
 
+        # Create indices
+        for cmd in [
+            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG expired TAG role TAG speaker_name TAG initiator TAG verb TAG content TEXT convo_id TEXT feels TEXT content_vector VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.opinion_prefix} on HASH PREFIX 1 {self.opinion_prefix}: SCHEMA service TAG channel TAG opinion TEXT topic TEXT convo_id TAG",
+            f"FT.CREATE {self.goal_prefix} on HASH PREFIX 1 {self.goal_prefix}: SCHEMA service TAG channel TAG goal TEXT",
+            f"FT.CREATE {self.news_prefix} on HASH PREFIX 1 {self.news_prefix}: SCHEMA service TAG channel TAG url TEXT title TEXT",
+        ]:
+            try:
+                self.redis.execute_command(cmd)
+                log.warning("Creating index:", cmd.split(' ')[1])
+            except redis.exceptions.ResponseError as err:
+                if str(err) == "Index already exists":
+                    log.debug(f"{err}:", cmd.split(' ')[1])
+                else:
+                    log.error(f"{err}:", cmd.split(' ')[1])
+                continue
 
     # def judge(self, service, channel, topic, opinion, convo_id):
     #     ''' Judge not, lest ye be judged '''
@@ -129,7 +152,7 @@ class Recall:
         rds = Redis(
             redis_url=self.config.memory.redis,
             index_name=self.convo_prefix,
-            index_schema=self.index_schema,
+            index_schema=self.convo_schema,
             embedding=self.lm.embeddings, # FIXME: 8192 context limit?
             key_prefix=self.convo_prefix,
         )
@@ -163,13 +186,13 @@ class Recall:
         except AttributeError:
             return None
 
-    def fetch_summary(self, convo_id) -> str:
+    def fetch_summary(self, convo_id) -> Union[str, None]:
         ''' Fetch a conversation summary. '''
         ret = self.redis.hget(f"{self.convo_prefix}:{convo_id}:summary", "content")
         if ret:
             return ret.decode()
-        log.warning("👎 No summary found for:", convo_id)
-        return ""
+        log.debug("👎 No summary found for:", convo_id)
+        return None
 
     def new_convo(self, service, channel, speaker_name, convo_id=None) -> Convo:
         ''' Start a new conversation. If convo_id is not supplied, generate a new one. '''
@@ -187,6 +210,7 @@ class Recall:
         self.set_convo_meta(convo.id, "service", service)
         self.set_convo_meta(convo.id, "channel", channel)
         self.set_convo_meta(convo.id, "initiator", speaker_name)
+        self.set_convo_meta(convo.id, "expired", "False")
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
@@ -197,12 +221,17 @@ class Recall:
     def list_convo_ids(self, active_only=True) -> List[str]:
         ''' List active convo_ids, from newest to oldest. If active_only = False, include expired convos. '''
         ret = []
-        for convo in sorted(self.redis.keys(f'{self.convo_prefix}:*:meta'), reverse=True):
-            convo_id = convo.decode().split(':')[3]
-            if not active_only or not self.convo_expired(convo_id=convo_id):
-                ret.append(convo_id)
+        if active_only:
+            active = "(@expired:{False})"
+        else:
+            active = "*"
+        # TODO: limit by service + channel
+        query = Query(active).dialect(2).return_fields("id")
 
-        return ret
+        for doc in self.redis.ft(self.convo_prefix).search(query).docs:
+            ret.append(doc.id.split(':')[3])
+
+        return sorted(ret)
 
     def get_last_convo_id(self, service, channel) -> str:
         ''' Returns the most recent convo id for this service + channel from Redis '''
@@ -311,24 +340,18 @@ class Recall:
         '''
         True if the timestamp of the last message for this convo is expired, else False.
         '''
-        if convo_id is None and any([service, channel]) is None:
+        if convo_id is None and not all([service, channel]):
             raise RuntimeError("You must specify a convo_id or both service and channel.")
 
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
-
-        if convo_id is None:
-            return True
 
         # Cache whether the convo is expired
         if self.fetch_convo_meta(convo_id, "expired") == "True":
             return True
 
         last_msg_id = self.get_last_message_id(convo_id)
-        if last_msg_id is None:
-            return True
-
-        if self.expired(last_msg_id):
+        if last_msg_id is None or self.expired(last_msg_id):
             self.set_convo_meta(convo_id, "expired", "True")
             return True
 
