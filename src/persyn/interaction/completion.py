@@ -174,6 +174,9 @@ class LanguageModel:
         if len(sents) > 1 and str(sents[-1][-1]) not in ['.','?','!']:
             sents.pop()
 
+        if len(sents) > 1 and len(sents[-1]) < 4:
+            sents.pop()
+
         return ' '.join([sent.text for sent in sents])
 
     def truncate(self, text, model=None):
