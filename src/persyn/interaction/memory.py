@@ -1,5 +1,6 @@
 ''' memory.py: long and short term memory by Redis. '''
 # pylint: disable=invalid-name, no-name-in-module, abstract-method
+import re
 import uuid
 
 from dataclasses import dataclass
@@ -24,6 +25,19 @@ from persyn.utils.color_logging import ColorLog
 from persyn.utils.config import PersynConfig
 
 log = ColorLog()
+
+def escape(text) -> str:
+    ''' \\ escape all non-word characters '''
+    return re.sub(r'(\W)', r'\\\1', text)
+
+def scquery(service=None, channel=None) -> str:
+    ''' return an escaped redis query for service + channel '''
+    ret = []
+    if service:
+        ret.append("(@service:{" + escape(service) + "})")
+    if channel:
+        ret.append("(@channel:{" + escape(channel) + "})")
+    return  ' '.join(ret)
 
 @dataclass
 class Convo:
@@ -218,15 +232,18 @@ class Recall:
 
         return convo
 
-    def list_convo_ids(self, active_only=True) -> List[str]:
-        ''' List active convo_ids, from newest to oldest. If active_only = False, include expired convos. '''
+    def list_convo_ids(self, service=None, channel=None, active_only=True) -> List[str]:
+        '''
+        List active convo_ids, from oldest to newest. Constrain to service + channel if provided.
+        If active_only = False, include expired convos.
+        '''
         ret = []
         if active_only:
-            active = "(@expired:{False})"
+            active = " (@expired:{False})"
         else:
-            active = "*"
-        # TODO: limit by service + channel
-        query = Query(active).dialect(2).return_fields("id")
+            active = " *"
+
+        query = Query(scquery(service, channel) + active).dialect(2).return_fields("id")
 
         for doc in self.redis.ft(self.convo_prefix).search(query).docs:
             ret.append(doc.id.split(':')[3])
@@ -235,15 +252,24 @@ class Recall:
 
     def get_last_convo_id(self, service, channel) -> str:
         ''' Returns the most recent convo id for this service + channel from Redis '''
-        for convo in sorted(self.redis.keys(f'{self.convo_prefix}:*:meta'), reverse=True):
-            convo_id = convo.decode().split(':')[3]
-            if self.fetch_convo_meta(convo_id, 'service') == service and self.fetch_convo_meta(convo_id, 'channel') == channel:
-                return convo_id
-        log.debug('No last_convo_id for:', f"{service}|{channel}")
-        return None
+        ret = []
+
+        query = Query(scquery(service, channel)).dialect(2).return_fields("id")
+
+        for doc in self.redis.ft(self.convo_prefix).search(query).docs:
+            ret.append(doc.id.split(':')[3])
+
+        if not ret:
+            log.warning('No last_convo_id for:', f"{service}|{channel}")
+            return None
+
+        return sorted(ret)[-1]
 
     def get_last_message_id(self, convo_id) -> str:
-        ''' Returns the most recent message for this convo_id from Redis '''
+        '''
+        Returns the most recent message for this convo_id from Redis
+        If there are no messages, return the convo_id
+        '''
         message_ids = sorted(self.redis.keys(f"{self.convo_prefix}:{convo_id}:lines:*"), reverse=True)
         if message_ids:
             return message_ids[0].decode().split(':')[-1]
@@ -356,3 +382,50 @@ class Recall:
             return True
 
         return False
+
+    def find_related_convos(self, service, channel, query, exclude_convo_ids=None, threshold=1.0, size=1):
+        '''
+        Find conversations related to query using vector similarity
+        '''
+        # TODO: truncate to 8191 tokens HERE.
+        emb = self.lm.get_embedding(query)
+
+        service_channel = "((@service:{$service}) (@channel:{$channel}) (@verb:{summary}))"
+
+        # "@content_vector:[VECTOR_RANGE $distance_threshold $vector]=>{$yield_distance_as: distance}"
+
+        if exclude_convo_ids:
+            exclude =  ''.join([f" -(@convo_id:{escape(convo_id)})" for convo_id in exclude_convo_ids])
+            query = (
+                Query(
+                    "(" + service_channel + exclude + ") @content_vector:[VECTOR_RANGE $threshold $emb]=>{$YIELD_DISTANCE_AS: score}"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "content", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb, "threshold": threshold}
+        else:
+            query = (
+                Query(
+                    service_channel + " @content_vector:[VECTOR_RANGE $threshold $emb]=>{$YIELD_DISTANCE_AS: score}"
+                )
+                .sort_by("score")
+                .return_fields("service", "channel", "convo_id", "content", "score")
+                .paging(0, size)
+                .dialect(2)
+            )
+            query_params = {"service": service, "channel": channel, "emb": emb, "threshold": threshold}
+
+        print(query.query_string())
+
+        reply = self.redis.ft(self.convo_prefix).search(query, query_params)
+
+        best = ""
+        if reply.docs:
+            best = f" (best: {float(reply.docs[0].score):0.3f})"
+
+        log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(reply.docs)} <= {threshold:0.3f}{best}")
+
+        return reply.docs

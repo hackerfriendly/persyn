@@ -11,10 +11,10 @@ import openai
 
 import numpy as np
 
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.chat_models import ChatAnthropic
 from langchain.llms.openai import OpenAI, BaseOpenAI
-from langchain.globals import set_verbose
-from langchain.embeddings import OpenAIEmbeddings
+# from langchain.globals import set_verbose
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
 
@@ -165,7 +165,6 @@ class LanguageModel:
 
     def trim(self, text):
         ''' Remove junk and any dangling non-sentences from text '''
-        # FIXME: Numbered lists are only truncated to the last number, eg. 1. <something>\n2.
         sents = []
         for sent in list(self.nlp(fix_text(text)).sents):
             if sent:

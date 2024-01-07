@@ -123,8 +123,8 @@ class Interact:
 
         # Relevant memories
         # Available metadata: service, channel, role, speaker_name, verb
-        summaries_only = RedisTag("verb") == "summary"
-        this_channel = (RedisTag("service") == convo.service) & (RedisTag("channel") == convo.channel)
+        # summaries_only = RedisTag("verb") == "summary"
+        # this_channel = (RedisTag("service") == convo.service) & (RedisTag("channel") == convo.channel)
 
         rds = convo.memories['redis']
 
@@ -135,6 +135,7 @@ class Interact:
             # FIXME: applying a filter and distance_threshold throws ResponseError: Invalid attribute yield_distance_as
             # filter=this_channel
         )
+
         log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
 
         # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
@@ -161,7 +162,10 @@ class Interact:
         # Recent summaries + conversation
         max_tokens = int(self.lm.max_prompt_length() * 0.3)
         to_append = []
-        for k in sorted(rds.client.keys(f"{self.recall.convo_prefix}:{convo.id[:3]}*:meta"), reverse=True):
+
+        # build to_append newest to oldest
+        for k in sorted(self.recall.list_convo_ids(convo.service, convo.channel), reverse=True):
+        # for k in sorted(rds.client.keys(f"{self.recall.convo_prefix}:{convo.id[:3]}*:meta"), reverse=True):
             convo_id = k.decode().split(':')[3]
             summary = self.recall.fetch_summary(convo_id)
             if not summary:
@@ -176,6 +180,7 @@ class Interact:
             ) >= max_tokens:
                 break
 
+        # append them oldest to newest
         context = context + to_append[::-1]
         log.warning(f"Added {len(to_append)} summaries")
 

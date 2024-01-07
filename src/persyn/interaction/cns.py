@@ -670,7 +670,7 @@ async def auto_summarize():
     if convos:
         for convo_id in convos:
             if recall.convo_expired(convo_id=convo_id):
-                log.warning(f"Expired convo {convo_id} detected, skipping.")
+                log.debug(f"{convo_id} expired.")
 
             remaining = persyn_config.memory.conversation_interval - elapsed(recall.id_to_timestamp(recall.get_last_message_id(convo_id)), get_cur_ts())
             if remaining >= 5:
