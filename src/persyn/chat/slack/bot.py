@@ -337,6 +337,8 @@ def main():
             if random.random() < 0.95:
                 return
 
+        log.info(f"{speaker_name}: {msg}")
+
         # Dispatch a "message received" event. Replies are handled by CNS.
         chat.chat_received(channel, msg, speaker_name)
 

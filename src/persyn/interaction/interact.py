@@ -11,7 +11,6 @@ import requests
 
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
-from langchain.vectorstores.redis import RedisTag
 
 from persyn.interaction import chrono
 
@@ -98,6 +97,8 @@ class Interact:
 
         Note that {kg} is used as a placeholder for knowledge graph memory but is never rendered.
         It's overridden later in status() to provide the full prompt context.
+
+        Curly braces in the context are replaced with () to avoid template issues.
         '''
         return f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
 {self.config.interact.character}
@@ -123,17 +124,14 @@ class Interact:
 
         # Relevant memories
         # Available metadata: service, channel, role, speaker_name, verb
-        # summaries_only = RedisTag("verb") == "summary"
-        # this_channel = (RedisTag("service") == convo.service) & (RedisTag("channel") == convo.channel)
 
-        rds = convo.memories['redis']
-
-        ret = rds.similarity_search_with_score(
+        ret = self.recall.find_related_convos(
+            convo.service,
+            convo.channel,
             self.current_dialog(convo),
-            k=100,
-            distance_threshold=self.config.memory.relevance,
-            # FIXME: applying a filter and distance_threshold throws ResponseError: Invalid attribute yield_distance_as
-            # filter=this_channel
+            exclude_convo_ids=convo.visited,
+            threshold=self.config.memory.relevance,
+            size=10
         )
 
         log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
@@ -164,9 +162,7 @@ class Interact:
         to_append = []
 
         # build to_append newest to oldest
-        for k in sorted(self.recall.list_convo_ids(convo.service, convo.channel), reverse=True):
-        # for k in sorted(rds.client.keys(f"{self.recall.convo_prefix}:{convo.id[:3]}*:meta"), reverse=True):
-            convo_id = k.decode().split(':')[3]
+        for convo_id in sorted(self.recall.list_convo_ids(convo.service, convo.channel), reverse=True):
             summary = self.recall.fetch_summary(convo_id)
             if not summary:
                 continue
@@ -226,7 +222,7 @@ class Interact:
             memory=convo.memories['combined']
         )
 
-        # Hand it to langchain.
+        # Hand it to langchain. #FIXME: change run to invoke(), which returns a dict apparently -_-
         reply = chain.run(input=msg)
         reply_id = str(ulid.ULID())
 
@@ -504,104 +500,6 @@ class Interact:
     #         )
     #     else:
     #         log.warning("🤷 Generic agent was no help.")
-
-
-    def gather_memories(self, service, channel, entities, visited=None):
-        '''
-        Look for relevant convos and summaries using memory, relationship graphs, and entity matching.
-        '''
-        # TODO: weigh retrievals with "importance" and recency, a la Stanford Smallville
-        return []
-
-        # if visited is None:
-        #     visited = []
-
-        # convo = self.recall.convo(service, channel, feels=False)
-
-        # if not convo:
-        #     return visited
-
-        # ranked = self.recall.find_related_convos(
-        #     service, channel,
-        #     query='\n'.join(convo[:5]),
-        #     size=10,
-        #     current_convo_id=self.recall.convo_id(service, channel),
-        #     threshold=self.config.memory.relevance
-        # )
-
-        # # No hits? Don't try so hard.
-        # if not ranked:
-        #     log.warning("🍸 Nothing relevant. Try lateral thinking.")
-        #     ranked = self.recall.find_related_convos(
-        #         service, channel,
-        #         query='\n'.join(convo),
-        #         size=1,
-        #         current_convo_id=self.recall.convo_id(service, channel),
-        #         threshold=self.config.memory.relevance * 1.4,
-        #         any_convo=True
-        #     )
-
-        # for hit in ranked:
-        #     if hit.convo_id not in visited:
-        #         if hit.service == 'import_service':
-        #             log.info("📚 Hit found from import:", hit.channel)
-        #         the_summary = self.recall.get_summary_by_id(hit.convo_id)
-        #         # Hit a sentence? Inject the summary.
-        #         # if the_summary:
-        #         #     self.inject_idea(
-        #         #         service, channel,
-        #         #         f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
-        #         #         verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
-        #         #     )
-        #         if the_summary:
-        #             self.inject_idea(
-        #                 service, channel,
-        #                 the_summary.summary,
-        #                 verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
-        #             )
-        #         # No summary? Just inject the sentence.
-        #         else:
-        #             self.inject_idea(
-        #                 service, channel,
-        #                 f"{hit.speaker_name} said: {hit.msg}",
-        #                 verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
-        #             )
-        #         visited.append(hit.convo_id)
-        #         log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg)
-
-        # # Look for other summaries that match detected entities
-        # if entities:
-        #     visited = self.gather_summaries(service, channel, entities, size=2, visited=visited)
-
-        # return visited
-
-    # def gather_summaries(self, service, channel, entities, size, visited=None):
-    #     '''
-    #     If a previous convo summary matches entities and seems relevant, inject its memory.
-
-    #     Returns a list of ids of summaries injected.
-    #     '''
-    #     if not entities:
-    #         return []
-
-    #     if visited is None:
-    #         visited = []
-
-    #     search_term = ' '.join(entities)
-    #     log.warning(f"ℹ️  look up '{search_term}' in memories")
-
-    #     for summary in self.recall.summaries(service, channel, search_term, size=10, raw=True):
-    #         if summary.convo_id in visited:
-    #             continue
-    #         visited.append(summary.convo_id)
-
-    #         log.warning(f"🐘 Memory found: {summary.summary}")
-    #         self.inject_idea(service, channel, summary.summary, "remembers")
-
-    #         if len(visited) >= size:
-    #             break
-
-    #     return visited
 
     # def gather_opinions(self, service, channel, entities):
     #     '''

@@ -200,13 +200,13 @@ class Recall:
         except AttributeError:
             return None
 
-    def fetch_summary(self, convo_id) -> Union[str, None]:
+    def fetch_summary(self, convo_id) -> str:
         ''' Fetch a conversation summary. '''
         ret = self.redis.hget(f"{self.convo_prefix}:{convo_id}:summary", "content")
         if ret:
             return ret.decode()
         log.debug("👎 No summary found for:", convo_id)
-        return None
+        return ""
 
     def new_convo(self, service, channel, speaker_name, convo_id=None) -> Convo:
         ''' Start a new conversation. If convo_id is not supplied, generate a new one. '''
@@ -294,8 +294,8 @@ class Recall:
         speaker_name = self.fetch_convo_meta(convo_id, "initiator")
 
         convo = self.new_convo(service, channel, speaker_name, convo_id)
-        convo.memories['summary'].moving_summary_buffer = self.fetch_summary(convo_id)
-
+        the_summary = self.fetch_summary(convo_id) or "nope"
+        convo.memories['summary'].moving_summary_buffer = the_summary
         self.convos[str(convo)] = convo
 
         return convo
@@ -383,16 +383,19 @@ class Recall:
 
         return False
 
-    def find_related_convos(self, service, channel, query, exclude_convo_ids=None, threshold=1.0, size=1):
+    def find_related_convos(self, service, channel, text, exclude_convo_ids=None, threshold=1.0, size=1) -> List[str]:
         '''
-        Find conversations related to query using vector similarity
+        Find conversations related to text using vector similarity
         '''
-        # TODO: truncate to 8191 tokens HERE.
-        emb = self.lm.get_embedding(query)
+        log.debug(f"find_related_convos: {service} {channel} {text} {exclude_convo_ids} {threshold} {size}")
+
+        if not text:
+            return []
+
+        # TODO: truncate or paginate at 8191 tokens HERE.
+        emb = self.lm.get_embedding(text)
 
         service_channel = "((@service:{$service}) (@channel:{$channel}) (@verb:{summary}))"
-
-        # "@content_vector:[VECTOR_RANGE $distance_threshold $vector]=>{$yield_distance_as: distance}"
 
         if exclude_convo_ids:
             exclude =  ''.join([f" -(@convo_id:{escape(convo_id)})" for convo_id in exclude_convo_ids])
@@ -418,8 +421,6 @@ class Recall:
             )
             query_params = {"service": service, "channel": channel, "emb": emb, "threshold": threshold}
 
-        print(query.query_string())
-
         reply = self.redis.ft(self.convo_prefix).search(query, query_params)
 
         best = ""
@@ -428,4 +429,7 @@ class Recall:
 
         log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(reply.docs)} <= {threshold:0.3f}{best}")
 
-        return reply.docs
+        # TODO: also return scores?
+        ret = [doc.id.split(':')[3] for doc in reply.docs]
+        log.warning('find_related_convos():', ret)
+        return ret

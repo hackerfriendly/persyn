@@ -249,10 +249,14 @@ async def check_feels(event):
     if convo_id is None:
         log.warning("😑 No convo, nothing to feel.")
         return
-    feels = completion.summarize_text(
-        recall.fetch_summary(convo_id),
-        summarizer=f"""In the following text, these three words best describe {persyn_config.id.name}'s emotional state. You MUST include only three comma separated words:"""
-    )
+    summary = recall.fetch_summary(convo_id)
+    if summary:
+        feels = completion.summarize_text(
+            summary,
+            summarizer=f"""In the following text, these three words best describe {persyn_config.id.name}'s emotional state. You MUST include only three comma separated words:"""
+        )
+    else:
+        feels = "nothing in particular"
     recall.set_convo_meta(convo_id, "feels", feels)
     log.warning("😄 Feeling:", feels)
 
@@ -513,12 +517,12 @@ Questions only, no answers. Please convert pronouns and verbs to the first perso
         log.warning("❓ ", question)
 
         ranked = recall.find_related_convos(
-            event.service, event.channel,
-            query=convo,
-            size=5,
-            current_convo_id=convo_id,
+            event.service,
+            event.channel,
+            text=convo,
+            exclude_convo_ids=[convo_id],
             threshold=persyn_config.memory.relevance * 1.4,
-            any_convo=True
+            size=5
         )
 
         visited = []
