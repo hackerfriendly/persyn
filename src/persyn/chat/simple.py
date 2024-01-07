@@ -10,15 +10,26 @@ Used mostly by interact/autobus.py but can be called from anywhere.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import json
+from typing import Optional
 
 import requests
+from persyn.chat.common import Chat
 
 # Color logging
 from persyn.utils.color_logging import log
+from persyn.utils.config import PersynConfig
 
 rs = requests.Session()
 
-def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None, extra=None):
+def slack_msg(
+    persyn_config: PersynConfig,
+    chat: Chat,
+    channel: str,
+    bot_name: str,
+    msg: str,
+    images: Optional[list[str]] = None,
+    extra: Optional[str] = None
+    ) -> None:
     ''' Post a message to Slack with optional images '''
 
     # TODO: Why does this call take ~three seconds to show up in the channel?
@@ -64,7 +75,15 @@ def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None, extra=No
         log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
         chat.inject_idea(channel, msg, verb='dialog')
 
-def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None, extra=None):
+def discord_msg(
+    persyn_config: PersynConfig,
+    chat: Chat,
+    channel: str,
+    bot_name: str,
+    msg: str,
+    images: Optional[list[str]] = None,
+    extra: Optional[str] = None
+    ) -> None:
     ''' Post an image to Discord '''
     req = {
         "username": persyn_config.id.name,

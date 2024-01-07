@@ -26,11 +26,11 @@ from persyn.utils.config import PersynConfig
 
 log = ColorLog()
 
-def escape(text) -> str:
+def escape(text: str) -> str:
     ''' \\ escape all non-word characters '''
     return re.sub(r'(\W)', r'\\\1', text)
 
-def scquery(service=None, channel=None) -> str:
+def scquery(service: Optional[str] = None, channel: Optional[str] = None) -> str:
     ''' return an escaped redis query for service + channel '''
     ret = []
     if service:
@@ -46,7 +46,7 @@ class Convo:
     channel: str
     id: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         ''' validate id '''
         if self.id is None:
             self.id = str(ulid.ULID())
@@ -56,10 +56,10 @@ class Convo:
         self.memories = {}              # langchain working memories
         self.visited = set([self.id])   # other convo_ids and ideas we have visited
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"service='{self.service}', channel='{self.channel}', id='{self.id}'"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.service}|{self.channel}|{self.id}"
 
 @dataclass
@@ -73,7 +73,7 @@ class Recall:
     '''
     config: PersynConfig
 
-    def __post_init__(self, conversation_interval=None):
+    def __post_init__(self, conversation_interval: Optional[int] = None) -> None:
 
         self.bot_name = self.config.id.name
         self.bot_id = uuid.UUID(self.config.id.guid)
@@ -180,18 +180,18 @@ class Recall:
                 'redis': rds
         }
 
-    def decode_dict(self, d) -> dict:
+    def decode_dict(self, d: dict[str, Any]) -> dict:
         ''' Decode a dict fetched from Redis '''
         ret = {}
         for (k, v) in d.items():
             ret[k.decode()] = v.decode()
         return ret
 
-    def set_convo_meta(self, convo_id, k, v) -> None:
+    def set_convo_meta(self, convo_id: str, k: str, v: str) -> None:
         ''' Set metadata for a conversation '''
         self.redis.hset(f"{self.convo_prefix}:{convo_id}:meta", k, v)
 
-    def fetch_convo_meta(self, convo_id, k=None) -> Any:
+    def fetch_convo_meta(self, convo_id: str, k: Optional[str] = None) -> Any:
         ''' Fetch a metadata key from a conversation in Redis. If k is not provided, return all metadata. '''
         try:
             if k is None:
@@ -200,7 +200,7 @@ class Recall:
         except AttributeError:
             return None
 
-    def fetch_summary(self, convo_id) -> str:
+    def fetch_summary(self, convo_id: str) -> str:
         ''' Fetch a conversation summary. '''
         ret = self.redis.hget(f"{self.convo_prefix}:{convo_id}:summary", "content")
         if ret:
@@ -208,7 +208,7 @@ class Recall:
         log.debug("👎 No summary found for:", convo_id)
         return ""
 
-    def new_convo(self, service, channel, speaker_name, convo_id=None) -> Convo:
+    def new_convo(self, service: str, channel: str, speaker_name: str, convo_id: Optional[str] = None) -> Convo:
         ''' Start a new conversation. If convo_id is not supplied, generate a new one. '''
         convo = Convo(
             service=service,
@@ -232,7 +232,7 @@ class Recall:
 
         return convo
 
-    def list_convo_ids(self, service=None, channel=None, active_only=True) -> List[str]:
+    def list_convo_ids(self, service: Optional[str] = None, channel: Optional[str] = None, active_only: Optional[bool] = True) -> List[str]:
         '''
         List active convo_ids, from oldest to newest. Constrain to service + channel if provided.
         If active_only = False, include expired convos.
@@ -250,7 +250,7 @@ class Recall:
 
         return sorted(ret)
 
-    def get_last_convo_id(self, service, channel) -> Union[str, None]:
+    def get_last_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Returns the most recent convo id for this service + channel from Redis '''
 
         query = Query(scquery(service, channel)).sort_by('convo_id', asc=False).paging(0, 1).dialect(2).return_fields("id")
@@ -263,7 +263,7 @@ class Recall:
 
         return docs[0].id.split(':')[3]
 
-    def get_last_message_id(self, convo_id) -> str:
+    def get_last_message_id(self, convo_id: str) -> str:
         '''
         Returns the most recent message for this convo_id from Redis
         If there are no messages, return the convo_id
@@ -274,7 +274,7 @@ class Recall:
         # No messages yet, just return the convo_id
         return convo_id
 
-    def load_convo(self, service, channel, convo_id=None) -> Union[Convo, None]:
+    def load_convo(self, service: str, channel: str, convo_id: Optional[str] = None) -> Union[Convo, None]:
         '''
         Load a Convo from Redis.
         If convo_id is None, load the most recent convo from service + channel (if any).
@@ -298,7 +298,7 @@ class Recall:
 
         return convo
 
-    def current_convo_id(self, service, channel) -> Union[str, None]:
+    def current_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
         if not self.convos:
             # No convos? Load from Redis.
@@ -322,7 +322,7 @@ class Recall:
 
         return convo_id
 
-    def get_convo(self, service, channel, convo_id=None) -> Union[Convo, None]:
+    def get_convo(self, service: str, channel: str, convo_id: Optional[str] = None) -> Union[Convo, None]:
         '''
         Get a Convo by convo_id or the most recent from service + channel.
         If none exists, return None.
@@ -341,12 +341,12 @@ class Recall:
             self.load_convo(service, channel, convo_id)
         return self.convos[convo_key]
 
-    def expired(self, the_id=None):
+    def expired(self, the_id: Optional[str] = None) -> bool:
         ''' True if time elapsed since the given ulid > conversation_interval, else False '''
         return elapsed(self.id_to_timestamp(the_id), get_cur_ts()) > self.conversation_interval
 
     @staticmethod
-    def id_to_epoch(the_id) -> float:
+    def id_to_epoch(the_id: str) -> float:
         ''' Extract the epoch seconds from a ULID '''
         if the_id is None:
             return 0
@@ -356,11 +356,11 @@ class Recall:
 
         return the_id.timestamp
 
-    def id_to_timestamp(self, the_id):
+    def id_to_timestamp(self, the_id: str) -> str:
         ''' Extract the timestamp from a ULID '''
         return get_cur_ts(self.id_to_epoch(the_id))
 
-    def convo_expired(self, service=None, channel=None, convo_id=None) -> bool:
+    def convo_expired(self, service: Optional[str] = None, channel: Optional[str] = None, convo_id: Optional[str] = None) -> bool:
         '''
         True if the timestamp of the last message for this convo is expired, else False.
         '''
@@ -381,7 +381,15 @@ class Recall:
 
         return False
 
-    def find_related_convos(self, service, channel, text, exclude_convo_ids=None, threshold=1.0, size=1) -> List[tuple[str, float]]:
+    def find_related_convos(
+        self,
+        service: str,
+        channel: str,
+        text: str,
+        exclude_convo_ids: Optional[List[str]] = None,
+        threshold: Optional[float] = 1.0,
+        size: Optional[int] = 1
+        ) -> List[tuple[str, float]]:
         '''
         Find conversations related to text using vector similarity
         '''

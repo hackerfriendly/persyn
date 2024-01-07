@@ -5,6 +5,7 @@ Subroutines common to all chat services
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import random
+from typing import Optional, Union
 
 import requests
 
@@ -15,6 +16,7 @@ from persyn.utils.color_logging import log
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
+from persyn.utils.config import PersynConfig
 
 default_photo_triggers = [
     'look', 'see', 'show', 'watch', 'vision',
@@ -44,7 +46,7 @@ rs = requests.Session()
 
 class Chat():
     ''' Container class for common chat functions '''
-    def __init__(self, persyn_config, service):
+    def __init__(self, persyn_config: PersynConfig, service: str):
         ''' Container class for common chat functions. Pass the persyn config and the calling chat service. '''
         self.persyn_config = persyn_config
         self.service=service
@@ -62,7 +64,13 @@ class Chat():
             organization=persyn_config.completion.openai_org
         )
 
-    def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None, extra=None):
+    def get_summary(
+        self,
+        channel: str,
+        convo_id: Optional[str] = None,
+        photo: Optional[bool] = False,
+        extra=None
+        ) -> str:
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
             log.error("∑ get_summary() called with no interact_url defined, skipping.")
@@ -98,7 +106,15 @@ class Chat():
 
         return " :spiral_note_pad: :interrobang: "
 
-    def get_reply(self, channel, msg, speaker_name, reminders=None, send_chat=True, extra=None):
+    def get_reply(
+        self,
+        channel: str,
+        msg: str,
+        speaker_name: str,
+        reminders=None,
+        send_chat: Optional[bool] = True,
+        extra: Optional[str] = None
+        ) -> Union[str, None]:
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
             log.error("💬 get_reply() called with no interact_url defined, skipping.")

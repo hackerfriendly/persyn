@@ -277,10 +277,10 @@ async def dispatch(ctx):
                 await ctx.channel.send(reply)
 
     elif ctx.content == 'summary':
-        await ctx.channel.send("💭 " + chat.get_summary(channel, save=False, include_keywords=False, photo=True))
+        await ctx.channel.send("💭 " + chat.get_summary(channel, photo=True))
 
     elif ctx.content == 'summary!':
-        await ctx.channel.send("💭 " + chat.get_summary(channel, save=True, include_keywords=True, photo=False))
+        await ctx.channel.send("💭 " + chat.get_summary(channel, photo=False))
 
     elif ctx.content == 'nouns':
         await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(channel, ctx.author.name))))

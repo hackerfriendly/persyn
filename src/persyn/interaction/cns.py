@@ -8,17 +8,14 @@ The central nervous system. Listen for events on the event bus and inject result
 import argparse
 import logging
 import os
-import asyncio
 import json
 
 import requests
 
+from typing import Optional, Union
+
 from spacy.lang.en.stop_words import STOP_WORDS
 from urllib.parse import urlparse
-
-# just-in-time Wikipedia
-import wikipedia
-from wikipedia.exceptions import WikipediaException
 
 from bs4 import BeautifulSoup
 
@@ -62,7 +59,7 @@ wikicache = {}
 
 rs = requests.Session()
 
-def mastodon_msg(_, chat, channel, bot_name, msg, images, extra):  # pylint: disable=unused-argument
+def mastodon_msg(_, chat: str, channel: str, bot_name: str, msg: str, images: list[str], extra: str) -> None:  # pylint: disable=unused-argument
     ''' Post images to Mastodon '''
     if extra is None:
         extra = '{}'
@@ -81,7 +78,7 @@ services = {
     'mastodon': mastodon_msg
 }
 
-def get_service(service):
+def get_service(service: str) -> Union[str, None]:
     ''' Find the correct service for the dispatcher '''
     if 'slack.com' in service:
         return 'slack'
@@ -91,12 +88,12 @@ def get_service(service):
     log.critical(f"Unknown service: {service}")
     return None
 
-async def say_something(event):
+async def say_something(event: SendChat) -> None:
     ''' Send a message to a service + channel '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, event.msg, event.images, event.extra)
 
-async def chat_received(event):
+async def chat_received(event: ChatReceived) -> None:
     ''' Somebody is talking to us '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
@@ -155,7 +152,7 @@ async def chat_received(event):
 
     log.warning("💬 chat_received done in:", f"{elapsed(start, get_cur_ts()):0.2f} sec")
 
-async def new_idea(event):
+async def new_idea(event: Idea) -> None:
     ''' Inject a new idea '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     chat.inject_idea(
@@ -164,21 +161,18 @@ async def new_idea(event):
         verb=event.verb
     )
 
-async def summarize_channel(event):
+async def summarize_channel(event: Summarize) -> None:
     ''' Summarize the channel '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     summary = chat.get_summary(
         channel=event.channel,
         convo_id=event.convo_id,
-        save=True,
-        photo=event.photo,
-        max_tokens=event.max_tokens,
-        model=persyn_config.completion.reasoning_model
+        photo=event.photo
     )
     if event.send_chat:
         services[get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, summary)
 
-async def elaborate(event):
+async def elaborate(event: Elaborate) -> None:
     ''' Continue the train of thought '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     chat.get_reply(
@@ -187,7 +181,7 @@ async def elaborate(event):
         speaker_name=event.bot_name
     )
 
-async def opine(event):
+async def opine(event: Opine) -> None:
     ''' Recall opinions of entities (if any). Form a new opinion if none is found. '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     log.info(f"🙆‍♂️ Opinion time for {len(event.entities)} entities on {event.service} | {event.channel}")
@@ -228,7 +222,7 @@ async def opine(event):
                 verb=f"thinks about {entity}"
             )
 
-async def add_goal(event):
+async def add_goal(event: AddGoal) -> None:
     ''' Add a new goal '''
     if not event.goal.strip():
         return
@@ -243,7 +237,7 @@ async def add_goal(event):
     log.info("🥇 New goal:", event.goal)
     recall.add_goal(event.service, event.channel, event.goal)
 
-async def check_feels(event):
+async def check_feels(event: VibeCheck) -> None:
     ''' Run sentiment analysis on ourselves. '''
     convo_id = recall.get_last_convo_id(event.service, event.channel)
     if convo_id is None:
@@ -260,7 +254,7 @@ async def check_feels(event):
     recall.set_convo_meta(convo_id, "feels", feels)
     log.warning("😄 Feeling:", feels)
 
-async def check_facts(event):
+async def check_facts(event: FactCheck) -> None:
     ''' Ask for a second opinion about our side of the conversation. '''
     if not event.room:
         event.room = '\n'.join(recall.convo(event.service, event.channel))
@@ -279,9 +273,9 @@ async def check_facts(event):
         )
         log.warning("🧠 Thinking:", facts)
 
-async def build_knowledge_graph(event, max_opinions=3):
-    ''' Build the knowledge graph. '''
-    pass
+# async def build_knowledge_graph(event, max_opinions=3) -> None:
+#     ''' Build the knowledge graph. '''
+#     pass
     # triples = completion.generate_triples(event.convo)
     # log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
     # recall.triples_to_kg(triples)
@@ -302,27 +296,27 @@ async def build_knowledge_graph(event, max_opinions=3):
     #     )
     # )
 
-async def find_goals(event):
-    ''' Interrogate the conversation, looking for goals '''
+# async def find_goals(event: ...):
+#     ''' Interrogate the conversation, looking for goals '''
 
-    preamble = f"-----\nIn the previous dialog, does {event.bot_name} express any desires or goals? "
-    prompt = preamble + """
-Answer in the first person and in JSON format using the following template with no other text or explanation:
+#     preamble = f"-----\nIn the previous dialog, does {event.bot_name} express any desires or goals? "
+#     prompt = preamble + """
+# Answer in the first person and in JSON format using the following template with no other text or explanation:
 
-{
-  goals: ["LIST", "OF", "GOALS"]
-}
+# {
+#   goals: ["LIST", "OF", "GOALS"]
+# }
 
-If no goals or desires are expressed, return an empty JSON list in this format, with no other text:
+# If no goals or desires are expressed, return an empty JSON list in this format, with no other text:
 
-{
-  goals: []
-}
+# {
+#   goals: []
+# }
 
-Your response MUST return valid JSON.
-"""
+# Your response MUST return valid JSON.
+# """
 
-async def goals_achieved(event):
+async def goals_achieved(event: CheckGoals) -> None:
     ''' Have we achieved our goals? '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
 
@@ -366,7 +360,7 @@ async def goals_achieved(event):
     # )
     # await add_goal(new_goal)
 
-def text_from_url(url, selector='body'):
+def text_from_url(url: str, selector: Optional[str] = 'body') -> str:
     ''' Return just the text from url. You probably want a better selector than <body>. '''
     try:
         article = rs.get(url, timeout=30)
@@ -383,7 +377,7 @@ def text_from_url(url, selector='body'):
 
     return '\n'.join(story)
 
-async def read_web(event):
+async def read_web(event: Web) -> None:
     ''' Read a web page '''
     if persyn_config.web.get(urlparse(event.url).netloc, None):
         cfg = persyn_config.web.get(urlparse(event.url).netloc)
@@ -446,7 +440,7 @@ async def read_web(event):
         if done:
             return
 
-async def read_news(event):
+async def read_news(event: News) -> None:
     ''' Check our RSS feed. Read the first unread article. '''
     log.info("🗞️  Reading news feed:", event.url)
     try:
@@ -474,7 +468,8 @@ async def read_news(event):
         # only one at a time
         return
 
-async def reflect_on(event):
+async def reflect_on(event: Reflect) -> None:
+    # TODO: FIX THIS to work with find_related_convos()
     ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
     log.warning("🪩  Reflecting...")
 
@@ -568,7 +563,7 @@ Don't use proper names, and convert all pronouns and verbs to the first person.
 
     log.warning("🪩  Done reflecting.")
 
-def generate_photo(event):
+def generate_photo(event: Photo) -> None:
     ''' Generate a photo '''
     chat = Chat(persyn_config=persyn_config, service=event.service)
     chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1])
@@ -634,11 +629,11 @@ async def facts_event(event):
     log.debug("FactCheck received", event)
     await check_facts(event)
 
-@autobus.subscribe(KnowledgeGraph)
-async def kg_event(event):
-    ''' Dispatch KnowledgeGraph event. '''
-    log.debug("KnowledgeGraph received", event)
-    await build_knowledge_graph(event)
+# @autobus.subscribe(KnowledgeGraph)
+# async def kg_event(event):
+#     ''' Dispatch KnowledgeGraph event. '''
+#     log.debug("KnowledgeGraph received", event)
+#     await build_knowledge_graph(event)
 
 @autobus.subscribe(News)
 async def news_event(event):
@@ -668,7 +663,7 @@ async def photo_event(event):
 # recurring events
 ##
 @autobus.schedule(autobus.every(5).seconds)
-async def auto_summarize():
+async def auto_summarize() -> None:
     ''' Automatically summarize conversations when they expire. '''
     convos = recall.list_convo_ids()
     if convos:
@@ -714,12 +709,12 @@ async def auto_summarize():
     #             autobus.publish(event)
 
 @autobus.schedule(autobus.every(6).hours)
-async def plan_your_day():
+async def plan_your_day() -> None:
     ''' Make a schedule of actions for the next part of the day '''
     log.info("📅 Time to make a schedule")
     # TODO: use LangChain to decide on the actions to take for the next interval, and inject as an idea.
 
-def main():
+def main() -> None:
     ''' Main event '''
     parser = argparse.ArgumentParser(
         description='''Persyn central nervous system. Run one server for each bot.'''

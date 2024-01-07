@@ -3,8 +3,10 @@ interact.py
 
 The limbic system library.
 '''
-from dataclasses import dataclass
 import random
+
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import ulid
 import requests
@@ -15,7 +17,7 @@ from langchain.prompts import PromptTemplate
 from persyn.interaction import chrono
 
 # Long and short term memory
-from persyn.interaction.memory import Recall
+from persyn.interaction.memory import Convo, Recall
 
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
@@ -73,7 +75,7 @@ class Interact:
         #     agent_tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True
         # )
 
-    def send_chat(self, service, channel, msg, extra=None):
+    def send_chat(self, service: str, channel: str, msg: str, extra: Optional[str] = None) -> None:
         '''
         Send a chat message via the autobus.
         '''
@@ -91,7 +93,7 @@ class Interact:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
-    def template(self, context="") -> str:
+    def template(self, context: Optional[str] = "") -> str:
         '''
         Return the current prompt template.
 
@@ -109,7 +111,7 @@ class Interact:
 {human}: {input}
 {bot}:"""
 
-    def add_context(self, convo):
+    def add_context(self, convo: Convo) -> str:
         '''
         Additional context for the prompt.
 
@@ -181,18 +183,26 @@ class Interact:
 
         return '\n'.join(context)
 
-    def get_time_preamble(self, convo_id) -> str:
+    def get_time_preamble(self, convo_id: str) -> str:
         ''' Return an appropriate time elapsed preamble '''
         last_ts = self.recall.id_to_timestamp(convo_id)
         if chrono.elapsed(last_ts) > 7200:
             return f" a conversation from {chrono.ago(last_ts)} ago:\n"
         return ""
 
-    def current_dialog(self, convo) -> str:
+    def current_dialog(self, convo: Convo) -> str:
         ''' Return the current dialog from convo '''
         return convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
 
-    def retort(self, service, channel, msg, speaker_name, send_chat=True, extra=None):  # pylint: disable=too-many-locals
+    def retort(
+        self,
+        service: str,
+        channel: str,
+        msg: str,
+        speaker_name: str,
+        send_chat: bool = True,
+        extra: Optional[str] = None
+        ) -> str:
         '''
         Get a completion for the given channel.
 
@@ -309,7 +319,7 @@ class Interact:
         return trimmed
 
 
-    def status(self, service, channel, speaker_name) -> str:
+    def status(self, service: str, channel: str, speaker_name: str) -> str:
         ''' Return the prompt and chat history for this channel '''
         convo = self.recall.get_convo(service, channel)
         if convo is None:
@@ -330,7 +340,7 @@ class Interact:
             input='input'
         )
 
-    def extract_nouns(self, text):
+    def extract_nouns(self, text: str) -> list[str]:
         ''' return a list of all nouns (except pronouns) in text '''
         doc = self.lm.nlp(text)
         nouns = {
@@ -342,12 +352,12 @@ class Interact:
         }
         return list(nouns)
 
-    def extract_entities(self, text):
+    def extract_entities(self, text: str) -> list[str]:
         ''' return a list of all entities in text '''
         doc = self.lm.nlp(text)
         return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})
 
-    def inject_idea(self, service, channel, idea, verb="recalls"):
+    def inject_idea(self, service: str, channel: str, idea: str, verb: str="recalls") -> None:
         '''
         Directly inject an idea into recall memory.
         '''
@@ -374,7 +384,7 @@ class Interact:
                 keys=[f"{convo.id}:{str(ulid.ULID())}"]
             )
 
-    def summarize_channel(self, service, channel, convo_id=None) -> str:
+    def summarize_channel(self, service: str, channel: str, convo_id: str = None) -> str:
         ''' Summarize a channel in a few sentences. '''
         if convo_id is None:
             convo_id = self.recall.get_last_convo_id(service, channel)
