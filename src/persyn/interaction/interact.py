@@ -131,17 +131,16 @@ class Interact:
             self.current_dialog(convo),
             exclude_convo_ids=convo.visited,
             threshold=self.config.memory.relevance,
-            size=10
+            size=5
         )
 
         log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
 
         # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
         while ret:
-            doc = random.sample(ret, k=1)[0]
-            ret.remove(doc)
+            (convo_id, score) = random.sample(ret, k=1)[0]
+            ret.remove((convo_id, score))
 
-            convo_id = doc[0].metadata['id'].split(':')[3]
             warned = set()
             if convo_id in convo.visited:
                 if convo_id not in warned:
@@ -152,10 +151,10 @@ class Interact:
             convo.visited.add(convo_id)
             summary = self.recall.fetch_summary(convo_id)
             if summary:
-                log.warning(f"✅ Found relevant memory with score: {doc[1]}:", summary[:30] + "...")
+                log.warning(f"✅ Found relevant memory with score: {score}:", summary[:30] + "...")
                 preamble = self.get_time_preamble(convo_id)
                 self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n\n\n", verb="recalls")
-                break
+                # break
 
         # Recent summaries + conversation
         max_tokens = int(self.lm.max_prompt_length() * 0.3)

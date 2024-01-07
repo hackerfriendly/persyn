@@ -243,27 +243,25 @@ class Recall:
         else:
             active = " *"
 
-        query = Query(scquery(service, channel) + active).dialect(2).return_fields("id")
+        query = Query(scquery(service, channel) + active).sort_by('convo_id').dialect(2).return_fields("id")
 
         for doc in self.redis.ft(self.convo_prefix).search(query).docs:
             ret.append(doc.id.split(':')[3])
 
         return sorted(ret)
 
-    def get_last_convo_id(self, service, channel) -> str:
+    def get_last_convo_id(self, service, channel) -> Union[str, None]:
         ''' Returns the most recent convo id for this service + channel from Redis '''
-        ret = []
 
-        query = Query(scquery(service, channel)).dialect(2).return_fields("id")
+        query = Query(scquery(service, channel)).sort_by('convo_id', asc=False).paging(0, 1).dialect(2).return_fields("id")
 
-        for doc in self.redis.ft(self.convo_prefix).search(query).docs:
-            ret.append(doc.id.split(':')[3])
+        docs = self.redis.ft(self.convo_prefix).search(query).docs
 
-        if not ret:
+        if not docs:
             log.warning('No last_convo_id for:', f"{service}|{channel}")
             return None
 
-        return sorted(ret)[-1]
+        return docs[0].id.split(':')[3]
 
     def get_last_message_id(self, convo_id) -> str:
         '''
@@ -383,13 +381,13 @@ class Recall:
 
         return False
 
-    def find_related_convos(self, service, channel, text, exclude_convo_ids=None, threshold=1.0, size=1) -> List[str]:
+    def find_related_convos(self, service, channel, text, exclude_convo_ids=None, threshold=1.0, size=1) -> List[tuple[str, float]]:
         '''
         Find conversations related to text using vector similarity
         '''
-        log.debug(f"find_related_convos: {service} {channel} {text} {exclude_convo_ids} {threshold} {size}")
+        log.debug(f"find_related_convos: {service} {channel} '{text}' {exclude_convo_ids} {threshold} {size}")
 
-        if not text:
+        if not text or len(text) < 20:
             return []
 
         # TODO: truncate or paginate at 8191 tokens HERE.
@@ -429,7 +427,6 @@ class Recall:
 
         log.info("👨‍👩‍👧‍👦 find_related_convos():", f"{reply.total} matches, {len(reply.docs)} <= {threshold:0.3f}{best}")
 
-        # TODO: also return scores?
-        ret = [doc.id.split(':')[3] for doc in reply.docs]
+        ret = [(doc.id.split(':')[3], float(doc.score)) for doc in reply.docs]
         log.warning('find_related_convos():', ret)
         return ret
