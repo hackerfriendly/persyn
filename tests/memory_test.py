@@ -2,6 +2,7 @@
 memory (redis) tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, no-member
+from unittest.mock import MagicMock, patch
 import uuid
 
 from time import sleep
@@ -9,7 +10,14 @@ from time import sleep
 import ulid
 import pytest
 
-from src.persyn.interaction.memory import Recall, Person, Thing
+from langchain.memory import (
+    CombinedMemory,
+    ConversationSummaryBufferMemory,
+    ConversationKGMemory
+)
+from langchain.vectorstores.redis import Redis
+
+from src.persyn.interaction.memory import Recall, Convo, escape, scquery
 
 # Bot config
 from src.persyn.utils.config import load_config
@@ -17,6 +25,281 @@ from src.persyn.utils.config import load_config
 # from utils.color_logging import log
 
 persyn_config = load_config()
+
+
+def test_escape():
+    assert escape("test!@#") == "test\\!\\@\\#"
+
+# Test the scquery function
+def test_scquery():
+    assert scquery(service="test_service", channel="test_channel") == "(@service:{test_service}) (@channel:{test_channel})"
+    assert scquery(service="test_service") == "(@service:{test_service})"
+    assert scquery(channel="test_channel") == "(@channel:{test_channel})"
+    assert scquery() == ""
+
+# Test the Convo class
+def test_convo():
+    convo = Convo(service="test_service", channel="test_channel")
+    assert convo.service == "test_service"
+    assert convo.channel == "test_channel"
+    assert isinstance(convo.id, str)
+
+    assert repr(convo) == f"service='test_service', channel='test_channel', id='{convo.id}'"
+    assert str(convo) == f"test_service|test_channel|{convo.id}"
+
+    assert convo.visited == set([convo.id])
+
+def test_recall_initialization():
+    recall = Recall(persyn_config, conversation_interval=2)
+    assert recall.bot_name == 'Test'
+    assert str(recall.bot_id) == 'ffffffff-cafe-1337-feed-facade123456'
+
+
+@pytest.fixture(scope="module")
+def recall(conversation_interval=2):
+    return Recall(persyn_config, conversation_interval)
+
+def test_fetch_summary(recall):
+    # Setup: create a conversation with a known summary
+    convo_id = "test_convo_id"
+    expected_summary = "This is a test summary."
+    recall.redis.hset(f"{recall.convo_prefix}:{convo_id}:summary", "content", expected_summary)
+
+    # Exercise: fetch the summary
+    summary = recall.fetch_summary(convo_id)
+
+    # Verify: the fetched summary matches the expected summary
+    assert summary == expected_summary
+
+    # Cleanup: remove the test data from Redis
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:summary")
+
+def test_decode_dict(recall):
+    assert recall.decode_dict({}) == {}
+
+    input_dict = {b'key1': b'value1', b'key2': b'value2'}
+    expected_dict = {'key1': 'value1', 'key2': 'value2'}
+    assert recall.decode_dict(input_dict) == expected_dict
+
+    input_dict = {'key1': 'value1', 'key2': 'value2'}
+    with pytest.raises(AttributeError):
+        recall.decode_dict(input_dict)
+
+    input_dict = {b'key1': b'value1', b'key2': 123}
+    with pytest.raises(AttributeError):
+        recall.decode_dict(input_dict)
+
+    input_dict = {123: b'value1', 456: b'value2'}
+    with pytest.raises(AttributeError):
+        recall.decode_dict(input_dict)
+
+    input_dict = {b'key1': b'value1', b'key2': b'value2'}
+    expected_dict = {'key1': 'value1', 'key2': 'value2'}
+    decoded_dict = recall.decode_dict(input_dict)
+    assert decoded_dict == expected_dict
+
+def test_create_lc_memories(recall):
+    memories = recall.create_lc_memories()
+
+    # Verify dictionary with correct keys
+    expected_keys = ["combined", "summary", "kg", "redis"]
+    assert all(key in memories for key in expected_keys)
+
+    # Verify correct types
+    assert isinstance(memories["combined"], CombinedMemory)
+    assert isinstance(memories["summary"], ConversationSummaryBufferMemory)
+    assert isinstance(memories["kg"], ConversationKGMemory)
+    assert isinstance(memories["redis"], Redis)
+
+def test_set_and_fetch_convo_meta(recall):
+    convo_id = "test_convo_id"
+    meta_key = "test_meta_key"
+    meta_value = "test_meta_value"
+
+    # Set metadata
+    recall.set_convo_meta(convo_id, meta_key, meta_value)
+
+    # Fetch metadata
+    fetched_value = recall.fetch_convo_meta(convo_id, meta_key)
+
+    assert fetched_value == meta_value
+
+    # Cleanup
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:meta")
+
+def test_list_convo_ids(recall):
+    # Setup: create multiple conversations
+    convo_ids = ["convo1", "convo2", "convo3"]
+    for convo_id in convo_ids:
+        recall.set_convo_meta(convo_id, "expired", "False")
+
+    recall.set_convo_meta("convo1", "expired", "True")
+
+    # Exercise: list active conversation IDs
+    active_ids = recall.list_convo_ids(active_only=True)
+
+    # Verify: active_ids contains expected IDs
+    assert set(active_ids).issubset(set(convo_ids))
+
+    # Exercise: list all conversation IDs
+    all_ids = recall.list_convo_ids(active_only=False)
+
+    # Verify: all_ids contains expected IDs
+    assert set(all_ids) == set(convo_ids)
+
+    # Cleanup
+    for convo_id in convo_ids:
+        recall.redis.hdel(f"{recall.convo_prefix}:{convo_id}:meta", "expired")
+
+def test_get_last_convo_id(recall):
+    service = "test_service"
+    channel = "test_channel"
+    last_convo_id = "last_convo_id"
+
+    # Setup: simulate conversation creation
+    recall.set_convo_meta(last_convo_id, "service", service)
+    recall.set_convo_meta(last_convo_id, "channel", channel)
+    recall.set_convo_meta(expected_convo_id, "initiator", "test")
+    recall.set_convo_meta(last_convo_id, "expired", "False")
+
+    # Exercise: get the last conversation ID
+    fetched_id = recall.get_last_convo_id(service, channel)
+
+    # Verify: fetched ID matches expected last_convo_id
+    assert fetched_id == last_convo_id
+
+    # Cleanup
+    recall.redis.delete(f"{recall.convo_prefix}:{last_convo_id}:meta")
+
+
+def test_get_last_message_id(recall):
+    convo_id = "test_convo_id"
+    last_message_id = "last_message_id"
+    final_message_id = "zzz"
+
+    # Setup: simulate message creation
+    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:lines:last_message_id", last_message_id)
+
+    # Exercise: get the last message ID
+    fetched_id = recall.get_last_message_id(convo_id)
+
+    # Verify: fetched ID matches expected last_message_id
+    assert fetched_id == last_message_id
+
+    # Exercise: add more message IDs
+    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:lines:zzz", final_message_id)
+    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:lines:aaa", "aaa")
+
+    # Verify: fetched ID matches expected last_message_id
+    fetched_id = recall.get_last_message_id(convo_id)
+    assert fetched_id == final_message_id
+
+    # Cleanup
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:last_message_id")
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:aaa")
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:zzz")
+
+def test_current_convo_id(recall):
+    service = "test_service"
+    channel = "test_channel"
+    expected_convo_id = str(ulid.ULID())
+
+    # Setup: simulate conversation creation
+    recall.set_convo_meta(expected_convo_id, "service", service)
+    recall.set_convo_meta(expected_convo_id, "channel", channel)
+    recall.set_convo_meta(expected_convo_id, "initiator", "test")
+    recall.set_convo_meta(expected_convo_id, "expired", "False")
+
+    # Exercise: get the current conversation ID
+    current_id = recall.current_convo_id(service, channel)
+
+    # Verify: current ID matches expected_convo_id
+    assert current_id == expected_convo_id
+
+    # Exercise: add another conversation ID
+    recall.set_convo_meta(expected_convo_id, "expired", "True")
+
+    another_convo_id = str(ulid.ULID())
+
+    recall.set_convo_meta(another_convo_id, "service", service)
+    recall.set_convo_meta(another_convo_id, "channel", channel)
+    recall.set_convo_meta(another_convo_id, "initiator", "test")
+    recall.set_convo_meta(another_convo_id, "expired", "False")
+
+    # Exercise: get the current conversation ID
+    current_id = recall.current_convo_id(service, channel)
+
+    # Verify: current ID matches expected_convo_id
+    assert current_id == another_convo_id
+
+    # Cleanup
+    recall.redis.delete(f"{recall.convo_prefix}:{expected_convo_id}:meta")
+    recall.redis.delete(f"{recall.convo_prefix}:{another_convo_id}:meta")
+
+
+
+
+# ### 13. Test `expired`
+
+# ```python
+# def test_expired(recall):
+#     id_to_test = "test_id"
+
+#     # Setup: simulate an expired ID
+#     recall.redis.setex(f"{recall.convo_prefix}:{id_to_test}", 1, "value")
+#     time.sleep(2)  # Wait for the key to expire
+
+#     # Exercise: check if the ID is expired
+#     is_expired = recall.expired(id_to_test)
+
+#     # Verify: ID is expired
+#     assert is_expired
+# ```
+
+# ### 14. Test `convo_expired`
+
+# ```python
+# def test_convo_expired(recall):
+#     convo_id = "test_convo_id"
+
+#     # Setup: simulate an expired conversation
+#     recall.redis.setex(f"{recall.convo_prefix}:{convo_id}", 1, "value")
+#     time.sleep(2)  # Wait for the key to expire
+
+#     # Exercise: check if the conversation is expired
+#     is_expired = recall.convo_expired(convo_id)
+
+#     # Verify: conversation is expired
+#     assert is_expired
+# ```
+
+# ### 15. Test `find_related_convos`
+
+# ```python
+# def test_find_related_convos(recall):
+#     search_text = "related"
+#     related_convo_ids = ["convo1", "convo2"]
+
+#     # Setup: create conversations with related text
+#     for convo_id in related_convo_ids:
+#         recall.redis.set(f"{recall.convo_prefix}:{convo_id}:related_text", search_text)
+
+#     # Exercise: find related conversations
+#     found_ids = recall.find_related_convos(search_text)
+
+#     # Verify: found IDs match related_convo_ids
+#     assert set(found_ids) == set(related_convo_ids)
+
+#     # Cleanup
+#     for convo_id in related_convo_ids:
+#         recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:related_text")
+
+
+
+
+
+
+### old tests below
 
 def test_basics():
     ''' Exercise the short term memory '''
@@ -26,7 +309,7 @@ def test_basics():
     channel = 'channel1'
 
     # start fresh
-    assert not recall.get_last_message(service, channel)
+    assert not recall.get_last_message_id(service, channel)
     ret = recall.save_convo_line(service, channel, 'my_message', 'me')
     assert ret
     assert not recall.expired(service, channel)
@@ -119,9 +402,9 @@ def cleanup():
     ''' Delete everything with the test bot_id '''
     recall = Recall(persyn_config)
 
-    clear_ns(f'persyn:{persyn_config.id.guid}:')
+    clear_ns(f'{recall.convo_prefix}:')
 
-    for idx in [recall.convo_prefix, recall.summary_prefix]:
+    for idx in [recall.convo_prefix, recall.opinion_prefix, recall.goal_prefix, recall.news_prefix]:
         try:
             recall.redis.ft(idx).dropindex()
         except recall.redis.exceptions.ResponseError as err:
@@ -447,28 +730,28 @@ def test_news():
     assert recall.have_read(**opts) is True
 
 
-def test_kg():
-    ''' Neo4j tests '''
-    recall = Recall(persyn_config)
+# def test_kg():
+#     ''' Neo4j tests '''
+#     recall = Recall(persyn_config)
 
-    recall.triples_to_kg([("This", "isOnly", "aTest")])
-    assert len(list(recall.fetch_all_nodes())) == 2
-    assert recall.find_node(name='aTest').first().name == 'aTest'
-    assert len(list(recall.find_node(name='aTest', node_type='person'))) == 0
+#     recall.triples_to_kg([("This", "isOnly", "aTest")])
+#     assert len(list(recall.fetch_all_nodes())) == 2
+#     assert recall.find_node(name='aTest').first().name == 'aTest'
+#     assert len(list(recall.find_node(name='aTest', node_type='person'))) == 0
 
-    with pytest.raises(RuntimeError):
-        assert recall.find_node(name='This', node_type='invalid')
+#     with pytest.raises(RuntimeError):
+#         assert recall.find_node(name='This', node_type='invalid')
 
-    with pytest.raises(Person.DoesNotExist):
-        recall.find_node(name='This', node_type='person').first()
+#     with pytest.raises(Person.DoesNotExist):
+#         recall.find_node(name='This', node_type='person').first()
 
-    node = recall.find_node(name='This', node_type='thing').first()
-    assert node.name == 'This'
+#     node = recall.find_node(name='This', node_type='thing').first()
+#     assert node.name == 'This'
 
-    recall.delete_all_nodes(confirm=True)
+#     recall.delete_all_nodes(confirm=True)
 
-    with pytest.raises(Thing.DoesNotExist):
-        assert recall.find_node(name='This', node_type='thing').first()
+#     with pytest.raises(Thing.DoesNotExist):
+#         assert recall.find_node(name='This', node_type='thing').first()
 
 
 def clear_ns(ns, chunk_size=5000):

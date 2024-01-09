@@ -72,6 +72,7 @@ class Recall:
     Also includes helpers for accessing the knowledge graph.
     '''
     config: PersynConfig
+    conversation_interval: Optional[int] = None
 
     def __post_init__(self, conversation_interval: Optional[int] = None) -> None:
 

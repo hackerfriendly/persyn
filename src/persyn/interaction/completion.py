@@ -233,6 +233,26 @@ class LanguageModel:
         ''' Cosine similarity for two embeddings '''
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
+    def cleanup_keywords(self, text):
+        ''' Tidy up raw completion keywords into a simple list '''
+        keywords = []
+        bot_name = self.bot_name.lower()
+
+        for kw in [item.strip() for line in text.replace('#', '\n').split('\n') for item in line.split(',')]:
+            # Regex chosen by GPT-4 to match bulleted lists (#*-) or numbered lists, with further tweaks. 😵‍💫
+            match = re.search(r'^\s*(?:\d+\.\s+|\*\s+|-{1}\s*|#\s*)?(.*)', kw)
+            # At least one alpha required
+            if match and re.match(r'.*[a-zA-Z]', match.group(1)):
+                kw = match.group(1).strip()
+            elif re.match(r'.*[a-zA-Z]', kw):
+                kw = kw.strip()
+            else:
+                continue
+
+            if kw.lower() != bot_name:
+                keywords.append(kw.lower())
+
+        return sorted(set(keywords))
 
     @staticmethod
     def camelCaseName(name):
