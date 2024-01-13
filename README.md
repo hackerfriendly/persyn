@@ -26,7 +26,7 @@ Persyn in intended to run from inside a python virtualenv.
 On first launch it will download required models and install necessary packages inside the virtualenv.
 
 ```
-$ virtualenv --python=python3.9 env
+$ virtualenv --python=python3.10 env
 $ . env/bin/activate
 (env) $ pip install --upgrade pip # best practice
 (env) $ pip install persyn
@@ -38,7 +38,7 @@ The default install only includes chat support. If you'd also like to generate a
 (env) $ pip install persyn[all]
 ```
 
-Image posting now requires Schuyler Erle's https://github.com/schuyler/autobus/ which must be installed manually (for now).
+The event dispatch system uses a fork of Schuyler Erle's https://github.com/schuyler/autobus/. It will install from pypi instead as soon as a package is available.
 
 Tmux is also highly recommended, and is required for using the bot launcher.
 
@@ -53,7 +53,7 @@ Best to build from scratch. TODO: Instructions needed.
 
 # Neo4j (optional but recommended)
 
-The knowledge graph is kept in Neo4j. Some day this will use RedisGraph instead, but not until it supports first-class updates of existing graphs. Until then, you'll need a separate Neo4j instance.
+The knowledge graph is implemented in Neo4j.
 
 # Configure a new bot
 
