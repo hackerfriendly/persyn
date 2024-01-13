@@ -2,6 +2,7 @@
 memory (redis) tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, no-member
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 import uuid
 
@@ -26,6 +27,37 @@ from src.persyn.utils.config import load_config
 
 persyn_config = load_config()
 
+def clear_ns(ns, chunk_size=5000):
+    ''' Clear a namespace '''
+    recall = Recall(persyn_config)
+
+    if not ns or ':' not in ns:
+        return False
+
+    cursor = '0'
+    while cursor != 0:
+        cursor, keys = recall.redis.scan(cursor=cursor, match=f"{ns}*", count=chunk_size)
+        if keys:
+            recall.redis.delete(*keys)
+    return True
+
+@pytest.fixture
+def cleanup():
+    ''' Delete everything with the test bot_id '''
+    yield
+
+    recall = Recall(persyn_config)
+    clear_ns(recall.convo_prefix)
+
+    for idx in [recall.convo_prefix, recall.opinion_prefix, recall.goal_prefix, recall.news_prefix]:
+        try:
+            recall.redis.ft(idx).dropindex()
+        except recall.redis.exceptions.ResponseError as err:
+            print(f"Couldn't drop index {idx}:", err)
+
+@pytest.fixture
+def recall(conversation_interval=2):
+    return Recall(persyn_config, conversation_interval)
 
 def test_escape():
     assert escape("test!@#") == "test\\!\\@\\#"
@@ -55,11 +87,9 @@ def test_recall_initialization():
     assert str(recall.bot_id) == 'ffffffff-cafe-1337-feed-facade123456'
 
 
-@pytest.fixture(scope="module")
-def recall(conversation_interval=2):
-    return Recall(persyn_config, conversation_interval)
 
-def test_fetch_summary(recall):
+
+def test_fetch_summary(recall, cleanup):
     # Setup: create a conversation with a known summary
     convo_id = "test_convo_id"
     expected_summary = "This is a test summary."
@@ -70,9 +100,6 @@ def test_fetch_summary(recall):
 
     # Verify: the fetched summary matches the expected summary
     assert summary == expected_summary
-
-    # Cleanup: remove the test data from Redis
-    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:summary")
 
 def test_decode_dict(recall):
     assert recall.decode_dict({}) == {}
@@ -111,7 +138,7 @@ def test_create_lc_memories(recall):
     assert isinstance(memories["kg"], ConversationKGMemory)
     assert isinstance(memories["redis"], Redis)
 
-def test_set_and_fetch_convo_meta(recall):
+def test_set_and_fetch_convo_meta(recall, cleanup):
     convo_id = "test_convo_id"
     meta_key = "test_meta_key"
     meta_value = "test_meta_value"
@@ -124,10 +151,7 @@ def test_set_and_fetch_convo_meta(recall):
 
     assert fetched_value == meta_value
 
-    # Cleanup
-    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:meta")
-
-def test_list_convo_ids(recall):
+def test_list_convo_ids(recall, cleanup):
     # Setup: create multiple conversations
     convo_ids = ["convo1", "convo2", "convo3"]
     for convo_id in convo_ids:
@@ -151,7 +175,7 @@ def test_list_convo_ids(recall):
     for convo_id in convo_ids:
         recall.redis.hdel(f"{recall.convo_prefix}:{convo_id}:meta", "expired")
 
-def test_get_last_convo_id(recall):
+def test_get_last_convo_id(recall, cleanup):
     service = "test_service"
     channel = "test_channel"
     last_convo_id = "last_convo_id"
@@ -172,7 +196,7 @@ def test_get_last_convo_id(recall):
     recall.redis.delete(f"{recall.convo_prefix}:{last_convo_id}:meta")
 
 
-def test_get_last_message_id(recall):
+def test_get_last_message_id(recall, cleanup):
     convo_id = "test_convo_id"
     last_message_id = "last_message_id"
     final_message_id = "zzz"
@@ -199,7 +223,7 @@ def test_get_last_message_id(recall):
     recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:aaa")
     recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:zzz")
 
-def test_current_convo_id(recall):
+def test_current_convo_id(recall, cleanup):
     service = "test_service"
     channel = "test_channel"
     expected_convo_id = str(ulid.ULID())
@@ -236,90 +260,111 @@ def test_current_convo_id(recall):
     recall.redis.delete(f"{recall.convo_prefix}:{expected_convo_id}:meta")
     recall.redis.delete(f"{recall.convo_prefix}:{another_convo_id}:meta")
 
-# ### 13. Test `expired`
+def test_post_init(recall):
+    assert recall.bot_name == recall.config.id.name
+    assert recall.bot_id == uuid.UUID(recall.config.id.guid)
+    assert recall.conversation_interval == recall.config.memory.conversation_interval
+    assert recall.max_summary_size == recall.config.memory.max_summary_size
+    # Add more assertions for the indices and Redis commands if necessary
 
-# ```python
-# def test_expired(recall):
-#     id_to_test = "test_id"
+def test_id_to_epoch():
+    # Generate a ULID and test conversion
+    ulid_str = str(ulid.ULID())
+    epoch = Recall.id_to_epoch(ulid_str)
+    assert type(epoch) == float
+    assert epoch > 0
 
-#     # Setup: simulate an expired ID
-#     recall.redis.setex(f"{recall.convo_prefix}:{id_to_test}", 1, "value")
-#     time.sleep(2)  # Wait for the key to expire
+# Test id_to_timestamp method
+def test_id_to_timestamp(recall):
+    # Generate a ULID and test conversion
+    ulid_str = str(ulid.ULID())
+    timestamp = recall.id_to_timestamp(ulid_str)
+    assert type(timestamp) == str
+    # You can add more checks here to ensure the timestamp is in the expected format
 
-#     # Exercise: check if the ID is expired
-#     is_expired = recall.expired(id_to_test)
+def test_new_convo_without_convo_id(recall, cleanup):
+    service = "test_service"
+    channel = "test_channel"
+    speaker_name = "test_speaker"
 
-#     # Verify: ID is expired
-#     assert is_expired
-# ```
+    # Start a new conversation without a convo_id
+    convo = recall.new_convo(service, channel, speaker_name)
 
-# ### 14. Test `convo_expired`
+    # Verify that a Convo instance is returned
+    assert isinstance(convo, Convo)
 
-# ```python
-# def test_convo_expired(recall):
-#     convo_id = "test_convo_id"
+    # Verify the Convo instance has the correct attributes
+    assert convo.service == service
+    assert convo.channel == channel
+    assert convo.id is not None  # A convo_id should be generated
 
-#     # Setup: simulate an expired conversation
-#     recall.redis.setex(f"{recall.convo_prefix}:{convo_id}", 1, "value")
-#     time.sleep(2)  # Wait for the key to expire
+    # Verify that conversation metadata is set correctly in Redis
+    assert recall.fetch_convo_meta(convo.id, "service") == service
+    assert recall.fetch_convo_meta(convo.id, "channel") == channel
+    assert recall.fetch_convo_meta(convo.id, "initiator") == speaker_name
+    assert recall.fetch_convo_meta(convo.id, "expired") == "False"
 
-#     # Exercise: check if the conversation is expired
-#     is_expired = recall.convo_expired(convo_id)
+    # Clean up after the test
+    recall.redis.delete(convo.id)
 
-#     # Verify: conversation is expired
-#     assert is_expired
-# ```
+# Test convo_expired method
+def test_convo_expired(recall, cleanup):
+    # Test with no convo_id and no service and channel
+    service = "test_service"
+    channel = "test_channel"
+    speaker_name = "test_speaker"
 
-# ### 15. Test `find_related_convos`
+    with pytest.raises(RuntimeError):
+        recall.convo_expired()
 
-# ```python
-# def test_find_related_convos(recall):
-#     search_text = "related"
-#     related_convo_ids = ["convo1", "convo2"]
+    # Start a new conversation without a convo_id
+    convo = recall.new_convo(service, channel, speaker_name)
+    assert recall.convo_expired(service, channel, convo.id) is False
 
-#     # Setup: create conversations with related text
-#     for convo_id in related_convo_ids:
-#         recall.redis.set(f"{recall.convo_prefix}:{convo_id}:related_text", search_text)
+    # Test manual expiration
+    recall.set_convo_meta(convo.id, "expired", "True")
+    assert recall.convo_expired(service, channel, convo.id) is True
 
-#     # Exercise: find related conversations
-#     found_ids = recall.find_related_convos(search_text)
+    # Test automatic expiration
+    recall.set_convo_meta(convo.id, "expired", "False")
+    assert recall.convo_expired(service, channel, convo.id) is False
 
-#     # Verify: found IDs match related_convo_ids
-#     assert set(found_ids) == set(related_convo_ids)
+    # Backdate the conversation
+    line_id = str(ulid.ULID().from_datetime(datetime(2021, 1, 1)))
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{line_id}", "service", service)
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{line_id}", "channel", channel)
 
-#     # Cleanup
-#     for convo_id in related_convo_ids:
-#         recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:related_text")
+    # Convo should now be expired
+    assert recall.convo_expired(service, channel, convo.id) is True
 
-def test_cleanup():
-    ''' Clean it all up at the end '''
-    cleanup()
+def test_convo_expired_with_convo_id(recall, cleanup):
+    # Test with a convo_id
+    service = "test_service"
+    channel = "test_channel"
+    speaker_name = "test_speaker"
 
-def clear_ns(ns, chunk_size=5000):
-    ''' Clear a namespace '''
-    recall = Recall(persyn_config)
+    # Backdate the conversation
+    convo_id = str(ulid.ULID().from_datetime(datetime(2021, 1, 1)))
 
-    if not ns:
-        return False
+    # Start a new conversation without an expired convo_id and no conversation
+    convo = recall.new_convo(service, channel, speaker_name, convo_id)
+    assert recall.convo_expired(service, channel, convo.id) is True
 
-    cursor = '0'
-    while cursor != 0:
-        cursor, keys = recall.redis.scan(cursor=cursor, match=f"{ns}*", count=chunk_size)
-        if keys:
-            recall.redis.delete(*keys)
-    return True
+    # Revive the convo
+    new_convo_id = str(ulid.ULID())
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{new_convo_id}", "service", service)
+    recall.set_convo_meta(convo.id, "expired", "False")
+    assert recall.convo_expired(service, channel, convo.id) is False
 
-def cleanup():
-    ''' Delete everything with the test bot_id '''
-    recall = Recall(persyn_config)
+    # Now expire it again
+    recall.redis.delete(f"{recall.convo_prefix}:{convo.id}:lines:{new_convo_id}")
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{convo_id}", "service", service)
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{convo_id}", "channel", channel)
 
-    clear_ns(recall.convo_prefix)
+    # Convo should now be expired
+    assert recall.convo_expired(service, channel, convo.id) is True
 
-    for idx in [recall.convo_prefix, recall.opinion_prefix, recall.goal_prefix, recall.news_prefix]:
-        try:
-            recall.redis.ft(idx).dropindex()
-        except recall.redis.exceptions.ResponseError as err:
-            print(f"Couldn't drop index {idx}:", err)
+
 
 
 ### old tests below

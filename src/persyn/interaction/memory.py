@@ -325,7 +325,7 @@ class Recall:
 
     def convo_expired(self, service: Optional[str] = None, channel: Optional[str] = None, convo_id: Optional[str] = None) -> bool:
         '''
-        True if the timestamp of the last message for this convo is expired, else False.
+        True if the convo metadata is expired, or if the timestamp of the last message for this convo is expired. Otherwise False.
         '''
         if convo_id is None and not all([service, channel]):
             raise RuntimeError("You must specify a convo_id or both service and channel.")
