@@ -358,7 +358,7 @@ class Recall:
         '''
         log.debug(f"find_related_convos: {service} {channel} '{text}' {exclude_convo_ids} {threshold} {size}")
 
-        if not text or len(text) < 20:
+        if not text or len(text) < 4:
             return []
 
         # TODO: truncate or paginate at 8191 tokens HERE.
