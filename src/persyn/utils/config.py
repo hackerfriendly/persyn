@@ -149,11 +149,16 @@ def load_config(cfg=None):
 
     if 'completion' in config:
         completion_defaults = {
-            'engine': 'openai',
             'openai_api_base': 'https://api.openai.com/v1',
+            'openai_api_key': None,
             'openai_org': None,
             'chat_model': 'gpt-3.5-turbo',
-            'reasoning_model': 'gpt-4'
+            'chat_temperature': 0.9,
+            'reasoning_model': 'gpt-4',
+            'reasoning_temperature': 0.9,
+            'anthropic_model': 'claude-2.1',
+            'anthropic_key': None,
+            'anthropic_temperature': 0
         }
         for setting, val in completion_defaults.items():
             if setting not in config['completion']:

@@ -4,6 +4,8 @@
 import re
 
 from dataclasses import dataclass
+from typing import Union
+import pydantic
 import spacy
 import tiktoken
 
@@ -12,8 +14,9 @@ import openai
 import numpy as np
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai.llms.base import BaseOpenAI
 from langchain_community.chat_models import ChatAnthropic
-from langchain.llms.openai import OpenAI, BaseOpenAI
+
 # from langchain.globals import set_verbose
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
@@ -28,24 +31,24 @@ log = ColorLog()
 
 # set_verbose(True)
 
-def setup_llm(config, **kwargs):
-    ''' Construct the proper LLM or Chat object for model '''
-    if kwargs['model'].startswith('gpt-'):
-        return ChatOpenAI(
-            openai_api_key=config.completion.openai_api_key,
-            openai_organization=config.completion.openai_org,
-            **kwargs
-        )
+def setup_llm(config, **kwargs) -> Union[ChatOpenAI, ChatAnthropic, None]:
+    ''' Construct the proper Chat object for model. TODO: support for other LLMs. '''
     if kwargs['model'].startswith('claude-'):
-        return ChatAnthropic(
-            anthropic_api_key=config.completion.anthropic_key,
-            **kwargs
-        )
-    return OpenAI(
+        try:
+            return ChatAnthropic(
+                anthropic_api_key=config.completion.anthropic_key,
+                **kwargs
+            )
+        except pydantic.ValidationError:
+            log.warning('anthropic_key not found in config.completion, skipping Anthropic support.')
+            return None
+
+    return ChatOpenAI(
         openai_api_key=config.completion.openai_api_key,
         openai_organization=config.completion.openai_org,
         **kwargs
     )
+
 
 @dataclass
 class LanguageModel:
@@ -151,7 +154,7 @@ class LanguageModel:
             if not tl:
                 continue
 
-            if total + tl >= max_tokens:
+            if total + tl > max_tokens:
                 ret = ' '.join(words)
                 total = tl
                 words = [word]
