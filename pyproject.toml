@@ -79,6 +79,7 @@ captions = "persyn.dreams.BLIP.captions:main"
 
 [project.optional-dependencies]
 dev = [
+  "freezegun",
   "pytest",
   "pylint",
   "jupyterlab",

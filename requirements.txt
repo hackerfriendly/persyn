@@ -9,6 +9,7 @@ dalle2>=1.0.7
 discord.py
 dotwiz
 fastapi[all]
+freezegun
 ftfy
 humanize
 Levenshtein
