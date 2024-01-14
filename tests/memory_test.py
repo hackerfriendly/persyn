@@ -2,11 +2,8 @@
 memory (redis) tests
 '''
 # pylint: disable=import-error, wrong-import-position, invalid-name, no-member
-from datetime import datetime
-from unittest.mock import MagicMock, patch
 import uuid
-
-from time import sleep
+import datetime as dt
 
 import ulid
 import pytest
@@ -153,27 +150,43 @@ def test_set_and_fetch_convo_meta(recall, cleanup):
 
 def test_list_convo_ids(recall, cleanup):
     # Setup: create multiple conversations
-    convo_ids = ["convo1", "convo2", "convo3"]
-    for convo_id in convo_ids:
-        recall.set_convo_meta(convo_id, "expired", "False")
+    service = "test_service_list_convo_ids"
+    channel = "test_channel_list_convo_ids"
+    speaker = "test_speaker"
 
-    recall.set_convo_meta("convo1", "expired", "True")
+    convo_ids = [convo.id for convo in [recall.new_convo(service, channel, speaker) for _ in range(3)]]
 
-    # Exercise: list active conversation IDs
-    active_ids = recall.list_convo_ids(active_only=True)
+    assert convo_ids[0] != convo_ids[1] != convo_ids[2]
+    assert recall.list_convo_ids(service, channel) == convo_ids
 
-    # Verify: active_ids contains expected IDs
-    assert set(active_ids).issubset(set(convo_ids))
+    assert recall.list_convo_ids(service, channel, expired=True) == []
+    assert recall.list_convo_ids(service, channel, expired=False) == convo_ids
 
-    # Exercise: list all conversation IDs
-    all_ids = recall.list_convo_ids(active_only=False)
+    # Exercise: expire one conversation
+    recall.expire_convo(convo_ids[1])
 
-    # Verify: all_ids contains expected IDs
-    assert set(all_ids) == set(convo_ids)
+    # Verify: expired conversation is not listed
+    assert recall.list_convo_ids(service, channel, expired=False) == [convo_ids[0], convo_ids[2]]
+    assert recall.list_convo_ids(service, channel, expired=True) == [convo_ids[1]]
 
-    # Cleanup
-    for convo_id in convo_ids:
-        recall.redis.hdel(f"{recall.convo_prefix}:{convo_id}:meta", "expired")
+    # Still listed when expired=None
+    assert recall.list_convo_ids(service, channel) == [convo_ids[0], convo_ids[1], convo_ids[2]]
+
+    # Excersize: test paging. This returns the newest conversation first.
+    assert recall.list_convo_ids(service, channel, expired=False, size=1) == [convo_ids[2]]
+
+    # Expire the other conversations
+    recall.expire_convo(convo_ids[0])
+    recall.expire_convo(convo_ids[2])
+
+    # Verify: all conversations are expired
+    assert recall.list_convo_ids(service, channel, expired=False) == []
+    assert recall.list_convo_ids(service, channel, expired=True) == [convo_ids[0], convo_ids[1], convo_ids[2]]
+
+    # Test after
+    recall.set_convo_meta(convo_ids[0], "expired_at", dt.datetime.now().timestamp() - 1000)
+    assert recall.list_convo_ids(service, channel, expired=True, after=10) == [convo_ids[1], convo_ids[2]]
+    assert recall.list_convo_ids(service, channel, expired=True, after=1001) == [convo_ids[0], convo_ids[1], convo_ids[2]]
 
 def test_get_last_convo_id(recall, cleanup):
     service = "test_service"
@@ -224,43 +237,43 @@ def test_get_last_message_id(recall, cleanup):
     recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:zzz")
 
 def test_current_convo_id(recall, cleanup):
+    ''' Revisit this if multiple conversations are allowed at once. '''
     service = "test_service"
     channel = "test_channel"
-    expected_convo_id = str(ulid.ULID())
+    speaker_name = "test_speaker"
 
-    # Setup: simulate conversation creation
-    recall.set_convo_meta(expected_convo_id, "service", service)
-    recall.set_convo_meta(expected_convo_id, "channel", channel)
-    recall.set_convo_meta(expected_convo_id, "initiator", "test")
-    recall.set_convo_meta(expected_convo_id, "expired", "False")
+    # Setup: start a conversation creation
+    first_convo = recall.new_convo(service, channel, speaker_name)
 
-    # Exercise: get the current conversation ID
-    current_id = recall.current_convo_id(service, channel)
-
-    # Verify: current ID matches expected_convo_id
-    assert current_id == expected_convo_id
+    # Verify: current ID matches first_convo.id
+    assert first_convo.id == recall.current_convo_id(service, channel)
 
     # Exercise: add another conversation ID
-    recall.set_convo_meta(expected_convo_id, "expired", "True")
+    second_convo = recall.new_convo(service, channel, speaker_name)
 
-    another_convo_id = str(ulid.ULID())
+    # Verify: current ID matches second_convo.id
+    assert first_convo.id != second_convo.id
+    assert recall.current_convo_id(service, channel) == second_convo.id
 
-    recall.set_convo_meta(another_convo_id, "service", service)
-    recall.set_convo_meta(another_convo_id, "channel", channel)
-    recall.set_convo_meta(another_convo_id, "initiator", "test")
-    recall.set_convo_meta(another_convo_id, "expired", "False")
+    # Exercise: expire the second conversation
+    recall.expire_convo(second_convo.id)
 
-    # Exercise: get the current conversation ID
-    current_id = recall.current_convo_id(service, channel)
+    # Verify: No current convo (one convo at a time!)
+    assert recall.current_convo_id(service, channel) == None
 
-    # Verify: current ID matches expected_convo_id
-    assert current_id == another_convo_id
+    # Exercise: create another conversation
+    third_convo = recall.new_convo(service, channel, speaker_name)
 
-    # Cleanup
-    recall.redis.delete(f"{recall.convo_prefix}:{expected_convo_id}:meta")
-    recall.redis.delete(f"{recall.convo_prefix}:{another_convo_id}:meta")
+    # Verify: current ID matches third_convo.id
+    assert third_convo.id == recall.current_convo_id(service, channel)
 
-def test_post_init(recall):
+    # Expire the conversation
+    recall.expire_convo(third_convo.id)
+
+    # Verify: No current convo
+    assert recall.current_convo_id(service, channel) == None
+
+def test_post_recall_init(recall):
     assert recall.bot_name == recall.config.id.name
     assert recall.bot_id == uuid.UUID(recall.config.id.guid)
     assert recall.conversation_interval == recall.config.memory.conversation_interval
@@ -342,7 +355,7 @@ def test_convo_expired(recall, cleanup):
     assert recall.convo_expired(service, channel, convo.id) is False
 
     # Backdate the conversation
-    line_id = str(ulid.ULID().from_datetime(datetime(2021, 1, 1)))
+    line_id = str(ulid.ULID().from_datetime(dt.datetime(2021, 1, 1)))
     recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{line_id}", "service", service)
     recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{line_id}", "channel", channel)
 
@@ -356,7 +369,7 @@ def test_convo_expired_with_convo_id(recall, cleanup):
     speaker_name = "test_speaker"
 
     # Backdate the conversation
-    convo_id = str(ulid.ULID().from_datetime(datetime(2021, 1, 1)))
+    convo_id = str(ulid.ULID().from_datetime(dt.datetime(2021, 1, 1)))
 
     # Start a new conversation without an expired convo_id and no conversation
     convo = recall.new_convo(service, channel, speaker_name, convo_id)
@@ -376,7 +389,7 @@ def test_convo_expired_with_convo_id(recall, cleanup):
     # Convo should now be expired
     assert recall.convo_expired(service, channel, convo.id) is True
 
-def test_post_init():
+def test_post_convo_init():
     convo = Convo(service="test_service", channel="test_channel")
     assert isinstance(convo.id, str)
     assert len(convo.id) == 26  # ULID should be 26 characters long
