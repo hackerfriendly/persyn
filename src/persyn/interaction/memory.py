@@ -2,6 +2,7 @@
 # pylint: disable=invalid-name, no-name-in-module, abstract-method
 import re
 import uuid
+import datetime as dt
 
 from dataclasses import dataclass
 from typing import Union, List, Any, Optional
@@ -19,7 +20,7 @@ from langchain.memory import (
 from langchain.vectorstores.redis import Redis
 from redis.commands.search.query import Query
 
-from persyn.interaction.chrono import elapsed, get_cur_ts
+from persyn.interaction.chrono import elapsed, get_cur_ts, seconds_ago
 from persyn.interaction.completion import LanguageModel
 from persyn.utils.color_logging import ColorLog
 from persyn.utils.config import PersynConfig
@@ -116,7 +117,7 @@ class Recall:
 
         # Create indices
         for cmd in [
-            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG expired TAG role TAG speaker_name TAG initiator TAG verb TAG content TEXT convo_id TEXT feels TEXT content_vector VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
+            f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG expired TAG expired_at NUMERIC role TAG speaker_name TAG initiator TAG verb TAG content TEXT convo_id TEXT feels TEXT content_vector VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.opinion_prefix} on HASH PREFIX 1 {self.opinion_prefix}: SCHEMA service TAG channel TAG opinion TEXT topic TEXT convo_id TAG",
             f"FT.CREATE {self.goal_prefix} on HASH PREFIX 1 {self.goal_prefix}: SCHEMA service TAG channel TAG goal TEXT",
             f"FT.CREATE {self.news_prefix} on HASH PREFIX 1 {self.news_prefix}: SCHEMA service TAG channel TAG url TEXT title TEXT",
@@ -216,13 +217,16 @@ class Recall:
 
         if convo_id:
             log.warning("👉 Continuing convo:", convo)
+            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
         else:
             log.warning("⚠️  New convo:", convo)
 
-        self.set_convo_meta(convo.id, "service", service)
-        self.set_convo_meta(convo.id, "channel", channel)
-        self.set_convo_meta(convo.id, "initiator", speaker_name)
+            self.set_convo_meta(convo.id, "service", service)
+            self.set_convo_meta(convo.id, "channel", channel)
+            self.set_convo_meta(convo.id, "initiator", speaker_name)
+
         self.set_convo_meta(convo.id, "expired", "False")
+        self.set_convo_meta(convo.id, "convo_id", convo.id)
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
@@ -234,22 +238,31 @@ class Recall:
         self,
         service: Optional[str] = None,
         channel: Optional[str] = None,
-        active_only: Optional[bool] = True # FIXME: False doesn't work yet
+        expired: Optional[bool|None] = None,
+        after: Optional[int|None] = None,
+        size: Optional[int] = 10
         ) -> List[str]:
         '''
         List active convo_ids, from oldest to newest. Constrain to service + channel if provided.
-        If active_only = False, include expired convos.
+        If expired is True or False, include (or exclude) expired convos. If expired is None, include all convos.
+        If after is provided, include only convos that have expired after the given number of seconds.
+        Set size to limit the number of results.
         '''
-        ret = []
-        if active_only:
-            active = " (@expired:{False})"
+        ret = set()
+        if expired is None:
+            active = " (@expired:{True|False})"
         else:
-            active = " *"
+            active = " (@expired:{" + str(expired) + "})"
 
-        query = Query(scquery(service, channel) + active).sort_by('convo_id').dialect(2).return_fields("id")
+        if after:
+            since = f" (@expired_at:[{seconds_ago(after)} +inf])"
+        else:
+            since = " "
 
-        for doc in self.redis.ft(self.convo_prefix).search(query).docs:
-            ret.append(doc.id.split(':')[3])
+        query = Query(scquery(service, channel) + active + since).sort_by('convo_id', asc=False).paging(0, size).dialect(2).return_fields("id")
+
+        for doc in self.redis.ft(self.convo_prefix).search(query).docs: # type: ignore
+            ret.add(doc.id.split(':')[3])
 
         return sorted(ret)
 
@@ -284,10 +297,13 @@ class Recall:
         If no convo is found, return None.
         '''
         if convo_id is None and any([service, channel]) is None:
-            raise RuntimeError("load_convo(): specify a convo_id or service + channel")
+            raise RuntimeError("fetch_convo(): specify a convo_id or service + channel")
 
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
+            # Only continue active convos
+            if convo_id and self.convo_expired(convo_id=convo_id):
+                return None
 
         if convo_id is None:
             return None
@@ -311,7 +327,7 @@ class Recall:
 
     def expired(self, the_id: Optional[str] = None) -> bool:
         ''' True if time elapsed since the given ulid > conversation_interval, else False '''
-        return elapsed(self.id_to_timestamp(the_id), get_cur_ts()) > self.conversation_interval
+        return elapsed(self.id_to_timestamp(the_id), get_cur_ts()) > self.conversation_interval # type: ignore
 
     @staticmethod
     def id_to_epoch(the_id: str) -> float:
@@ -323,6 +339,14 @@ class Recall:
             return ulid.ULID().from_str(the_id).timestamp
 
         return the_id.timestamp
+
+    @staticmethod
+    def epoch_to_id(epoch: Optional[float] = None) -> str:
+        ''' Create a ULID from epoch seconds '''
+        if epoch is None:
+            epoch = dt.datetime.now(dt.timezone.utc).timestamp()
+
+        return str(ulid.ULID().from_timestamp(epoch))
 
     def id_to_timestamp(self, the_id: str) -> str:
         ''' Extract the timestamp from a ULID '''
@@ -345,6 +369,7 @@ class Recall:
         last_msg_id = self.get_last_message_id(convo_id)
         if last_msg_id is None or self.expired(last_msg_id):
             self.set_convo_meta(convo_id, "expired", "True")
+            self.set_convo_meta(convo_id, "expired_at", dt.datetime.now(dt.timezone.utc).timestamp())
             return True
 
         return False

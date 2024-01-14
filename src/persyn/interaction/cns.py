@@ -26,7 +26,7 @@ from persyn.chat.simple import slack_msg, discord_msg, mastodon_msg
 from persyn.chat.mastodon.bot import Mastodon
 
 # Time
-from persyn.interaction.chrono import get_cur_ts, elapsed
+from persyn.interaction.chrono import get_cur_ts, elapsed, seconds_ago
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
@@ -526,13 +526,13 @@ class CNS:
     #                 # Hit a sentence? Inject the summary and the sentence.
     #                 if the_summary and the_summary not in convo:
     #                     context.append(f"""
-    #                         {persyn_config.id.name} remembers that {ago(recall.id_to_timestamp(hit.convo_id))} ago,
+    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago,
     #                         f"{the_summary.summary} From that conversation, {hit.msg}"""
     #                     )
     #                 # No summary? Just inject the sentence.
     #                 else:
     #                     context.append(f"""
-    #                         {persyn_config.id.name} remembers that {ago(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
+    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
     #                     )
     #                 visited.append(hit.convo_id)
     #                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
@@ -674,7 +674,7 @@ async def photo_event(event):
 @autobus.schedule(autobus.every(5).seconds)
 async def auto_summarize() -> None:
     ''' Automatically summarize conversations when they expire. '''
-    convos = cns.recall.list_convo_ids() # type: ignore
+    convos = cns.recall.list_convo_ids(expired=False) # type: ignore
     if convos:
         for convo_id in convos:
             if cns.recall.convo_expired(convo_id=convo_id): # type: ignore
@@ -683,8 +683,9 @@ async def auto_summarize() -> None:
             remaining = cns.config.memory.conversation_interval - elapsed(cns.recall.id_to_timestamp(cns.recall.get_last_message_id(convo_id)), get_cur_ts()) # type: ignore
             if remaining >= 5:
                 log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
-            else:
-                log.info(f"💔 Convo: {convo_id} (expired)")
+
+    for convo_id in cns.recall.list_convo_ids(expired=True, after=4): # type: ignore
+        log.info(f"💔 Convo expired: {convo_id}")
 
     # for key in convos:
     #     (service, channel, convo_id) = key.split('|')

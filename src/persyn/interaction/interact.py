@@ -187,7 +187,7 @@ class Interact:
         ''' Return an appropriate time elapsed preamble '''
         last_ts = self.recall.id_to_timestamp(convo_id)
         if chrono.elapsed(last_ts) > 7200:
-            return f" a conversation from {chrono.ago(last_ts)} ago:\n"
+            return f" a conversation from {chrono.hence(last_ts)} ago:\n"
         return ""
 
     def current_dialog(self, convo: Convo) -> str:
