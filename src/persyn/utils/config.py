@@ -13,7 +13,6 @@ from subprocess import run
 
 import yaml
 import spacy
-import coreferee
 
 from dotwiz import DotWiz
 
@@ -34,7 +33,7 @@ class PersynConfig(DotWiz):
 
         super().__init__(config)
 
-def download_models(persyn_config):
+def download_models(persyn_config) -> None:
     ''' Download any required ML models '''
     try:
         nlp = spacy.load(persyn_config.spacy.model)
@@ -42,16 +41,9 @@ def download_models(persyn_config):
         spacy.cli.download(persyn_config.spacy.model)
         nlp = spacy.load(persyn_config.spacy.model)
 
-    try:
-        nlp.add_pipe('coreferee')
-    except coreferee.errors.ModelNotSupportedError:
-        run(['python', '-m', 'coreferee', 'install', 'en'], shell=False, check=True)
-        nlp.add_pipe('coreferee')
-
-    nlp.remove_pipe('coreferee')
     del nlp
 
-def load_config(cfg=None):
+def load_config(cfg=None) -> PersynConfig:
     ''' Load the config and set some sensible default values. '''
 
     if cfg is None and 'PERSYN_CONFIG' not in os.environ:

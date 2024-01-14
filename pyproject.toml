@@ -23,7 +23,6 @@ dependencies = [
   "beautifulsoup4",
   "certifi",
   "click",
-  "coreferee",
   "discord.py",
   "dotwiz",
   "duckduckgo-search",
