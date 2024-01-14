@@ -352,6 +352,11 @@ class Recall:
         ''' Extract the timestamp from a ULID '''
         return get_cur_ts(self.id_to_epoch(the_id))
 
+    def expire_convo(self, convo_id: str) -> None:
+        ''' Expire a conversation '''
+        self.set_convo_meta(convo_id, "expired", "True")
+        self.set_convo_meta(convo_id, "expired_at", dt.datetime.now(dt.timezone.utc).timestamp()) # type: ignore
+
     def convo_expired(self, service: Optional[str] = None, channel: Optional[str] = None, convo_id: Optional[str] = None) -> bool:
         '''
         True if the convo metadata is expired, or if the timestamp of the last message for this convo is expired. Otherwise False.
@@ -362,14 +367,15 @@ class Recall:
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
 
-        # Cache whether the convo is expired
+        if convo_id is None:
+            return True
+
         if self.fetch_convo_meta(convo_id, "expired") == "True":
             return True
 
         last_msg_id = self.get_last_message_id(convo_id)
         if last_msg_id is None or self.expired(last_msg_id):
-            self.set_convo_meta(convo_id, "expired", "True")
-            self.set_convo_meta(convo_id, "expired_at", dt.datetime.now(dt.timezone.utc).timestamp())
+            self.expire_convo(convo_id)
             return True
 
         return False
