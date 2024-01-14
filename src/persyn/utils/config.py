@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 from threading import Lock
-from subprocess import run
 
 import yaml
 import spacy
@@ -38,7 +37,7 @@ def download_models(persyn_config) -> None:
     try:
         nlp = spacy.load(persyn_config.spacy.model)
     except OSError:
-        spacy.cli.download(persyn_config.spacy.model)
+        spacy.cli.download(persyn_config.spacy.model) # type: ignore
         nlp = spacy.load(persyn_config.spacy.model)
 
     del nlp
@@ -159,7 +158,7 @@ def load_config(cfg=None) -> PersynConfig:
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('interact', {'url': None, 'character': 'You are a Persyn. Persyns differ from AIs and digital assistants, because their motivations are self-directed and they are influenced by their own emotions and opinions.'})
     config.setdefault('web', {'default': 'body'})
-    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}})
+    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}, 'upload': {'url_base': None}})
 
     # Check for required models
     persyn_config = PersynConfig(config)

@@ -10,8 +10,10 @@ import logging
 import os
 import re
 import tempfile
+from typing import Union
 import uuid
 import json
+import datetime
 
 from pathlib import Path
 from hashlib import sha256
@@ -26,22 +28,25 @@ import spacy
 # Color logging
 from persyn.utils.color_logging import log
 
-# Bot config
-from persyn.utils.config import load_config
-
 # Reminders
 from persyn.interaction.reminders import Reminders
 
 # Common chat library
 from persyn.chat.common import Chat
+from persyn.utils.config import PersynConfig, load_config
+
+def dtconverter(o) -> Union[str, None]:
+    ''' Serialize datetime '''
+    if isinstance(o, datetime.datetime):
+        return str(o)
+    return None
 
 class Mastodon():
     ''' Wrapper for handling Mastodon calls using a Persyn config '''
 
-    def __init__(self, config_file):
+    def __init__(self, persyn_config: PersynConfig) -> None:
         ''' Save state but don't log in yet '''
-        self.config_file = config_file
-        self.persyn_config = None
+        self.config = persyn_config
         self.client = None
         self.chat = None
 
@@ -50,28 +55,25 @@ class Mastodon():
 
         # Spacy for basic parsing
         if self.valid_config():
-            self.nlp = spacy.load(self.persyn_config.spacy.model)
+            self.nlp = spacy.load(self.config.spacy.model)
             self.nlp.add_pipe('sentencizer')
 
     def valid_config(self):
         ''' Returns True if a masto config is present '''
-        if self.persyn_config is None:
-            self.persyn_config = load_config(self.config_file)
-
         return (
-            hasattr(self.persyn_config, 'chat') and
-            hasattr(self.persyn_config.chat, 'mastodon') and
-            hasattr(self.persyn_config.chat.mastodon, 'instance') and
-            hasattr(self.persyn_config.chat.mastodon, 'secret')
+            hasattr(self.config, 'chat') and
+            hasattr(self.config.chat, 'mastodon') and
+            hasattr(self.config.chat.mastodon, 'instance') and
+            hasattr(self.config.chat.mastodon, 'secret')
         )
 
-    def login(self):
+    def login(self) -> bool:
         ''' Attempt to log into the Mastodon service '''
         if not self.valid_config():
-            log.info(f"No Mastodon configuration for {self.persyn_config.id.name}, skipping.")
+            log.info(f"No Mastodon configuration for {self.config.id.name}, skipping.")
             return False
 
-        masto_secret = Path(self.persyn_config.chat.mastodon.secret)
+        masto_secret = Path(self.config.chat.mastodon.secret)
         if not masto_secret.is_file():
             raise RuntimeError(
                 f"Mastodon instance specified but secret file '{masto_secret}' does not exist.\nCheck your config."
@@ -79,21 +81,21 @@ class Mastodon():
         try:
             self.client = MastoNative(
                 access_token = masto_secret,
-                api_base_url = self.persyn_config.chat.mastodon.instance
+                api_base_url = self.config.chat.mastodon.instance
             )
         except MastodonError:
             raise SystemExit("Invalid credentials, run masto-login.py and try again.") from MastodonError
 
         creds = self.client.account_verify_credentials()
         log.info(
-            f"Logged into Mastodon as @{creds.username}@{self.persyn_config.chat.mastodon.instance} ({creds.display_name})"
+            f"Logged into Mastodon as @{creds.username}@{self.config.chat.mastodon.instance} ({creds.display_name})"
         )
 
-        self.chat = Chat(persyn_config=self.persyn_config, service='mastodon')
+        self.chat = Chat(persyn_config=self.config, service='mastodon')
 
         return True
 
-    def is_logged_in(self):
+    def is_logged_in(self) -> bool:
         ''' Helper to see if we're logged in '''
         return self.client is not None
 
@@ -102,7 +104,10 @@ class Mastodon():
         self.reminders.cancel(channel)
 
         if what:
-            self.reminders.add(channel, when, self.toot, args=[what, status, json.loads(extra)])
+            if extra:
+                self.reminders.add(channel, when, self.toot, args=[what, status, json.loads(extra, default=dtconverter)])
+            else:
+                self.reminders.add(channel, when, self.toot, args=[what, status, extra])
         else:
             # Yadda yadda yadda
             self.reminders.add(channel, when, self.dispatch, args=[channel, '...', status, extra])
@@ -123,11 +128,11 @@ class Mastodon():
         if ents:
             self.chat.inject_idea(channel, ents)
 
-    def following(self, account_id):
+    def following(self, account_id) -> bool:
         ''' Return true if we are following this account '''
         return account_id in [follower.id for follower in self.client.account_following(id=self.client.me().id)]
 
-    def get_text(self, msg):
+    def get_text(self, msg) -> str:
         ''' Extract just the text from a message (no HTML or @username) '''
         return BeautifulSoup(msg, features="lxml").text.strip().replace(f'@{self.client.me().username} ','')
 
@@ -156,7 +161,7 @@ class Mastodon():
                     msg,
                     media_ids=media_ids,
                     idempotency_key=sha256(url.encode()).hexdigest(),
-                    **json.loads(extra)
+                    **json.loads(extra, default=dtconverter)
                 )
                 if not resp or 'url' not in resp:
                     raise RuntimeError(resp)
@@ -165,10 +170,10 @@ class Mastodon():
         except RuntimeError as err:
             log.error(f"🎺 Could not post {url}: {err}")
 
-    def paginate(self, text, maxlen=None):
+    def paginate(self, text, maxlen=None) -> list[str]:
         ''' Break a single status string into a list of toots < the posting limit. '''
-        if maxlen is None or maxlen > self.persyn_config.chat.mastodon.toot_length:
-            maxlen = self.persyn_config.chat.mastodon.toot_length
+        if maxlen is None or maxlen > self.config.chat.mastodon.toot_length:
+            maxlen = self.config.chat.mastodon.toot_length
 
         doc = self.nlp(text)
         posts = []
@@ -190,7 +195,7 @@ class Mastodon():
 
         return posts
 
-    def toot(self, msg, to_status=None, kwargs=None):
+    def toot(self, msg, to_status=None, kwargs=None) -> dict:
         '''
         Quick send a toot or reply.
 
@@ -201,31 +206,23 @@ class Mastodon():
         try:
 
             log.warning(f"toot(): {msg} {to_status} {kwargs}")
-            if 'visibility' not in kwargs:
+            if kwargs and 'visibility' not in kwargs:
                 kwargs['visibility'] = 'unlisted'
 
             # FIXME: private chat is broken because of this monstrosity. Figure out how to get to_status here from dispatch().
-            if to_status or 'to_status' in kwargs:
+            if to_status or (kwargs and 'to_status' in kwargs):
                 if not to_status:
-                    kwargs['to_status']['account'] = SimpleNamespace(**kwargs['to_status']['account'])
-                    to_status = SimpleNamespace(**kwargs['to_status'])
-                    kwargs.pop('to_status')
+                    to_status = json.loads(kwargs['to_status'], default=dtconverter)
 
                 kwargs['in_reply_to_id'] = to_status.id
                 kwargs['visibility'] = to_status.visibility
                 if to_status.visibility == 'direct' and f"@{to_status.account.acct}" not in msg:
-                    log.warning("forgot the @")
                     if to_status.account.acct in msg:
-                        log.warning("time for sub")
                         msg = re.sub(rf'\b({to_status.account.acct})\b', f'@{to_status.account.acct}', msg, count=1)
-                        log.warning(f"got: {msg}")
                     else:
-                        log.warning("time for append")
                         msg = f"@{to_status.account.acct} {msg}"
-                        log.warning(f"got: {msg}")
             else:
                 log.warning("toot(): to_status is not available")
-
 
             log.error(f"toot(): {msg} {kwargs}")
 
@@ -243,31 +240,25 @@ class Mastodon():
             return rets
         except Exception as e:
             log.error(e)
+            return {}
 
-    def dispatch(self, channel, msg, to_status=None, extra=None):
+    def dispatch(self, channel, msg, to_status=None, extra=None) -> None:
         ''' Handle commands and replies '''
         if extra is None:
             extra = '{}'
 
         if to_status:
-            extra = json.loads(extra)
+            extra = json.loads(extra, default=dtconverter)
             extra['in_reply_to_id'] = to_status.id
             extra['visibility'] = to_status.visibility
-            # Can't copy the entire status as it contains nonserializable datetime objects
-            extra['to_status'] = {
-                'id': to_status.id,
-                'visibility': to_status.visibility,
-                'account': {
-                    'acct': to_status.account.acct
-                }
-            }
+            extra['to_status'] = to_status
 
             if to_status.visibility == 'direct' and f'@{to_status.account.acct}' not in msg:
                 if to_status.account.acct in msg:
                     msg = re.sub(rf'\b({to_status.account.acct})\b', f'@{to_status.account.acct}', msg, count=1)
                 else:
                     msg = f"@{to_status.account.acct} {msg}"
-            extra = json.dumps(extra)
+            extra = json.dumps(extra, default=dtconverter)
         else:
             log.warning("dispatch(): to_status is not available")
 
@@ -278,7 +269,10 @@ class Mastodon():
             self.synthesize_image(channel, msg[1:].strip(), engine="dall-e", width=1024, height=1792, extra=extra)
 
         # Dispatch a "message received" event. Replies are handled by CNS.
-        self.chat.chat_received(channel, msg, to_status.account.username, extra)
+        if to_status:
+            self.chat.chat_received(channel, msg, to_status.account.username, extra)
+        else:
+            self.chat.chat_received(channel, msg, None, extra)
 
         #     if the_reply.endswith('…') or the_reply.endswith('...'):
         #         self.say_something_later(
@@ -354,7 +348,8 @@ def main():
 
     args = parser.parse_args()
 
-    mastodon = Mastodon(args.config_file)
+    persyn_config = load_config(args.config_file)
+    mastodon = Mastodon(persyn_config)
 
     if not mastodon.valid_config():
         raise SystemExit('mastodon not defined in config, exiting.')
@@ -365,8 +360,8 @@ def main():
     log.info(f"🎺 Logged in as: {mastodon.client.me().url}")
 
     # enable logging to disk
-    if hasattr(mastodon.persyn_config.id, "logdir"):
-        logging.getLogger().addHandler(logging.FileHandler(f"{mastodon.persyn_config.id.logdir}/{mastodon.persyn_config.id.name}-mastodon.log"))
+    if hasattr(persyn_config.id, "logdir"):
+        logging.getLogger().addHandler(logging.FileHandler(f"{persyn_config.id.logdir}/{persyn_config.id.name}-mastodon.log"))
 
     listener = TheListener(mastodon)
 

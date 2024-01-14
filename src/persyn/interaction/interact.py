@@ -211,7 +211,7 @@ class Interact:
         msg_id = str(ulid.ULID())
         log.info(f"💬 get_reply to: {msg}")
 
-        convo = self.recall.get_convo(service, channel)
+        convo = self.recall.fetch_convo(service, channel)
         if convo is None:
             convo = self.recall.new_convo(service, channel, speaker_name)
 
@@ -321,7 +321,7 @@ class Interact:
 
     def status(self, service: str, channel: str, speaker_name: str) -> str:
         ''' Return the prompt and chat history for this channel '''
-        convo = self.recall.get_convo(service, channel)
+        convo = self.recall.fetch_convo(service, channel)
         if convo is None:
             convo = self.recall.new_convo(service, channel, speaker_name)
 
@@ -361,7 +361,7 @@ class Interact:
         '''
         Directly inject an idea into recall memory.
         '''
-        convo = self.recall.get_convo(service, channel)
+        convo = self.recall.fetch_convo(service, channel)
         if convo is None:
             return
 

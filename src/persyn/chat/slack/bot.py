@@ -118,7 +118,7 @@ def main():
 
     # Mastodon support
     global mastodon
-    mastodon = Mastodon(args.config_file)
+    mastodon = Mastodon(persyn_config)
     mastodon.login()
 
     # Chat library
@@ -242,8 +242,6 @@ def main():
         say("💭 " + chat.get_summary(
             channel=channel,
             convo_id=None,
-            save=save,
-            include_keywords=False,
             photo=True)
         )
 
@@ -259,13 +257,17 @@ def main():
     def nouns(say, context):
         ''' Say the nouns mentioned on this channel '''
         channel = context['channel_id']
-        say("> " + ", ".join(chat.get_nouns(chat.get_status(channel))))
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
+        say("> " + ", ".join(chat.get_nouns(chat.get_status(channel, speaker_name))))
 
     @app.message(re.compile(r"^entities$", re.I))
     def entities(say, context):
         ''' Say the entities mentioned on this channel '''
         channel = context['channel_id']
-        say("> " + ", ".join(chat.get_entities(chat.get_status(channel))))
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
+        say("> " + ", ".join(chat.get_entities(chat.get_status(channel, speaker_name))))
 
     @app.message(re.compile(r"^opinions (.*)$", re.I))
     def opine_all(say, context):
@@ -295,8 +297,10 @@ def main():
     def reflect(say, context):
         ''' Fetch our opinion on all the nouns in the channel '''
         channel = context['channel_id']
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
 
-        for noun in chat.get_nouns(chat.get_status(channel)):
+        for noun in chat.get_nouns(chat.get_status(channel, speaker_name)):
             opinion = chat.get_opinions(channel, noun.lower(), condense=True)
             if not opinion:
                 opinion = [chat.opinion(channel, noun.lower())]

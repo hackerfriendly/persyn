@@ -51,17 +51,17 @@ class Chat():
         self.persyn_config = persyn_config
         self.service=service
 
-        self.bot_name=persyn_config.id.name
-        self.bot_id=persyn_config.id.guid
-        self.interact_url=persyn_config.interact.url
-        self.dreams_url=persyn_config.dreams.url
+        self.bot_name=persyn_config.id.name # type: ignore
+        self.bot_id=persyn_config.id.guid # type: ignore
+        self.interact_url=persyn_config.interact.url # type: ignore
+        self.dreams_url=persyn_config.dreams.url # type: ignore
 
         self.photo_triggers = default_photo_triggers
         self.recall = Recall(persyn_config)
 
         self.oai_client = OpenAI(
-            api_key=persyn_config.completion.openai_api_key,
-            organization=persyn_config.completion.openai_org
+            api_key=persyn_config.completion.openai_api_key, # type: ignore
+            organization=persyn_config.completion.openai_org # type: ignore
         )
 
     def get_summary(
@@ -74,7 +74,7 @@ class Chat():
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
             log.error("∑ get_summary() called with no interact_url defined, skipping.")
-            return None
+            return ""
 
         req = {
             "service": self.service,
@@ -97,9 +97,9 @@ class Chat():
                     channel,
                     summary,
                     engine="dall-e",
-                    width=self.persyn_config.dreams.dalle.width,
-                    height=self.persyn_config.dreams.dalle.height,
-                    style=self.persyn_config.dreams.dalle.quality,
+                    width=self.persyn_config.dreams.dalle.width, # type: ignore
+                    height=self.persyn_config.dreams.dalle.height, # type: ignore
+                    style=self.persyn_config.dreams.dalle.quality, # type: ignore
                     extra=extra
                 )
             return summary
@@ -114,11 +114,11 @@ class Chat():
         reminders=None,
         send_chat: Optional[bool] = True,
         extra: Optional[str] = None
-        ) -> Union[str, None]:
+        ) -> str:
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
             log.error("💬 get_reply() called with no interact_url defined, skipping.")
-            return None
+            return ""
 
         if not msg:
             msg = '...'
@@ -153,9 +153,9 @@ class Chat():
                 channel,
                 self.get_summary(channel),
                 engine="dall-e",
-                width=self.persyn_config.dreams.dalle.width,
-                height=self.persyn_config.dreams.dalle.height,
-                style=self.persyn_config.dreams.dalle.quality,
+                width=self.persyn_config.dreams.dalle.width, # type: ignore
+                height=self.persyn_config.dreams.dalle.height, # type: ignore
+                style=self.persyn_config.dreams.dalle.quality, # type: ignore
                 extra=extra
             )
 
@@ -244,7 +244,7 @@ class Chat():
                 log.error(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
             return reply.ok
         except requests.exceptions.ConnectionError as err:
-            log.error(f"{self.dreams_url}/generate/", err)
+            log.error(f"{self.dreams_url}/generate/: {err}")
             return False
 
     def get_nouns(self, text):

@@ -230,7 +230,12 @@ class Recall:
 
         return convo
 
-    def list_convo_ids(self, service: Optional[str] = None, channel: Optional[str] = None, active_only: Optional[bool] = True) -> List[str]:
+    def list_convo_ids(
+        self,
+        service: Optional[str] = None,
+        channel: Optional[str] = None,
+        active_only: Optional[bool] = True # FIXME: False doesn't work yet
+        ) -> List[str]:
         '''
         List active convo_ids, from oldest to newest. Constrain to service + channel if provided.
         If active_only = False, include expired convos.

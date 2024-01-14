@@ -14,12 +14,15 @@ from typing import Optional
 
 import requests
 from persyn.chat.common import Chat
+from persyn.chat.mastodon.bot import Mastodon
+
+from persyn.utils.config import PersynConfig
 
 # Color logging
 from persyn.utils.color_logging import log
-from persyn.utils.config import PersynConfig
 
 rs = requests.Session()
+mastodon = None
 
 def slack_msg(
     persyn_config: PersynConfig,
@@ -28,7 +31,7 @@ def slack_msg(
     bot_name: str,
     msg: str,
     images: Optional[list[str]] = None,
-    extra: Optional[str] = None
+    extra: Optional[str] = None # pylint: disable=unused-argument
     ) -> None:
     ''' Post a message to Slack with optional images '''
 
@@ -82,7 +85,7 @@ def discord_msg(
     bot_name: str,
     msg: str,
     images: Optional[list[str]] = None,
-    extra: Optional[str] = None
+    extra: Optional[str] = None # pylint: disable=unused-argument
     ) -> None:
     ''' Post an image to Discord '''
     req = {
@@ -121,3 +124,31 @@ def discord_msg(
     else:
         log.info(f"⚡️ Posted dialog to Discord as {bot_name}")
         chat.inject_idea(channel, msg, verb='dialog')
+
+
+def mastodon_msg(
+    persyn_config: PersynConfig,
+    chat: Chat, # pylint: disable=unused-argument
+    channel: str, # pylint: disable=unused-argument
+    bot_name: str, # pylint: disable=unused-argument
+    msg: str,
+    images: Optional[list[str]] = None,
+    extra: Optional[str] = None
+    ) -> None:
+    ''' Post a message to Mastodon with optional images '''
+    global mastodon
+
+    if mastodon is None:
+        mastodon = Mastodon(persyn_config)
+        mastodon.login()
+
+    if extra is None:
+        extra = '{}'
+
+    if images:
+        for image in images:
+            mastodon.fetch_and_post_image(
+                f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn", extra # type: ignore
+            )
+    else:
+        mastodon.toot(msg, kwargs=json.loads(extra))

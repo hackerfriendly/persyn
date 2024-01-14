@@ -82,7 +82,7 @@ async def on_message(ctx):
 async def on_raw_reaction_add(ctx):
     ''' on_raw_reaction_add '''
     channel = await app.fetch_channel(ctx.channel_id)
-    message = await channel.fetch_message(ctx.message_id)
+    message = await channel.fetch_message(ctx.message_id) # type: ignore
 
     if not it_me(message.author.id):
         log.warning("👎 Not posting image that isn't mine.")
@@ -103,7 +103,7 @@ async def on_raw_reaction_add(ctx):
 async def on_raw_reaction_remove(ctx):
     ''' on_raw_reaction_remove '''
     channel = await app.fetch_channel(ctx.channel_id)
-    message = await channel.fetch_message(ctx.message_id)
+    message = await channel.fetch_message(ctx.message_id) # type: ignore
 
     log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.id})')
 
@@ -116,7 +116,7 @@ async def on_raw_reaction_remove(ctx):
 
 def it_me(author_id):
     ''' Return True if the given id is one of ours '''
-    return author_id in [app.user.id, persyn_config.chat.discord.webhook_id]
+    return author_id in [app.user.id, persyn_config.chat.discord.webhook_id] # type: ignore
 
 def get_channel(ctx):
     ''' Return the unique identifier for this guild/channel or DM '''
@@ -141,7 +141,7 @@ def synthesize_image(ctx, prompt, engine="dall-e", width=None, height=None, styl
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
 
-    chat.take_a_photo(
+    chat.take_a_photo( # type: ignore
         channel,
         prompt,
         engine=engine,
@@ -314,7 +314,7 @@ def main():
 
     # Mastodon support
     global mastodon
-    mastodon = Mastodon(args.config_file)
+    mastodon = Mastodon(persyn_config)
     mastodon.login()
 
     # Chat library
