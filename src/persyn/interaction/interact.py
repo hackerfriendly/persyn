@@ -6,7 +6,7 @@ The limbic system library.
 import random
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 import ulid
 import requests
@@ -43,37 +43,6 @@ class Interact:
 
         # Then create the Recall object (conversation management)
         self.recall = Recall(self.config)
-
-        # More Langchain
-
-        # agent_tools = []
-        # zim / kiwix data sources
-        # if self.config.get('zimx'):
-        #     for cfgtool in self.config.zim:
-        #         log.info("💿 Loading zim:", cfgtool)
-        #         zim = Tool(
-        #                 name=str(cfgtool),
-        #                 func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
-        #                 description=self.config.zim.get(cfgtool).description
-        #             )
-        #         agent_tools.append(zim)
-
-        # if self.config.lm.get('anthropic_key'):
-        #     def ask_claude(query: str) -> str:
-        #         """Ask Claude for help"""
-        #         return self.lm.ask_claude(str)
-        #     claude = Tool.from_function(
-        #         name="Claude",
-        #         func=ask_claude,
-        #         description="Ask Claude a question. Claude can check facts, do math, and offer general advice."
-        #     )
-        #     agent_tools.append(claude)
-
-        # Other tools: introspection (assess software + hardware), Claude (ask for facts)
-
-        # self.agent = initialize_agent(
-        #     agent_tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True
-        # )
 
     def send_chat(self, service: str, channel: str, msg: str, extra: Optional[str] = None) -> None:
         '''
@@ -159,6 +128,7 @@ class Interact:
                 # break
 
         # Recent summaries + conversation
+        # TODO: parameterize this
         max_tokens = int(self.lm.max_prompt_length() * 0.3)
         to_append = []
 
@@ -179,8 +149,8 @@ class Interact:
 
         # append them oldest to newest
         context = context + to_append[::-1]
-        log.warning(f"Added {len(to_append)} summaries")
 
+        log.warning(f"Added {len(to_append)} summaries")
         return '\n'.join(context)
 
     def get_time_preamble(self, convo_id: str) -> str:
@@ -232,7 +202,7 @@ class Interact:
         )
 
         # Hand it to langchain. #FIXME: change run to invoke(), which returns a dict apparently -_-
-        reply = chain.run(input=msg)
+        reply = chain.invoke(input={'input':msg})['response']
         reply_id = str(ulid.ULID())
 
         # trim() should probably be an output parser, but I can't make that work with memories.
@@ -285,39 +255,8 @@ class Interact:
             ]
         )
 
-        # vvvv OLD CODE BELOW vvvv
-
-        # # convo_id = self.recall.convo_id(service, channel)
-        # convo = self.recall.convo(service, channel, feels=True)
-
-        # prompt = self.generate_prompt(service, channel)
-
-        # # TODO: vvv  Use this time to backfill context!  vvv
-
-        # # Ruminate a bit
-        # entities = self.extract_entities(msg)
-
-        # if entities:
-        #     log.warning(f"🆔 extracted entities: {entities}")
-        # else:
-        #     entities = self.extract_nouns('\n'.join(convo))[:8]
-        #     log.warning(f"🆔 extracted nouns: {entities}")
-
-        # # Reflect on this conversation
-        # visited = self.gather_memories(service, channel, entities)
-        # summaries = []
-        # for doc in self.recall.summaries(service, channel, None, size=1, raw=True):
-        #     if doc.convo_id not in visited and doc.summary not in summaries:
-        #         log.warning("💬 Adding summary:", doc.summary)
-        #         summaries.append(doc.summary)
-        #         visited.append(doc.convo_id)
-
-        # ^^^  end TODO  ^^^
-
         log.info(f"💬 get_reply done: {reply}")
-
         return trimmed
-
 
     def status(self, service: str, channel: str, speaker_name: str) -> str:
         ''' Return the prompt and chat history for this channel '''
@@ -335,27 +274,10 @@ class Interact:
         )
 
         return prompt.format(
-            kg='', #convo.memories['summary'].moving_summary_buffer,
+            kg='', # FIXME: this is a hack to avoid rendering {kg} in the template
             history=convo.memories['summary'].load_memory_variables({})['history'],
             input='input'
         )
-
-    def extract_nouns(self, text: str) -> list[str]:
-        ''' return a list of all nouns (except pronouns) in text '''
-        doc = self.lm.nlp(text)
-        nouns = {
-            n.text.strip()
-            for n in doc.noun_chunks
-            if n.text.strip() != self.config.id.name
-            for t in n
-            if t.pos_ != 'PRON'
-        }
-        return list(nouns)
-
-    def extract_entities(self, text: str) -> list[str]:
-        ''' return a list of all entities in text '''
-        doc = self.lm.nlp(text)
-        return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})
 
     def inject_idea(self, service: str, channel: str, idea: str, verb: str="recalls") -> None:
         '''
@@ -393,22 +315,6 @@ class Interact:
             return ""
 
         return self.lm.summarize_text(self.recall.fetch_summary(convo_id))
-
-        # if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel, feels=True)):
-        #     log.warning("🤌  Already had this idea, skipping:", idea)
-        #     return
-
-        # self.recall.save_convo_line(
-        #     service,
-        #     channel,
-        #     msg=idea,
-        #     speaker_name=self.config.id.name,
-        #     convo_id=self.recall.convo_id(service, channel),
-        #     verb=verb
-        # )
-
-        # log.warning(f"🤔 {verb}:", idea)
-        # return
 
     # def surmise(self, service, channel, topic, size=10):
     #     ''' Stub for recall '''
@@ -459,56 +365,6 @@ class Interact:
     #         log.critical(f"🤖 Could not post /read_url/ to interact: {err}")
 
 
-    # def get_generic_agent_reply(self, prompt: str):
-    #     ''' Try to take an action using the agent '''
-    #     try:
-    #         ret = self.agent.run(prompt)
-    #     except Exception as err:
-    #         log.error("🕵️‍♂️  Agent generated an exception, skipping:", err)
-    #         return None
-
-    #     if ret == "Agent stopped due to iteration limit or time limit.":
-    #         log.warning("🕵️‍♂️ ", ret)
-    #         return None
-
-    #     log.warning("🕵️‍♂️  Found an answer:", ret)
-    #     return ret
-
-    # def validate_agent_reply(self, agent_reply):
-    #     ''' Returns True if the question was answered, otherwise False. '''
-    #     if (
-    #         not agent_reply
-    #         or agent_reply == "Agent stopped due to iteration limit or time limit"
-    #     ):
-    #         return False
-
-    #     # TODO: encode "Yes" and "No", then ask llm if the question was answered
-
-    #     negatives = ["I cannot", "I can't", "I could not", "I couldn't", "is not mentioned", "isn't mentioned", "unable"]
-    #     if any(term in agent_reply for term in negatives):
-    #         return False
-
-    #     return True
-
-    # def try_the_agent(self, prompt, service, channel):
-    #     '''
-    #     Let the langchain agent weigh in by injecting thoughts.
-    #     Agents do not speak directly.
-    #     '''
-
-    #     log.warning("🕵️  Consult the agent.")
-    #     reply = self.get_generic_agent_reply(prompt)
-
-    #     if self.validate_agent_reply(reply):
-    #         log.warning("🕵️  Generic agent success:", reply)
-    #         self.inject_idea(
-    #             service,
-    #             channel,
-    #             reply,
-    #             verb="thinks"
-    #         )
-    #     else:
-    #         log.warning("🤷 Generic agent was no help.")
 
     # def gather_opinions(self, service, channel, entities):
     #     '''

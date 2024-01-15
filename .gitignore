@@ -41,3 +41,4 @@ src/interaction/hf-transformers.py
 src/persyn.egg-info/
 Untitled*.ipynb
 notebooks/
+.coverage

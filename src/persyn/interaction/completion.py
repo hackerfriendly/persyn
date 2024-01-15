@@ -4,7 +4,7 @@
 import re
 
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 import pydantic
 import spacy
 import tiktoken
@@ -72,7 +72,7 @@ class LanguageModel:
             self.config,
             model=self.chat_model,
             temperature=self.config.completion.chat_temperature,
-            max_tokens=150,
+            max_tokens=200,
         )
         self.summary_llm = setup_llm(
             self.config,
@@ -85,6 +85,12 @@ class LanguageModel:
             model=self.reasoning_model,
             temperature=self.config.completion.reasoning_temperature,
             max_tokens=10,
+        )
+        self.anthropic_llm = setup_llm(
+            self.config,
+            model=self.config.completion.anthropic_model,
+            temperature=self.config.completion.anthropic_temperature,
+            max_tokens=250,
         )
 
         self.embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.openai_api_key)
@@ -179,7 +185,7 @@ class LanguageModel:
         if len(sents) > 1 and len(sents[-1]) < 4:
             sents.pop()
 
-        return ' '.join([sent.text for sent in sents])
+        return str(' '.join([sent.text for sent in sents])).strip()
 
     def truncate(self, text, model=None):
         ''' Truncate text to the max_prompt_length for this model '''
@@ -257,6 +263,21 @@ class LanguageModel:
 
         return sorted(set(keywords))
 
+    def ask_claude(self, query: str, prefix: Optional[str] = '') -> str:
+        ''' Ask Claude a question '''
+        if not query:
+            log.warning('ask_claude():', "No query, skipping.")
+            return ""
+
+        prompt = PromptTemplate.from_template(f"{prefix}{{input}}")
+        chain = prompt | self.anthropic_llm | StrOutputParser()
+
+        reply = self.trim(chain.invoke({"input": query}))
+
+        log.warning("ask_claude():", reply)
+        return reply
+
+
     @staticmethod
     def camelCaseName(name):
         ''' Return name sanitized as camelCaseName, alphanumeric only, max 64 characters. '''
@@ -270,3 +291,20 @@ class LanguageModel:
     def safe_name(name):
         ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
         return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64]
+
+    def extract_nouns(self, text: str) -> list[str]:
+        ''' return a list of all nouns (except pronouns) in text '''
+        doc = self.nlp(text)
+        nouns = {
+            n.text.strip()
+            for n in doc.noun_chunks
+            if n.text.strip() != self.config.id.name
+            for t in n
+            if t.pos_ != 'PRON'
+        }
+        return list(nouns)
+
+    def extract_entities(self, text: str) -> list[str]:
+        ''' return a list of all entities in text '''
+        doc = self.nlp(text)
+        return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})

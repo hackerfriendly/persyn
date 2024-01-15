@@ -15,6 +15,11 @@ from typing import Optional
 
 from bs4 import BeautifulSoup
 
+from langchain.tools import Tool
+from langchain.agents import AgentType, initialize_agent, load_tools
+
+from persyn.langchain.zim import ZimWrapper
+
 # Autobus, forked from https://github.com/schuyler/autobus
 from persyn import autobus
 
@@ -53,9 +58,15 @@ class CNS:
         self.mastodon = Mastodon(persyn_config)
         self.recall = Recall(persyn_config)
         self.completion = LanguageModel(persyn_config)
-
+        self.datasources = {}
         self.rs = requests.Session()
 
+        if self.config.get('zim'):
+            for cfgtool in self.config.zim: # type: ignore
+                log.info("💿 Loading Zim:", cfgtool)
+                self.datasources[cfgtool] = ZimWrapper(path=self.config.zim.get(cfgtool).path) # type: ignore
+
+        self.concepts = {}
         self.mastodon.login()
 
     def send_chat(self, service: str, channel: str, bot_name: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
@@ -90,8 +101,6 @@ class CNS:
         #     log.warning(f"😈 Rogue convo_id {convo_id}, adding to list of active convos")
         #     recall.redis.sadd(recall.active_convos_prefix, f"{event.service}|{event.channel}|{convo_id}")
 
-        # TODO: Give it a few seconds. Ideally, value to be chosen by an interval model for perfect timing.
-
         # TODO: Decide whether to delay reply, or to reply at all?
 
         the_reply = chat.get_reply(
@@ -112,6 +121,43 @@ class CNS:
             bot_id=self.config.id.guid # type: ignore
         )
         autobus.publish(vc)
+
+        # Ruminate a bit
+        sckey = f"{event.service}|{event.channel}"
+
+        concepts = set(self.recall.lm.extract_entities(the_reply) + self.recall.lm.extract_nouns(the_reply))
+
+        if concepts:
+            log.warning(f"🆔 extracted concepts: {concepts}")
+
+        if sckey not in self.concepts:
+            self.concepts[sckey] = set()
+
+        new = concepts - self.concepts[sckey]
+        log.info("🆔 new concepts:", new)
+
+        for concept in new:
+            self.concepts[sckey].add(concept)
+
+        log.warning("Would it be useful to look up any of these concepts?", new)
+
+        reply = self.recall.lm.ask_claude(
+            prefix=f"In the following dialog:\n{event.msg}\nWould it be useful to look up any of these concepts? You must reply ONLY with a comma-separated list of the three most important concepts that {self.config.id.name} could use more specific information about, and nothing else.",
+            query=str(new)
+        )
+        keywords = self.recall.lm.cleanup_keywords(reply)
+        log.warning("Claude says:", str(keywords))
+        if keywords:
+            chat = Chat(persyn_config=self.config, service=event.service)
+            for kw in keywords:
+                log.info(f"Injecting idea for: {kw}")
+                chat.inject_idea(
+                    channel=event.channel,
+                    idea=self.datasources['Wikipedia'].run(kw),
+                    verb='recalls'
+                )
+                log.info(f"Injected idea for: {kw}")
+
 
         # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
         #     # Check facts

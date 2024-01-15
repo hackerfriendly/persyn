@@ -139,7 +139,7 @@ async def handle_nouns(
     ):
     ''' Extract nouns from a string '''
     ret = await asyncio.gather(in_thread(
-        interact.extract_nouns, [text]
+        interact.lm.extract_nouns, [text]
     ))
     return {
         "nouns": ret[0]
@@ -151,7 +151,7 @@ async def handle_entities(
     ):
     ''' Extract entities from a string '''
     ret = await asyncio.gather(in_thread(
-        interact.extract_entities, [text]
+        interact.lm.extract_entities, [text]
     ))
     return {
         "entities": ret[0]
