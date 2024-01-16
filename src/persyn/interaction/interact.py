@@ -6,7 +6,7 @@ The limbic system library.
 import random
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union, List, Tuple
 
 import ulid
 import requests
@@ -80,78 +80,144 @@ class Interact:
 {human}: {input}
 {bot}:"""
 
-    def add_context(self, convo: Convo) -> str:
+    # def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
+    #     '''
+    #     Additional context for the prompt.
+
+    #     For transient things (eg. feelings, opinions) just append to the context.
+
+    #     For more permanent things, add to the convo memories.
+
+    #     If raw is True, return tuples of (source, text) instead of a string.
+    #     '''
+    #     context = []
+
+    #     # Sentiment analysis
+    #     context.append(('sentiment analysis', f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'}."))
+
+    #     # Relevant memories
+    #     # Available metadata: service, channel, role, speaker_name, verb
+
+    #     ret = self.recall.find_related_convos(
+    #         convo.service,
+    #         convo.channel,
+    #         self.current_dialog(convo),
+    #         exclude_convo_ids=convo.visited,
+    #         threshold=self.config.memory.relevance,
+    #         size=5
+    #     )
+
+    #     log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
+
+    #     # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
+    #     while ret:
+    #         (convo_id, score) = random.sample(ret, k=1)[0]
+    #         ret.remove((convo_id, score))
+
+    #         warned = set()
+    #         if convo_id in convo.visited:
+    #             if convo_id not in warned:
+    #                 log.warning("🤌  Already visited this convo:", convo_id)
+    #             warned.add(convo_id)
+    #             continue
+
+    #         convo.visited.add(convo_id)
+    #         summary = self.recall.fetch_summary(convo_id)
+    #         if summary:
+    #             log.warning(f"✅ Found relevant memory with score: {score}:", summary[:30] + "...")
+    #             preamble = self.get_time_preamble(convo_id)
+    #             # self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n\n\n", verb="recalls")
+    #             context.append((f"relevant memory: {score}", f"{self.config.id.name} recalls{preamble}\n{summary}"))
+    #             # break
+
+    #     # Recent summaries + conversation
+    #     # TODO: parameterize this
+    #     max_tokens = int(self.lm.max_prompt_length() * 0.3)
+    #     to_append = []
+
+    #     # build to_append newest to oldest
+    #     for convo_id in sorted(self.recall.list_convo_ids(convo.service, convo.channel), reverse=True):
+    #         summary = self.recall.fetch_summary(convo_id)
+    #         if not summary:
+    #             continue
+    #         to_append.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"))
+    #         if self.lm.chat_llm.get_num_tokens(
+    #             convo.memories['summary'].load_memory_variables({})['history']
+    #             + '\n'.join([ctx[1] for ctx in context])
+    #             + '\n'.join([ctx[1] for ctx in to_append])
+    #         ) >= max_tokens:
+    #             break
+
+    #     # append them oldest to newest
+    #     context = context + to_append[::-1]
+
+    #     log.warning(f"Added {len(to_append)} summaries")
+    #     if raw:
+    #         return context
+
+    #     return '\n'.join([ctx[1] for ctx in context])
+
+    def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
+        context = [self.get_sentiment_analysis(convo)]
+        context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        return context if raw else '\n'.join([ctx[1] for ctx in context])
+
+    def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str]:
+        ''' Fetch sentiment analysis for this convo '''
+        sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'
+        return (
+            'sentiment analysis',
+            f"{self.config.id.name} is feeling {sentiment}."
+        )
+
+    def too_many_tokens(self, convo: Convo, text: str, used: Optional[int] = 0) -> bool:
         '''
-        Additional context for the prompt.
+        Count tokens like this: tokens in convo + tokens in text + an arbitrary number of tokens already used
+        Return True if the token count is > than the fraction allowed by the config for chat_llm.
 
-        For transient things (eg. feelings, opinions) just append to the context.
-
-        For more permanent things, add to the convo memories.
+        TODO: Allow llm selection (currently always uses chat_llm)
         '''
-        context = []
+        max_tokens = int(self.lm.max_prompt_length() * self.config.memory.context)
+        history = convo.memories['summary'].load_memory_variables({})['history']
 
-        # Sentiment analysis
-        context.append(f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'}.")
+        return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
-        # Relevant memories
-        # Available metadata: service, channel, role, speaker_name, verb
-
-        ret = self.recall.find_related_convos(
+    def get_relevant_memories(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+        relevant_memories = []
+        related_convos = self.recall.find_related_convos(
             convo.service,
             convo.channel,
             self.current_dialog(convo),
-            exclude_convo_ids=convo.visited,
+            exclude_convo_ids=list(convo.visited),
             threshold=self.config.memory.relevance,
             size=5
         )
-
-        log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
-
-        # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
-        while ret:
-            (convo_id, score) = random.sample(ret, k=1)[0]
-            ret.remove((convo_id, score))
-
-            warned = set()
+        for convo_id, score in related_convos:
             if convo_id in convo.visited:
-                if convo_id not in warned:
-                    log.warning("🤌  Already visited this convo:", convo_id)
-                warned.add(convo_id)
                 continue
-
             convo.visited.add(convo_id)
             summary = self.recall.fetch_summary(convo_id)
             if summary:
-                log.warning(f"✅ Found relevant memory with score: {score}:", summary[:30] + "...")
+                if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in relevant_memories]), used):
+                    break
                 preamble = self.get_time_preamble(convo_id)
-                self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n\n\n", verb="recalls")
-                # break
+                relevant_memories.append((f"relevant memory ({score})", f"{self.config.id.name} recalls{preamble}\n{summary}"))
+        return relevant_memories
 
-        # Recent summaries + conversation
-        # TODO: parameterize this
-        max_tokens = int(self.lm.max_prompt_length() * 0.3)
-        to_append = []
+    def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+        ''' Return a list of tuples of (source, text) for recent summaries'''
+        recent_summaries = []
+        convo_ids = sorted(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
-        # build to_append newest to oldest
-        for convo_id in sorted(self.recall.list_convo_ids(convo.service, convo.channel), reverse=True):
+        for convo_id in convo_ids:
             summary = self.recall.fetch_summary(convo_id)
             if not summary:
                 continue
-            to_append.append(
-                f"recalls{self.get_time_preamble(convo_id)}\n{summary}"
-            )
-            if self.lm.chat_llm.get_num_tokens(
-                convo.memories['summary'].load_memory_variables({})['history']
-                + '\n'.join(context)
-                + '\n'.join(to_append)
-            ) >= max_tokens:
+            recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"))
+            if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in recent_summaries]), used):
                 break
-
-        # append them oldest to newest
-        context = context + to_append[::-1]
-
-        log.warning(f"Added {len(to_append)} summaries")
-        return '\n'.join(context)
+        return recent_summaries
 
     def get_time_preamble(self, convo_id: str) -> str:
         ''' Return an appropriate time elapsed preamble '''
@@ -203,7 +269,7 @@ class Interact:
 
         # Hand it to langchain. #FIXME: change run to invoke(), which returns a dict apparently -_-
         reply = chain.invoke(input={'input':msg})['response']
-        reply_id = str(ulid.ULID())
+        reply_id = str(ulid.ULID()) # msg_id and reply_id are intentionally spaced out in time
 
         # trim() should probably be an output parser, but I can't make that work with memories.
         # So just rewrite history instead.
@@ -316,130 +382,3 @@ class Interact:
 
         return self.lm.summarize_text(self.recall.fetch_summary(convo_id))
 
-    # def surmise(self, service, channel, topic, size=10):
-    #     ''' Stub for recall '''
-    #     return self.recall.surmise(service, channel, topic, size)
-
-    # def add_goal(self, service, channel, goal):
-    #     ''' Stub for recall '''
-    #     return self.recall.add_goal(service, channel, goal)
-
-    # def get_goals(self, service, channel, goal=None, size=10):
-    #     ''' Stub for recall '''
-    #     return self.recall.get_goals(service, channel, goal, size)
-
-    # def list_goals(self, service, channel, size=10):
-    #     ''' Stub for recall '''
-    #     return self.recall.list_goals(service, channel, size)
-
-    # def read_news(self, service, channel, url, title):
-    #     ''' Let's check the news while we ride the autobus. '''
-    #     req = {
-    #         "service": service,
-    #         "channel": channel,
-    #         "url": url,
-    #         "title": title
-    #     }
-    #     try:
-    #         reply = rs.post(f"{self.config.interact.url}/read_news/", params=req, timeout=10)
-    #         reply.raise_for_status()
-    #     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-    #         log.critical(f"🤖 Could not post /read_news/ to interact: {err}")
-
-    # def read_url(self, service, channel, url):
-    #     ''' Let's ride the autobus on the information superhighway. '''
-    #     parsed = urlparse(url)
-    #     if not bool(parsed.scheme) and bool(parsed.netloc):
-    #         log.warning("👨‍💻 Not a URL:", url)
-    #         return
-
-    #     req = {
-    #         "service": service,
-    #         "channel": channel,
-    #         "url": url
-    #     }
-    #     try:
-    #         reply = rs.post(f"{self.config.interact.url}/read_url/", params=req, timeout=10)
-    #         reply.raise_for_status()
-    #     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-    #         log.critical(f"🤖 Could not post /read_url/ to interact: {err}")
-
-
-
-    # def gather_opinions(self, service, channel, entities):
-    #     '''
-    #     Gather opinions from memory.
-
-    #     This happens asynchronously via the event bus, so opinions might not be immediately available
-    #     for conversation.
-    #     '''
-    #     if not entities:
-    #         return
-
-    #     the_sample = random.sample(entities, k=min(3, len(entities)))
-
-    #     req = {
-    #         "service": service,
-    #         "channel": channel,
-    #         "entities": the_sample
-    #     }
-
-    #     log.warning(f"🧷 opine : {the_sample}")
-    #     try:
-    #         reply = rs.post(f"{self.config.interact.url}/opine/", params=req, timeout=10)
-    #         reply.raise_for_status()
-    #     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-    #         log.critical(f"🤖 Could not post /opine/ to interact: {err}")
-    #         return
-
-    # def check_goals(self, service, channel, convo):
-    #     ''' Have we achieved our goals? '''
-    #     goals = self.recall.list_goals(service, channel)
-
-    #     if goals:
-    #         req = {
-    #             "service": service,
-    #             "channel": channel,
-    #             "convo": '\n'.join(convo),
-    #             "goals": goals
-    #         }
-
-    #         try:
-    #             reply = rs.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
-    #             reply.raise_for_status()
-    #         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-    #             log.critical(f"🤖 Could not post /check_goals/ to interact: {err}")
-
-    # def get_feels(self, service, channel, convo_id, room):
-    #     ''' How are we feeling? Let's ask the autobus. '''
-    #     req = {
-    #         "service": service,
-    #         "channel": channel,
-    #         "convo_id": convo_id,
-    #     }
-    #     data = {
-    #         "room": room
-    #     }
-
-    #     try:
-    #         reply = rs.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
-    #         reply.raise_for_status()
-    #     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-    #         log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
-
-    # def save_knowledge_graph(self, service, channel, convo_id, convo):
-    #     ''' Build a pretty graph of this convo... via the autobus! '''
-    #     req = {
-    #         "service": service,
-    #         "channel": channel,
-    #         "convo_id": convo_id,
-    #     }
-    #     data = {
-    #         "convo": convo
-    #     }
-
-    #     try:
-    #         reply = rs.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
-    #         reply.raise_for_status()
-    #     except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-    #         log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")

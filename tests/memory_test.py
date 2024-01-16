@@ -83,9 +83,6 @@ def test_recall_initialization():
     assert recall.bot_name == 'Test'
     assert str(recall.bot_id) == 'ffffffff-cafe-1337-feed-facade123456'
 
-
-
-
 def test_fetch_summary(recall, cleanup):
     # Setup: create a conversation with a known summary
     convo_id = "test_convo_id"

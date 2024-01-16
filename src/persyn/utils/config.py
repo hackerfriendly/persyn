@@ -129,6 +129,9 @@ def load_config(cfg=None) -> PersynConfig:
         if 'conversation_interval' not in config['memory']:
             config['memory']['conversation_interval'] = 600
 
+        if 'context' not in config['memory']:
+            config['memory']['context'] = 0.3
+
         if 'max_summary_size' not in config['memory']:
             config['memory']['max_summary_size'] = 1000
 

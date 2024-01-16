@@ -80,11 +80,11 @@ captions = "persyn.dreams.BLIP.captions:main"
 [project.optional-dependencies]
 dev = [
   "freezegun",
-  "pytest",
-  "pylint",
-  "jupyterlab",
+  "ipywidgets",
   "jupyter_contrib_nbextensions",
-  "ipywidgets"
+  "jupyterlab",
+  "pylint",
+  "pytest"
 ]
 
 all = [
@@ -99,7 +99,7 @@ all = [
   "torchvision",
   "tqdm",
   "transformers>=4.30.0",
-  "xformers",
+  "xformers"
 ]
 
 [project.urls]
