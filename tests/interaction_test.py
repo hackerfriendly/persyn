@@ -119,16 +119,22 @@ def test_get_sentiment_analysis(interact):
 @pytest.fixture
 def setup_conversations(interact, cleanup):
     # Create and expire several conversations to generate summaries
-    service = "summary_service"
-    channel = "summary_channel"
+    service = "service"
+    channel = "channel"
     speaker_name = "test_speaker"
 
     for i in range(5):
         # Create a convo
         convo = interact.recall.new_convo(service, channel, speaker_name)
         # Add a summary
+        if i < 4:
+            summary = f"A nice summary of Italian cooking {i}"
+        else:
+            # Last one is more specific, for relevance tests
+            summary = f"The completely true story about aardvarks {i}"
+
         convo.memories['redis'].add_texts(
-            texts=[f"summary {i}"],
+            texts=[summary],
             metadatas=[
                 {
                     "service": convo.service,
@@ -144,10 +150,9 @@ def setup_conversations(interact, cleanup):
         # Expire the convo
         interact.recall.expire_convo(convo.id)
 
-
 def test_get_recent_summaries(interact, setup_conversations):
-    service = "summary_service"
-    channel = "summary_channel"
+    service = "service"
+    channel = "channel"
     speaker_name = "test_speaker"
 
     convo = interact.recall.new_convo(service, channel, speaker_name)
@@ -157,10 +162,58 @@ def test_get_recent_summaries(interact, setup_conversations):
     # Check that we have summaries and they are in the correct order (most recent first)
     assert summaries
     assert all("recent summary" in summary[0] for summary in summaries)
-    assert len(summaries) == 5  # Assuming we have 5 convos from setup_conversations
+    assert len(summaries) == 5  # We created 5 summaries in setup_conversations
     # Check that the summaries are in the correct order
     for i in range(4):
         assert summaries[i][1] < summaries[i+1][1]
+
+def test_get_relevant_memories(interact, setup_conversations):
+    service = "service"
+    channel = "channel"
+    speaker_name = "test_speaker"
+
+    convo = interact.recall.new_convo(service, channel, speaker_name)
+    assert len(convo.visited) == 1
+    assert convo.id in convo.visited
+
+    # Fake a conversation
+    convo.memories['summary'].moving_summary_buffer = 'I love southern European food.'
+
+    # Find the relevant memories
+    memories = interact.get_relevant_memories(convo)
+
+    assert len(memories) == 5
+    assert memories[-1][1] == 'Test recalls\nThe completely true story about aardvarks 4'
+
+    # Query again should exclude those five, since they are now in visited
+    memories = interact.get_relevant_memories(convo)
+    assert len(memories) == 0
+    assert len(convo.visited) == 6
+    # TODO: improve these tests to exercise relevance and expiration
+
+def test_get_aardvark_memories(interact, setup_conversations):
+    service = "service"
+    channel = "channel"
+    speaker_name = "test_speaker"
+
+    convo = interact.recall.new_convo(service, channel, speaker_name)
+    assert len(convo.visited) == 1
+    assert convo.id in convo.visited
+
+    # Fake a conversation
+    convo.memories['summary'].moving_summary_buffer = 'Tell me that tale about aardvarks.'
+
+    # Find the relevant memories
+    memories = interact.get_relevant_memories(convo)
+
+    assert len(memories) == 5
+    assert memories[0][1] == 'Test recalls\nThe completely true story about aardvarks 4'
+
+    # Query again should exclude those five, since they are now in visited
+    memories = interact.get_relevant_memories(convo)
+    assert len(memories) == 0
+    assert len(convo.visited) == 6
+
 
 
 # def test_get_recent_summaries_with_limit(test_convo, setup_conversations):
