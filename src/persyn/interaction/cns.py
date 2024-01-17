@@ -124,68 +124,13 @@ class CNS:
         )
         autobus.publish(vc)
 
-
         # Do some research
-
-
-        if False:
-
-            sckey = f"{event.service}|{event.channel}"
-            if sckey not in self.concepts:
-                self.concepts[sckey] = set()
-
-            concepts = set(self.recall.lm.extract_entities(the_reply) + self.recall.lm.extract_nouns(the_reply))
-
-            if concepts:
-                log.warning(f"🆔 extracted concepts: {concepts}")
-
-            new = concepts - self.concepts[sckey]
-            log.info("🆔 new concepts:", new)
-
-            wp = Wikipedia(
-                service=event.service,
-                channel=event.channel,
-                text=text
-            )
-
-
-
-
-            # Ruminate a bit
-            sckey = f"{event.service}|{event.channel}"
-
-            concepts = set(self.recall.lm.extract_entities(the_reply) + self.recall.lm.extract_nouns(the_reply))
-
-            if concepts:
-                log.warning(f"🆔 extracted concepts: {concepts}")
-
-            if sckey not in self.concepts:
-                self.concepts[sckey] = set()
-
-            new = concepts - self.concepts[sckey]
-            log.info("🆔 new concepts:", new)
-
-            for concept in new:
-                self.concepts[sckey].add(concept)
-
-            log.warning("Would it be useful to review any of these concepts?", new)
-
-            reply = self.recall.lm.ask_claude(
-                prefix=f"In the following dialog:\n{event.msg}\nWould it be useful to look up any of these concepts? You must reply ONLY with a comma-separated list of the three most important concepts that {self.config.id.name} could use more specific information about, and nothing else.",
-                query=str(new)
-            )
-            keywords = self.recall.lm.cleanup_keywords(reply)
-            log.warning("Claude says:", str(keywords))
-            if keywords:
-                chat = Chat(persyn_config=self.config, service=event.service)
-                for kw in keywords:
-                    log.info(f"Injecting idea for: {kw}")
-                    chat.inject_idea(
-                        channel=event.channel,
-                        idea=self.datasources['Wikipedia'].run(kw),
-                        verb='recalls'
-                    )
-                    log.info(f"Injected idea for: {kw}")
+        wp = Wikipedia(
+            service=event.service,
+            channel=event.channel,
+            text=the_reply
+        )
+        autobus.publish(wp)
 
 
             # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
@@ -317,6 +262,46 @@ class CNS:
             feels = "nothing in particular"
         self.recall.set_convo_meta(convo_id, "feels", feels)
         log.warning("😄 Feeling:", feels)
+
+
+    async def check_wikipedia(self, event: Wikipedia) -> None:
+
+        sckey = f"{event.service}|{event.channel}"
+
+        concepts = set(self.recall.lm.extract_entities(event.text) + self.recall.lm.extract_nouns(event.text))
+
+        if concepts:
+            log.warning(f"🌍 Extracted concepts: {concepts}")
+
+        if sckey not in self.concepts:
+            self.concepts[sckey] = set()
+
+        new = concepts - self.concepts[sckey]
+        log.info("🌍 Check Wikipedia for:", new)
+
+        for concept in new:
+            self.concepts[sckey].add(concept)
+
+        log.warning("Would it be useful to review any of these concepts?", new)
+
+        reply = self.recall.lm.ask_claude(
+            prefix=f"In the following dialog:\n{event.text}\nWould it be useful to look up any of these concepts? You must reply ONLY with a comma-separated list of the three most important concepts that {self.config.id.name} could use more specific information about, and nothing else.",
+            query=str(new)
+        )
+        keywords = self.recall.lm.cleanup_keywords(reply)
+        log.warning("🌍 Claude says:", str(keywords))
+        if keywords:
+            chat = Chat(persyn_config=self.config, service=event.service)
+            for kw in keywords:
+                log.info(f"Injecting idea for: {kw}")
+                chat.inject_idea(
+                    channel=event.channel,
+                    idea=self.datasources['Wikipedia'].run(kw),
+                    verb='recalls'
+                )
+                log.info(f"Injected idea for: {kw}")
+
+
 
     async def check_facts(self, event: FactCheck) -> None:
         ''' Ask for a second opinion about our side of the conversation. '''
@@ -740,6 +725,12 @@ async def photo_event(event):
     ''' Dispatch Reflect event. '''
     log.debug("Photo received", event)
     await cns.generate_photo(event) # type: ignore
+
+@autobus.subscribe(Wikipedia)
+async def wikipedia_event(event):
+    ''' Dispatch Wikipedia event. '''
+    log.debug("Wikipedia", event)
+    await cns.check_wikipedia(event) # type: ignore
 
 
 # Autobus scheduled events. These must also be top-level functions.

@@ -212,7 +212,7 @@ def test_get_last_message_id(recall, cleanup):
     final_message_id = "zzz"
 
     # Setup: simulate message creation
-    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:lines:last_message_id", last_message_id)
+    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:dialog:last_message_id", last_message_id)
 
     # Exercise: get the last message ID
     fetched_id = recall.get_last_message_id(convo_id)
@@ -221,17 +221,17 @@ def test_get_last_message_id(recall, cleanup):
     assert fetched_id == last_message_id
 
     # Exercise: add more message IDs
-    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:lines:zzz", final_message_id)
-    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:lines:aaa", "aaa")
+    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:dialog:zzz", final_message_id)
+    recall.redis.set(f"{recall.convo_prefix}:{convo_id}:dialog:aaa", "aaa")
 
     # Verify: fetched ID matches expected last_message_id
     fetched_id = recall.get_last_message_id(convo_id)
     assert fetched_id == final_message_id
 
     # Cleanup
-    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:last_message_id")
-    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:aaa")
-    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:lines:zzz")
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:dialog:last_message_id")
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:dialog:aaa")
+    recall.redis.delete(f"{recall.convo_prefix}:{convo_id}:dialog:zzz")
 
 def test_current_convo_id(recall, cleanup):
     ''' Revisit this if multiple conversations are allowed at once. '''
@@ -353,8 +353,8 @@ def test_convo_expired(recall, cleanup):
 
     # Backdate the conversation
     line_id = str(ulid.ULID().from_datetime(dt.datetime(2021, 1, 1)))
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{line_id}", "service", service)
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{line_id}", "channel", channel)
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{line_id}", "service", service)
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{line_id}", "channel", channel)
 
     # Convo should now be expired
     assert recall.convo_expired(service, channel, convo.id) is True
@@ -374,14 +374,14 @@ def test_convo_expired_with_convo_id(recall, cleanup):
 
     # Revive the convo
     new_convo_id = str(ulid.ULID())
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{new_convo_id}", "service", service)
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{new_convo_id}", "service", service)
     recall.set_convo_meta(convo.id, "expired", "False")
     assert recall.convo_expired(service, channel, convo.id) is False
 
     # Now expire it again
-    recall.redis.delete(f"{recall.convo_prefix}:{convo.id}:lines:{new_convo_id}")
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{convo_id}", "service", service)
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:lines:{convo_id}", "channel", channel)
+    recall.redis.delete(f"{recall.convo_prefix}:{convo.id}:dialog:{new_convo_id}")
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{convo_id}", "service", service)
+    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{convo_id}", "channel", channel)
 
     # Convo should now be expired
     assert recall.convo_expired(service, channel, convo.id) is True
@@ -452,10 +452,10 @@ def test_find_related_convos(recall, cleanup):
             bot
         ],
         keys=[
-            f'{convo.id}:lines:{str(ulid.ULID())}',
-            f'{convo.id}:lines:{str(ulid.ULID())}',
-            f'{convo.id}:lines:{str(ulid.ULID())}',
-            f'{convo.id}:lines:{str(ulid.ULID())}'
+            f'{convo.id}:dialog:{str(ulid.ULID())}',
+            f'{convo.id}:dialog:{str(ulid.ULID())}',
+            f'{convo.id}:dialog:{str(ulid.ULID())}',
+            f'{convo.id}:dialog:{str(ulid.ULID())}'
         ]
     )
 

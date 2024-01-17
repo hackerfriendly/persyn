@@ -80,86 +80,10 @@ class Interact:
 {human}: {input}
 {bot}:"""
 
-    # def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
-    #     '''
-    #     Additional context for the prompt.
-
-    #     For transient things (eg. feelings, opinions) just append to the context.
-
-    #     For more permanent things, add to the convo memories.
-
-    #     If raw is True, return tuples of (source, text) instead of a string.
-    #     '''
-    #     context = []
-
-    #     # Sentiment analysis
-    #     context.append(('sentiment analysis', f"{self.config.id.name} is feeling {self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'}."))
-
-    #     # Relevant memories
-    #     # Available metadata: service, channel, role, speaker_name, verb
-
-    #     ret = self.recall.find_related_convos(
-    #         convo.service,
-    #         convo.channel,
-    #         self.current_dialog(convo),
-    #         exclude_convo_ids=convo.visited,
-    #         threshold=self.config.memory.relevance,
-    #         size=5
-    #     )
-
-    #     log.warning(f"🐘 {len(ret)} hits < {self.config.memory.relevance}")
-
-    #     # TODO: Instead of random, weight by age and relevance a la Stanford Smallville
-    #     while ret:
-    #         (convo_id, score) = random.sample(ret, k=1)[0]
-    #         ret.remove((convo_id, score))
-
-    #         warned = set()
-    #         if convo_id in convo.visited:
-    #             if convo_id not in warned:
-    #                 log.warning("🤌  Already visited this convo:", convo_id)
-    #             warned.add(convo_id)
-    #             continue
-
-    #         convo.visited.add(convo_id)
-    #         summary = self.recall.fetch_summary(convo_id)
-    #         if summary:
-    #             log.warning(f"✅ Found relevant memory with score: {score}:", summary[:30] + "...")
-    #             preamble = self.get_time_preamble(convo_id)
-    #             # self.inject_idea(convo.service, convo.channel, f"{preamble}{summary}\n\n\n", verb="recalls")
-    #             context.append((f"relevant memory: {score}", f"{self.config.id.name} recalls{preamble}\n{summary}"))
-    #             # break
-
-    #     # Recent summaries + conversation
-    #     # TODO: parameterize this
-    #     max_tokens = int(self.lm.max_prompt_length() * 0.3)
-    #     to_append = []
-
-    #     # build to_append newest to oldest
-    #     for convo_id in sorted(self.recall.list_convo_ids(convo.service, convo.channel), reverse=True):
-    #         summary = self.recall.fetch_summary(convo_id)
-    #         if not summary:
-    #             continue
-    #         to_append.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"))
-    #         if self.lm.chat_llm.get_num_tokens(
-    #             convo.memories['summary'].load_memory_variables({})['history']
-    #             + '\n'.join([ctx[1] for ctx in context])
-    #             + '\n'.join([ctx[1] for ctx in to_append])
-    #         ) >= max_tokens:
-    #             break
-
-    #     # append them oldest to newest
-    #     context = context + to_append[::-1]
-
-    #     log.warning(f"Added {len(to_append)} summaries")
-    #     if raw:
-    #         return context
-
-    #     return '\n'.join([ctx[1] for ctx in context])
-
     def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
         context = [self.get_sentiment_analysis(convo)]
         context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        # FIXME: get_relevant ideas? inject_ideas is quite broken.
         context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
@@ -267,7 +191,7 @@ class Interact:
             memory=convo.memories['combined']
         )
 
-        # Hand it to langchain. #FIXME: change run to invoke(), which returns a dict apparently -_-
+        # Hand it to langchain.
         reply = chain.invoke(input={'input':msg})['response']
         reply_id = str(ulid.ULID()) # msg_id and reply_id are intentionally spaced out in time
 
@@ -315,8 +239,8 @@ class Interact:
                 }
             ],
             keys=[
-                f"{convo.id}:lines:{msg_id}",
-                f"{convo.id}:lines:{reply_id}",
+                f"{convo.id}:dialog:{msg_id}",
+                f"{convo.id}:dialog:{reply_id}",
                 f"{convo.id}:summary"
             ]
         )
@@ -349,13 +273,22 @@ class Interact:
         '''
         Directly inject an idea into recall memory.
         '''
+        # FIXME: This gets saved to Redis, but doesn't get added to the convo history.
+        # Until this is fixed, no ideas make it to the context.
+
+        log.warning(f"inject_idea: {service} {channel} {idea} {verb}")
+
         convo = self.recall.fetch_convo(service, channel)
         if convo is None:
             return
 
-        # Add to summary memory. Dialog is automatically handled by langchain.
+        log.info(convo.memories['summary'].load_memory_variables({})['history'])
+
+        # Add to memory. Dialog is automatically handled by langchain.
         if verb != 'dialog':
-            convo.memories['summary'].chat_memory.add_ai_message(f"({verb}) {idea}")
+            log.warning(f'adding to memory for {convo.id}')
+            convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
+            log.warning(convo.memories['summary'].load_memory_variables({})['history'])
 
             # Add to redis
             convo.memories['redis'].add_texts(
@@ -369,7 +302,7 @@ class Interact:
                         "verb": verb
                     }
                 ],
-                keys=[f"{convo.id}:{str(ulid.ULID())}"]
+                keys=[f"{convo.id}:ideas:{str(ulid.ULID())}"]
             )
 
     def summarize_channel(self, service: str, channel: str, convo_id: str = None) -> str:

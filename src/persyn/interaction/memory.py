@@ -284,7 +284,7 @@ class Recall:
         Returns the most recent message for this convo_id from Redis
         If there are no messages, return the convo_id
         '''
-        message_ids = sorted(self.redis.keys(f"{self.convo_prefix}:{convo_id}:lines:*"), reverse=True)
+        message_ids = sorted(self.redis.keys(f"{self.convo_prefix}:{convo_id}:dialog:*"), reverse=True)
         if message_ids:
             return message_ids[0].decode().split(':')[-1]
         # No messages yet, just return the convo_id
