@@ -58,8 +58,6 @@ def post_to_autobus(service, channel, prompt, images, bot_name, bot_id, extra=No
         channel=channel,
         images=images,
         msg=prompt,
-        bot_name=bot_name,
-        bot_id=bot_id,
         extra=extra
     )
     autobus.publish(event)

@@ -69,7 +69,7 @@ class CNS:
         self.concepts = {}
         self.mastodon.login()
 
-    def send_chat(self, service: str, channel: str, bot_name: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
+    def send_chat(self, service: str, channel: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
         ''' Send a chat message to a service + channel '''
 
         if 'slack.com' in service:
@@ -83,11 +83,15 @@ class CNS:
             return
 
         chat = Chat(persyn_config=self.config, service=service)
-        func(self.config, chat, channel, bot_name, msg, images, extra)
+        try:
+            func(self.config, chat, channel, msg, images, extra)
+        except Exception as err:
+            log.error(f"💬 Could not send chat to {service}|{channel}: {err}")
 
     async def say_something(self, event: SendChat) -> None:
         ''' Send a message to a service + channel '''
-        self.send_chat(service=event.service, channel=event.channel, bot_name=event.bot_name, msg=event.msg, images=event.images, extra=event.extra)
+        log.debug(f'SendChat received: {event.service} {event.channel} {event.msg} {event.images} {event.extra}')
+        self.send_chat(service=event.service, channel=event.channel, msg=event.msg, images=event.images, extra=event.extra)
 
     async def chat_received(self, event: ChatReceived) -> None:
         ''' Somebody is talking to us '''
@@ -117,69 +121,92 @@ class CNS:
         vc = VibeCheck(
             service=event.service,
             channel=event.channel,
-            bot_name=self.config.id.name, # type: ignore
-            bot_id=self.config.id.guid # type: ignore
         )
         autobus.publish(vc)
 
-        # Ruminate a bit
-        sckey = f"{event.service}|{event.channel}"
 
-        concepts = set(self.recall.lm.extract_entities(the_reply) + self.recall.lm.extract_nouns(the_reply))
-
-        if concepts:
-            log.warning(f"🆔 extracted concepts: {concepts}")
-
-        if sckey not in self.concepts:
-            self.concepts[sckey] = set()
-
-        new = concepts - self.concepts[sckey]
-        log.info("🆔 new concepts:", new)
-
-        for concept in new:
-            self.concepts[sckey].add(concept)
-
-        log.warning("Would it be useful to look up any of these concepts?", new)
-
-        reply = self.recall.lm.ask_claude(
-            prefix=f"In the following dialog:\n{event.msg}\nWould it be useful to look up any of these concepts? You must reply ONLY with a comma-separated list of the three most important concepts that {self.config.id.name} could use more specific information about, and nothing else.",
-            query=str(new)
-        )
-        keywords = self.recall.lm.cleanup_keywords(reply)
-        log.warning("Claude says:", str(keywords))
-        if keywords:
-            chat = Chat(persyn_config=self.config, service=event.service)
-            for kw in keywords:
-                log.info(f"Injecting idea for: {kw}")
-                chat.inject_idea(
-                    channel=event.channel,
-                    idea=self.datasources['Wikipedia'].run(kw),
-                    verb='recalls'
-                )
-                log.info(f"Injected idea for: {kw}")
+        # Do some research
 
 
-        # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
-        #     # Check facts
-        #     fc = FactCheck(
-        #         service=event.service,
-        #         channel=event.channel,
-        #         bot_name=persyn_config.id.name,
-        #         bot_id=persyn_config.id.guid,
-        #         convo_id=None,
-        #         room=None
-        #     )
-        #     autobus.publish(fc)
+        if False:
+
+            sckey = f"{event.service}|{event.channel}"
+            if sckey not in self.concepts:
+                self.concepts[sckey] = set()
+
+            concepts = set(self.recall.lm.extract_entities(the_reply) + self.recall.lm.extract_nouns(the_reply))
+
+            if concepts:
+                log.warning(f"🆔 extracted concepts: {concepts}")
+
+            new = concepts - self.concepts[sckey]
+            log.info("🆔 new concepts:", new)
+
+            wp = Wikipedia(
+                service=event.service,
+                channel=event.channel,
+                text=text
+            )
 
 
-        # TODO: Should this be a priority queue?
 
-        # Dispatch an event to gather facts
 
-            # # Facts and opinions
-            # self.gather_facts(service, channel, entities)
+            # Ruminate a bit
+            sckey = f"{event.service}|{event.channel}"
 
-        #     self.check_goals(service, channel, convo)
+            concepts = set(self.recall.lm.extract_entities(the_reply) + self.recall.lm.extract_nouns(the_reply))
+
+            if concepts:
+                log.warning(f"🆔 extracted concepts: {concepts}")
+
+            if sckey not in self.concepts:
+                self.concepts[sckey] = set()
+
+            new = concepts - self.concepts[sckey]
+            log.info("🆔 new concepts:", new)
+
+            for concept in new:
+                self.concepts[sckey].add(concept)
+
+            log.warning("Would it be useful to review any of these concepts?", new)
+
+            reply = self.recall.lm.ask_claude(
+                prefix=f"In the following dialog:\n{event.msg}\nWould it be useful to look up any of these concepts? You must reply ONLY with a comma-separated list of the three most important concepts that {self.config.id.name} could use more specific information about, and nothing else.",
+                query=str(new)
+            )
+            keywords = self.recall.lm.cleanup_keywords(reply)
+            log.warning("Claude says:", str(keywords))
+            if keywords:
+                chat = Chat(persyn_config=self.config, service=event.service)
+                for kw in keywords:
+                    log.info(f"Injecting idea for: {kw}")
+                    chat.inject_idea(
+                        channel=event.channel,
+                        idea=self.datasources['Wikipedia'].run(kw),
+                        verb='recalls'
+                    )
+                    log.info(f"Injected idea for: {kw}")
+
+
+            # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
+            #     # Check facts
+            #     fc = FactCheck(
+            #         service=event.service,
+            #         channel=event.channel,
+            #         convo_id=None,
+            #         room=None
+            #     )
+            #     autobus.publish(fc)
+
+
+            # TODO: Should this be a priority queue?
+
+            # Dispatch an event to gather facts
+
+                # # Facts and opinions
+                # self.gather_facts(service, channel, entities)
+
+            #     self.check_goals(service, channel, convo)
 
         log.warning("💬 chat_received done in:", f"{elapsed(start, get_cur_ts()):0.2f} sec")
 
@@ -201,7 +228,7 @@ class CNS:
             photo=event.photo
         )
         if event.send_chat:
-            self.send_chat(service=event.service, channel=event.channel, bot_name=event.bot_name, msg=summary)
+            self.send_chat(service=event.service, channel=event.channel, msg=summary)
 
         return summary
 
@@ -211,7 +238,7 @@ class CNS:
         reply = chat.get_reply(
             channel=event.channel,
             msg='...',
-            speaker_name=event.bot_name
+            speaker_name=self.config.id.name
         )
         return reply
 

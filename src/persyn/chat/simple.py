@@ -28,15 +28,16 @@ def slack_msg(
     persyn_config: PersynConfig,
     chat: Chat,
     channel: str,
-    bot_name: str,
     msg: str,
     images: Optional[list[str]] = None,
     extra: Optional[str] = None # pylint: disable=unused-argument
     ) -> None:
     ''' Post a message to Slack with optional images '''
 
-    # TODO: Why does this call take ~three seconds to show up in the channel?
+    log.debug(f"slack_msg: {persyn_config}, {chat}, {channel}, {msg}, {images}, {extra}")
 
+    # TODO: Why does this call take ~three seconds to show up in the channel?
+    bot_name = persyn_config.id.name
     blocks = []
     if images:
         # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
@@ -82,12 +83,15 @@ def discord_msg(
     persyn_config: PersynConfig,
     chat: Chat,
     channel: str,
-    bot_name: str,
     msg: str,
     images: Optional[list[str]] = None,
     extra: Optional[str] = None # pylint: disable=unused-argument
     ) -> None:
     ''' Post an image to Discord '''
+
+    log.debug(f"discord_msg: {persyn_config}, {chat}, {channel}, {msg}, {images}, {extra}")
+
+    bot_name = persyn_config.id.name
     req = {
         "username": persyn_config.id.name,
         # webhook is a different user id from the main bot, so set the avatar accordingly
@@ -130,7 +134,6 @@ def mastodon_msg(
     persyn_config: PersynConfig,
     chat: Chat, # pylint: disable=unused-argument
     channel: str, # pylint: disable=unused-argument
-    bot_name: str, # pylint: disable=unused-argument
     msg: str,
     images: Optional[list[str]] = None,
     extra: Optional[str] = None

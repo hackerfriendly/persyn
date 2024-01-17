@@ -265,8 +265,6 @@ async def handle_check_goals(
     event = CheckGoals(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         convo=convo,
         goals=goals
     )
@@ -288,8 +286,6 @@ async def handle_send_msg(
     event = SendChat(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         msg=msg,
         extra=extra
     )
@@ -310,8 +306,6 @@ async def handle_opine(
     event = Opine(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         entities=entities
     )
     autobus.publish(event)
@@ -329,8 +323,6 @@ async def handle_vibe_check(
     event = VibeCheck(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
     )
     autobus.publish(event)
 
@@ -350,8 +342,6 @@ async def handle_build_graph(
     event = KnowledgeGraph(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         convo_id=convo_id,
         convo=convo
     )
@@ -372,8 +362,6 @@ async def handle_read_news(
     event = News(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         url=url
     )
     autobus.publish(event)
@@ -394,8 +382,6 @@ async def handle_read_url(
     event = Web(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         url=url,
         reread=reread
     )
