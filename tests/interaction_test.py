@@ -215,42 +215,30 @@ def test_get_aardvark_memories(interact, setup_conversations, cleanup):
     assert len(convo.visited) == 6
 
 
+def test_inject_idea(interact, cleanup):
+    # Prepare the test
+    service = "test_service_inject_idea"
+    channel = "test_channel_inject_idea"
+    idea = "This is a test idea."
+    verb = "recalls"
 
-# def test_get_recent_summaries_with_limit(test_convo, setup_conversations):
-#     your_class_instance = YourClass()
-#     # Assuming that too_many_tokens will return True after a certain threshold
-#     summaries = your_class_instance.get_recent_summaries(test_convo, used=100)
+    # Convo must exist
+    assert interact.inject_idea(service, channel, idea, verb) == False
 
-#     # Check that the number of summaries is limited due to token count
-#     assert len(summaries) < 5
+    # Dialog not allowed
+    assert interact.inject_idea(service, channel, idea, verb='dialog') == False
 
+    # Create a new conversation
+    convo = interact.recall.new_convo(service, channel, "test_speaker")
 
-# def test_add_context(interact: Interact):
+    # Inject the idea
+    assert interact.inject_idea(service, channel, idea, verb) == True
 
-#     # Test that add_context appends the correct context information
-#     # This may require mocking the Recall object and its methods
+    # Verify that the idea is saved in the summary
+    convo = interact.recall.fetch_convo(service, channel)
+    assert convo is not None
+    summary = interact.recall.fetch_summary(convo.id)
+    assert idea in summary
 
-# def test_get_time_preamble(interact: Interact):
-#     # Test that get_time_preamble returns the correct preamble based on time elapsed
-#     # This will require mocking chrono.elapsed
-
-# def test_current_dialog(interact):
-#     # Test that current_dialog returns the correct dialog from the convo
-#     # This will require setting up a mock Convo object with expected history
-
-# def test_retort(interact, mock_language_model):
-#     # Test that retort returns a trimmed response and sends a chat if send_chat is True
-#     # This will require mocking out send_chat and checking that it was called with the correct parameters
-
-# def test_status(interact):
-#     # Test that status returns the correct prompt and chat history for a channel
-#     # This will require setting up a mock Convo object and checking the returned prompt format
-
-# def test_inject_idea(interact):
-#     # Test that inject_idea correctly injects an idea into recall memory
-#     # This will require mocking out the Recall object and its methods
-
-# def test_summarize_channel(interact, mock_language_model):
-#     # Test that summarize_channel returns a summary for a given channel
-#     # This will require setting up a mock Convo object and mocking the summarize_text method
+# TODO: Test retort, status, etc...
 

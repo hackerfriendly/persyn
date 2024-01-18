@@ -6,6 +6,7 @@ The limbic system library.
 import random
 
 from dataclasses import dataclass
+import re
 from typing import Optional, Union, List, Tuple
 
 import ulid
@@ -154,6 +155,27 @@ class Interact:
         ''' Return the current dialog from convo '''
         return convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
 
+    def save_summary(self, convo: Convo) -> None:
+        ''' Save the summary for this convo '''
+        convo.memories['redis'].add_texts(
+            texts=[
+                self.current_dialog(convo)
+            ],
+            metadatas=[
+                {
+                    "service": convo.service,
+                    "channel": convo.channel,
+                    "convo_id": convo.id,
+                    "speaker_name": "narrator",
+                    "verb": "summary",
+                    "role": "bot"
+                }
+            ],
+            keys=[
+                f"{convo.id}:summary"
+            ]
+        )
+
     def retort(
         self,
         service: str,
@@ -168,7 +190,6 @@ class Interact:
 
         Returns the response. If send_chat is True, also send it to chat.
         '''
-        msg_id = str(ulid.ULID())
         log.info(f"💬 get_reply to: {msg}")
 
         convo = self.recall.fetch_convo(service, channel)
@@ -193,7 +214,6 @@ class Interact:
 
         # Hand it to langchain.
         reply = chain.invoke(input={'input':msg})['response']
-        reply_id = str(ulid.ULID()) # msg_id and reply_id are intentionally spaced out in time
 
         # trim() should probably be an output parser, but I can't make that work with memories.
         # So just rewrite history instead.
@@ -209,8 +229,7 @@ class Interact:
         convo.memories['redis'].add_texts(
             texts=[
                 msg,
-                trimmed,
-                self.current_dialog(convo)
+                trimmed
             ],
             metadatas=[
                 {
@@ -229,21 +248,14 @@ class Interact:
                     "verb": "dialog",
                     "role": "bot"
                 },
-                {
-                    "service": service,
-                    "channel": channel,
-                    "convo_id": convo.id,
-                    "speaker_name": "narrator",
-                    "verb": "summary",
-                    "role": "bot"
-                }
             ],
             keys=[
-                f"{convo.id}:dialog:{msg_id}",
-                f"{convo.id}:dialog:{reply_id}",
-                f"{convo.id}:summary"
+                f"{convo.id}:dialog:{str(ulid.ULID())}",
+                f"{convo.id}:dialog:{str(ulid.ULID())}",
             ]
         )
+        # Also save the summary
+        self.save_summary(convo)
 
         log.info(f"💬 get_reply done: {reply}")
         return trimmed
@@ -269,43 +281,28 @@ class Interact:
             input='input'
         )
 
-    def inject_idea(self, service: str, channel: str, idea: str, verb: str="recalls") -> None:
+    def inject_idea(self, service: str, channel: str, idea: str, verb: str="recalls") -> bool:
         '''
         Directly inject an idea into recall memory.
         '''
-        # FIXME: This gets saved to Redis, but doesn't get added to the convo history.
-        # Until this is fixed, no ideas make it to the context.
+        log.info(f"💉 inject_idea: {service}|{channel} ({verb}) {idea[:20]}")
 
-        log.warning(f"inject_idea: {service} {channel} {idea} {verb}")
+        if verb == 'dialog':
+            log.error("💉 inject_idea: dialog is handled by retort(), skipping.")
+            return False
 
         convo = self.recall.fetch_convo(service, channel)
         if convo is None:
-            return
+            return False
 
-        log.info(convo.memories['summary'].load_memory_variables({})['history'])
+        log.debug(convo.memories['summary'].load_memory_variables({})['history'])
 
-        # Add to memory. Dialog is automatically handled by langchain.
-        if verb != 'dialog':
-            log.warning(f'adding to memory for {convo.id}')
-            convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
-            log.warning(convo.memories['summary'].load_memory_variables({})['history'])
+        convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
+        self.save_summary(convo)
 
-            # Add to redis
-            convo.memories['redis'].add_texts(
-                texts=[idea],
-                metadatas=[
-                    {
-                        "service": service,
-                        "channel": channel,
-                        "convo_id": convo.id,
-                        "speaker_name": self.config.id.name,
-                        "verb": verb
-                    }
-                ],
-                keys=[f"{convo.id}:ideas:{str(ulid.ULID())}"]
-            )
+        return True
 
-    def summarize_channel(self, service: str, channel: str, convo_id: str = None) -> str:
+    def summarize_channel(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
         ''' Summarize a channel in a few sentences. '''
         if convo_id is None:
             convo_id = self.recall.get_last_convo_id(service, channel)

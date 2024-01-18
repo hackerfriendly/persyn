@@ -265,9 +265,8 @@ class CNS:
 
 
     async def check_wikipedia(self, event: Wikipedia) -> None:
-
+        ''' Extract concepts from the text and ask Claude for further reading.'''
         sckey = f"{event.service}|{event.channel}"
-
         concepts = set(self.recall.lm.extract_entities(event.text) + self.recall.lm.extract_nouns(event.text))
 
         if concepts:
@@ -277,31 +276,23 @@ class CNS:
             self.concepts[sckey] = set()
 
         new = concepts - self.concepts[sckey]
-        log.info("🌍 Check Wikipedia for:", new)
-
-        for concept in new:
-            self.concepts[sckey].add(concept)
-
-        log.warning("Would it be useful to review any of these concepts?", new)
-
         reply = self.recall.lm.ask_claude(
-            prefix=f"In the following dialog:\n{event.text}\nWould it be useful to look up any of these concepts? You must reply ONLY with a comma-separated list of the three most important concepts that {self.config.id.name} could use more specific information about, and nothing else.",
+            prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
             query=str(new)
         )
         keywords = self.recall.lm.cleanup_keywords(reply)
-        log.warning("🌍 Claude says:", str(keywords))
+
+        log.warning("🌍 Claude suggests further reading:", str(keywords))
         if keywords:
             chat = Chat(persyn_config=self.config, service=event.service)
             for kw in keywords:
-                log.info(f"Injecting idea for: {kw}")
+                self.concepts[sckey].add(kw)
+
                 chat.inject_idea(
                     channel=event.channel,
                     idea=self.datasources['Wikipedia'].run(kw),
                     verb='recalls'
                 )
-                log.info(f"Injected idea for: {kw}")
-
-
 
     async def check_facts(self, event: FactCheck) -> None:
         ''' Ask for a second opinion about our side of the conversation. '''
