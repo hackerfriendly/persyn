@@ -199,9 +199,18 @@ class Recall:
         except AttributeError:
             return None
 
-    def fetch_summary(self, convo_id: str) -> str:
-        ''' Fetch a conversation summary. '''
-        ret = self.redis.hget(f"{self.convo_prefix}:{convo_id}:summary", "content")
+    def fetch_summary(self, convo_id: str, final=False) -> str:
+        '''
+        Fetch a conversation summary.
+        If final = False, return the most recent conversational memory summary buffer.
+        If final = True, return the final (much shorter) summary.
+        '''
+        if final:
+            key="final"
+        else:
+            key="content"
+
+        ret = self.redis.hget(f"{self.convo_prefix}:{convo_id}:summary", key)
         if ret:
             return ret.decode()
         log.debug("👎 No summary found for:", convo_id)
@@ -263,6 +272,8 @@ class Recall:
 
         for doc in self.redis.ft(self.convo_prefix).search(query).docs: # type: ignore
             ret.add(doc.id.split(':')[3])
+            # TODO: Update to return a dict of convo_id, service, and channel
+            # ret.add({doc.id.split(':')[3]: {'service': doc.service, 'channel': doc.channel}})
 
         return sorted(ret)
 

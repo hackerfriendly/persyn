@@ -13,13 +13,11 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from typing import Optional
+from matplotlib.dates import SU
 
 import requests
 
 from bs4 import BeautifulSoup
-
-from langchain.tools import Tool
-from langchain.agents import AgentType, initialize_agent, load_tools
 
 from persyn.langchain.zim import ZimWrapper
 
@@ -34,7 +32,7 @@ from persyn.chat.simple import slack_msg, discord_msg, mastodon_msg
 from persyn.chat.mastodon.bot import Mastodon
 
 # Time
-from persyn.interaction.chrono import get_cur_ts, elapsed, seconds_ago
+from persyn.interaction.chrono import get_cur_ts, elapsed
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
@@ -175,13 +173,18 @@ class CNS:
     async def summarize_channel(self, event: Summarize) -> str:
         ''' Summarize the channel '''
         chat = Chat(persyn_config=self.config, service=event.service)
-        summary = chat.get_summary(
-            channel=event.channel,
-            convo_id=event.convo_id,
-            photo=event.photo
-        )
+
+        reply = await asyncio.gather(in_thread(
+            chat.get_summary, [event.channel, event.convo_id, event.photo]
+        ))
+        summary = reply[0]
+
         if event.send_chat:
             self.send_chat(service=event.service, channel=event.channel, msg=summary)
+
+        if event.save_memory:
+            log.info(f"🎬 Saving final summary for {event.service}|{event.channel}")
+            self.recall.redis.hset(f"{self.recall.convo_prefix}:{event.convo_id}:summary", "final", summary)
 
         return summary
 
@@ -770,8 +773,17 @@ async def auto_summarize() -> None:
 
     for convo_id in cns.recall.list_convo_ids(expired=True, after=4): # type: ignore
         log.info(f"💔 Convo expired: {convo_id}")
-        # TODO: Produce a final summary HERE. This will involve revisiting find_relevant_convos(), which
-        # currently relies on the summary containing (mostly) full dialog.
+        # TODO: Update recall.list_convo_ids() to return a dict with convo_id, service + channel.
+        # Then send this event to save a "final" summary:
+        # event = Summarize(
+        #     service=ret['service'],
+        #     channel=ret['channel'],
+        #     convo_id=ret['convo_id'],
+        #     photo=False,
+        #     send_chat=False,
+        #     save_memory=True
+        # )
+
 
     # for key in convos:
     #     (service, channel, convo_id) = key.split('|')

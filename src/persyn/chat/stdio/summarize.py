@@ -33,8 +33,10 @@ def main():
     )
     parser.add_argument('service', type=str, help='Chat service (discord, mastodon, or a Slack URL)')
     parser.add_argument('channel', type=str, help='Chat channel id')
+    parser.add_argument('--convo-id', type=str, help='Convo ID (optional)')
     parser.add_argument('--photo', action='store_true', help='Take a photo of the summary (default: False)')
-    parser.add_argument('--max-tokens', type=int, help='Summary length in tokens (default: 200)', default=200)
+    parser.add_argument('--send-chat', action='store_true', help='Send the summary to the channel (default: False)')
+    parser.add_argument('--save-memory', action='store_true', help='Save the summary permanently (default: False)')
 
     args = parser.parse_args()
 
@@ -43,8 +45,10 @@ def main():
     event = Summarize(
         service=args.service,
         channel=args.channel,
+        convo_id=args.convo_id,
         photo=args.photo,
-        max_tokens=args.max_tokens
+        send_chat=args.send_chat,
+        save_memory=args.save_memory
     )
 
     async def inject_idea():

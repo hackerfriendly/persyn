@@ -121,7 +121,7 @@ class Interact:
             if convo_id in convo.visited:
                 continue
             convo.visited.add(convo_id)
-            summary = self.recall.fetch_summary(convo_id)
+            summary = self.recall.fetch_summary(convo_id, final=True)
             if summary:
                 if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in relevant_memories]), used):
                     break
@@ -135,7 +135,7 @@ class Interact:
         convo_ids = sorted(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
         for convo_id in convo_ids:
-            summary = self.recall.fetch_summary(convo_id)
+            summary = self.recall.fetch_summary(convo_id, final=True)
             if not summary:
                 continue
             recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"))
@@ -155,7 +155,11 @@ class Interact:
         return convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
 
     def save_summary(self, convo: Convo) -> None:
-        ''' Save the summary for this convo '''
+        '''
+        Save the summary for this convo.
+        While a convo is active, it contains the entire summary buffer (including most dialog).
+        After the convo has expired, it contains only the final summary.
+        '''
         convo.memories['redis'].add_texts(
             texts=[
                 self.current_dialog(convo)

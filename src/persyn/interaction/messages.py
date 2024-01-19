@@ -21,7 +21,7 @@ class ChatReceived(Event):
     channel: str
     speaker_name: str
     msg: str
-    extra: Optional[str]
+    extra: Optional[str] = None
 
 
 class Idea(Event):
@@ -36,10 +36,10 @@ class Summarize(Event):
     ''' Summarize the current channel immediately. '''
     service: str
     channel: str
-    convo_id: Optional[str]
+    convo_id: Optional[str] = None
     photo: bool
-    max_tokens: int
     send_chat: Optional[bool] = True
+    save_memory: Optional[bool] = False
 
 
 class Elaborate(Event):
@@ -87,8 +87,8 @@ class FactCheck(Event):
     ''' How we thinkin'? '''
     service: str
     channel: str
-    convo_id: Optional[str]
-    room: Optional[str]
+    convo_id: Optional[str] = None
+    room: Optional[str] = None
 
 
 class KnowledgeGraph(Event):
@@ -121,7 +121,7 @@ class Reflect(Event):
     service: str
     channel: str
     send_chat: Optional[bool] = True
-    convo_id: Optional[str]
+    convo_id: Optional[str] = None
 
 
 class Photo(Event):
