@@ -8,10 +8,13 @@ The central nervous system. Listen for events on the event bus and inject result
 import argparse
 import logging
 import os
+import asyncio
 
-import requests
+from concurrent.futures import ThreadPoolExecutor
 
 from typing import Optional
+
+import requests
 
 from bs4 import BeautifulSoup
 
@@ -49,6 +52,12 @@ from persyn.utils.color_logging import log
 from persyn.utils.config import PersynConfig, load_config
 
 cns = None
+
+_executor = ThreadPoolExecutor(8)
+
+async def in_thread(func, args):
+    ''' Run a function in its own thread and await the result '''
+    return await asyncio.get_event_loop().run_in_executor(_executor, func, *args)
 
 class CNS:
     ''' Container class for the Central Nervous System '''
@@ -100,20 +109,19 @@ class CNS:
         start = get_cur_ts()
         log.warning("💬 chat_received")
 
-        # convo_id = recall.convo_id(event.service, event.channel)
-        # if convo_id not in recall.list_convos():
-        #     log.warning(f"😈 Rogue convo_id {convo_id}, adding to list of active convos")
-        #     recall.redis.sadd(recall.active_convos_prefix, f"{event.service}|{event.channel}|{convo_id}")
-
         # TODO: Decide whether to delay reply, or to reply at all?
 
-        the_reply = chat.get_reply(
-            channel=event.channel,
-            speaker_name=event.speaker_name,
-            msg=event.msg,
-            send_chat=True,
-            extra=event.extra
-        )
+        the_reply = await asyncio.gather(in_thread(
+            chat.get_reply, [event.channel, event.speaker_name, event.msg, True, event.extra]
+        ))
+
+        # the_reply = (
+        #     channel=event.channel,
+        #     speaker_name=event.speaker_name,
+        #     msg=event.msg,
+        #     send_chat=True,
+        #     extra=event.extra
+        # )
 
         # Time for self-examination.
 
@@ -128,7 +136,7 @@ class CNS:
         wp = Wikipedia(
             service=event.service,
             channel=event.channel,
-            text=the_reply
+            text=the_reply[0]
         )
         autobus.publish(wp)
 
@@ -276,11 +284,21 @@ class CNS:
             self.concepts[sckey] = set()
 
         new = concepts - self.concepts[sckey]
-        reply = self.recall.lm.ask_claude(
-            prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
-            query=str(new)
-        )
-        keywords = self.recall.lm.cleanup_keywords(reply)
+
+        reply = await asyncio.gather(in_thread(
+            self.recall.lm.ask_claude,
+            [
+                f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
+                str(new)
+            ]
+        ))
+
+        # reply = self.recall.lm.ask_claude(
+        #     prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
+        #     query=str(new)
+        # )
+
+        keywords = self.recall.lm.cleanup_keywords(reply[0])
 
         log.warning("🌍 Claude suggests further reading:", str(keywords))
         if keywords:
@@ -608,10 +626,21 @@ class CNS:
 
     #     log.warning("🪩  Done reflecting.")
 
-    def generate_photo(self, event: Photo) -> None:
+    async def generate_photo(self, event: Photo) -> None:
         ''' Generate a photo '''
         chat = Chat(persyn_config=self.config, service=event.service)
-        chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1]) # type: ignore
+
+        await asyncio.gather(in_thread(
+            chat.take_a_photo,
+            [
+                    event.channel,
+                    event.prompt,
+                    event.size[0],
+                    event.size[1]
+            ]
+        ))
+
+        # chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1]) # type: ignore
 
     def run(self):
         ''' Main event loop '''
@@ -741,6 +770,8 @@ async def auto_summarize() -> None:
 
     for convo_id in cns.recall.list_convo_ids(expired=True, after=4): # type: ignore
         log.info(f"💔 Convo expired: {convo_id}")
+        # TODO: Produce a final summary HERE. This will involve revisiting find_relevant_convos(), which
+        # currently relies on the summary containing (mostly) full dialog.
 
     # for key in convos:
     #     (service, channel, convo_id) = key.split('|')

@@ -84,7 +84,6 @@ class Interact:
     def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
         context = [self.get_sentiment_analysis(convo)]
         context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
-        # FIXME: get_relevant ideas? inject_ideas is quite broken.
         context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
@@ -285,7 +284,7 @@ class Interact:
         '''
         Directly inject an idea into recall memory.
         '''
-        log.info(f"💉 inject_idea: {service}|{channel} ({verb}) {idea[:20]}")
+        log.info(f"💉 inject_idea: {service}|{channel} ({verb}) {idea[:20]}…")
 
         if verb == 'dialog':
             log.error("💉 inject_idea: dialog is handled by retort(), skipping.")
