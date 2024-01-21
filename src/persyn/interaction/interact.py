@@ -316,7 +316,7 @@ class Interact:
         summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id))
 
         if final:
-            log.info(f"🎬 Saving final summary for {service}|{channel}")
+            log.info(f"🎬 interact: Saving final summary for {service}|{channel} : {convo_id}")
             self.recall.redis.hset(f"{self.recall.convo_prefix}:{convo_id}:summary", "final", summary)
 
         return summary

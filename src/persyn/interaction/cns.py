@@ -183,7 +183,7 @@ class CNS:
             self.send_chat(service=event.service, channel=event.channel, msg=summary)
 
         if event.final:
-            log.info(f"🎬 Saving final summary for {event.service}|{event.channel}")
+            log.info(f"🎬 cns: Saving final summary for {event.service}|{event.channel} : {event.convo_id}")
             self.recall.redis.hset(f"{self.recall.convo_prefix}:{event.convo_id}:summary", "final", summary)
 
         return summary
@@ -771,7 +771,7 @@ async def auto_summarize() -> None:
             if remaining >= 5:
                 log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
 
-    expired_convos = cns.recall.list_convo_ids(expired=True, after=4): # type: ignore
+    expired_convos = cns.recall.list_convo_ids(expired=True, after=4) # type: ignore
     for convo_id, meta in expired_convos.items():
         log.info(f"💔 Convo expired: {convo_id}")
         event = Summarize(
