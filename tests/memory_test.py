@@ -154,36 +154,39 @@ def test_list_convo_ids(recall, cleanup):
     convo_ids = [convo.id for convo in [recall.new_convo(service, channel, speaker) for _ in range(3)]]
 
     assert convo_ids[0] != convo_ids[1] != convo_ids[2]
-    assert recall.list_convo_ids(service, channel) == convo_ids
+    assert list(recall.list_convo_ids(service, channel)) == convo_ids
+    for convo_id, meta in recall.list_convo_ids(service, channel).items():
+        assert meta['service'] == service
+        assert meta['channel'] == channel
 
-    assert recall.list_convo_ids(service, channel, expired=True) == []
-    assert recall.list_convo_ids(service, channel, expired=False) == convo_ids
+    assert list(recall.list_convo_ids(service, channel, expired=True)) == []
+    assert list(recall.list_convo_ids(service, channel, expired=False)) == convo_ids
 
     # Exercise: expire one conversation
     recall.expire_convo(convo_ids[1])
 
     # Verify: expired conversation is not listed
-    assert recall.list_convo_ids(service, channel, expired=False) == [convo_ids[0], convo_ids[2]]
-    assert recall.list_convo_ids(service, channel, expired=True) == [convo_ids[1]]
+    assert list(recall.list_convo_ids(service, channel, expired=False)) == [convo_ids[0], convo_ids[2]]
+    assert list(recall.list_convo_ids(service, channel, expired=True)) == [convo_ids[1]]
 
     # Still listed when expired=None
-    assert recall.list_convo_ids(service, channel) == [convo_ids[0], convo_ids[1], convo_ids[2]]
+    assert list(recall.list_convo_ids(service, channel)) == [convo_ids[0], convo_ids[1], convo_ids[2]]
 
     # Excersize: test paging. This returns the newest conversation first.
-    assert recall.list_convo_ids(service, channel, expired=False, size=1) == [convo_ids[2]]
+    assert list(recall.list_convo_ids(service, channel, expired=False, size=1)) == [convo_ids[2]]
 
     # Expire the other conversations
     recall.expire_convo(convo_ids[0])
     recall.expire_convo(convo_ids[2])
 
     # Verify: all conversations are expired
-    assert recall.list_convo_ids(service, channel, expired=False) == []
-    assert recall.list_convo_ids(service, channel, expired=True) == [convo_ids[0], convo_ids[1], convo_ids[2]]
+    assert list(recall.list_convo_ids(service, channel, expired=False)) == []
+    assert list(recall.list_convo_ids(service, channel, expired=True)) == [convo_ids[0], convo_ids[1], convo_ids[2]]
 
     # Test after
     recall.set_convo_meta(convo_ids[0], "expired_at", dt.datetime.now().timestamp() - 1000)
-    assert recall.list_convo_ids(service, channel, expired=True, after=10) == [convo_ids[1], convo_ids[2]]
-    assert recall.list_convo_ids(service, channel, expired=True, after=1001) == [convo_ids[0], convo_ids[1], convo_ids[2]]
+    assert list(recall.list_convo_ids(service, channel, expired=True, after=10)) == [convo_ids[1], convo_ids[2]]
+    assert list(recall.list_convo_ids(service, channel, expired=True, after=1001)) == [convo_ids[0], convo_ids[1], convo_ids[2]]
 
 def test_get_last_convo_id(recall, cleanup):
     service = "test_service"

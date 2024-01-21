@@ -132,7 +132,7 @@ class Interact:
     def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
         ''' Return a list of tuples of (source, text) for recent summaries'''
         recent_summaries = []
-        convo_ids = sorted(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
+        convo_ids = list(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
         for convo_id in convo_ids:
             summary = self.recall.fetch_summary(convo_id, final=True)
@@ -305,7 +305,7 @@ class Interact:
 
         return True
 
-    def summarize_channel(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
+    def summarize_channel(self, service: str, channel: str, convo_id: Optional[str] = None, final: Optional[bool] = False) -> str:
         ''' Summarize a channel in a few sentences. '''
         if convo_id is None:
             convo_id = self.recall.get_last_convo_id(service, channel)
@@ -313,5 +313,11 @@ class Interact:
         if convo_id is None:
             return ""
 
-        return self.lm.summarize_text(self.recall.fetch_summary(convo_id))
+        summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id))
+
+        if final:
+            log.info(f"🎬 Saving final summary for {service}|{channel}")
+            self.recall.redis.hset(f"{self.recall.convo_prefix}:{convo_id}:summary", "final", summary)
+
+        return summary
 

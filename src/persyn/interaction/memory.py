@@ -5,7 +5,7 @@ import uuid
 import datetime as dt
 
 from dataclasses import dataclass
-from typing import Union, List, Any, Optional
+from typing import Union, List, Dict, Any, Optional
 
 import ulid
 
@@ -250,14 +250,13 @@ class Recall:
         expired: Optional[bool|None] = None,
         after: Optional[int|None] = None,
         size: Optional[int] = 10
-        ) -> List[str]:
+        ) -> Dict[str, Any]:
         '''
         List active convo_ids, from oldest to newest. Constrain to service + channel if provided.
         If expired is True or False, include (or exclude) expired convos. If expired is None, include all convos.
         If after is provided, include only convos that have expired after the given number of seconds.
         Set size to limit the number of results.
         '''
-        ret = set()
         if expired is None:
             active = " (@expired:{True|False})"
         else:
@@ -268,14 +267,16 @@ class Recall:
         else:
             since = " "
 
-        query = Query(scquery(service, channel) + active + since).sort_by('convo_id', asc=False).paging(0, size).dialect(2).return_fields("id")
+        query = Query(
+                scquery(service, channel) + active + since
+            ).sort_by('convo_id', asc=False).paging(0, size).dialect(2).return_fields('service', 'channel', 'id')
 
-        for doc in self.redis.ft(self.convo_prefix).search(query).docs: # type: ignore
-            ret.add(doc.id.split(':')[3])
-            # TODO: Update to return a dict of convo_id, service, and channel
-            # ret.add({doc.id.split(':')[3]: {'service': doc.service, 'channel': doc.channel}})
+        convos = {}
+        docs = self.redis.ft(self.convo_prefix).search(query).docs
+        for doc in docs:
+            convos[doc.id.split(':')[3]] = {'service': doc.service, 'channel': doc.channel}
 
-        return sorted(ret)
+        return dict(sorted(convos.items())) # type: ignore
 
     def get_last_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Returns the most recent convo id for this service + channel from Redis '''

@@ -109,11 +109,12 @@ async def handle_chat_received(
 async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
+    convo_id: Optional[str] = Query(None, min_length=1, max_length=255),
+    final: Optional[bool] = Query(False)
 ):
     ''' Return the most recent summary from convo_id '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_channel, [service, channel, convo_id]
+        interact.summarize_channel, [service, channel, convo_id, final]
     ))
     return {
         "summary": ret[0]

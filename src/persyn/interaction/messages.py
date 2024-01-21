@@ -39,7 +39,7 @@ class Summarize(Event):
     convo_id: Optional[str] = None
     photo: bool
     send_chat: Optional[bool] = True
-    save_memory: Optional[bool] = False
+    final: Optional[bool] = False
 
 
 class Elaborate(Event):

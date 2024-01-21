@@ -170,7 +170,7 @@ class CNS:
             verb=event.verb
         )
 
-    async def summarize_channel(self, event: Summarize) -> str:
+    async def cns_summarize_channel(self, event: Summarize) -> str:
         ''' Summarize the channel '''
         chat = Chat(persyn_config=self.config, service=event.service)
 
@@ -182,7 +182,7 @@ class CNS:
         if event.send_chat:
             self.send_chat(service=event.service, channel=event.channel, msg=summary)
 
-        if event.save_memory:
+        if event.final:
             log.info(f"🎬 Saving final summary for {event.service}|{event.channel}")
             self.recall.redis.hset(f"{self.recall.convo_prefix}:{event.convo_id}:summary", "final", summary)
 
@@ -680,7 +680,7 @@ async def idea_event(event):
 async def summarize_event(event):
     ''' Dispatch summarize event. '''
     log.debug("Summarize received", event)
-    await cns.summarize_channel(event) # type: ignore
+    await cns.cns_summarize_channel(event) # type: ignore
 
 @autobus.subscribe(Elaborate)
 async def elaborate_event(event):
@@ -771,23 +771,19 @@ async def auto_summarize() -> None:
             if remaining >= 5:
                 log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
 
-    for convo_id in cns.recall.list_convo_ids(expired=True, after=4): # type: ignore
+    expired_convos = cns.recall.list_convo_ids(expired=True, after=4): # type: ignore
+    for convo_id, meta in expired_convos.items():
         log.info(f"💔 Convo expired: {convo_id}")
-        # TODO: Update recall.list_convo_ids() to return a dict with convo_id, service + channel.
-        # Then send this event to save a "final" summary:
-        # event = Summarize(
-        #     service=ret['service'],
-        #     channel=ret['channel'],
-        #     convo_id=ret['convo_id'],
-        #     photo=False,
-        #     send_chat=False,
-        #     save_memory=True
-        # )
+        event = Summarize(
+            service=meta['service'],
+            channel=meta['channel'],
+            convo_id=convo_id,
+            photo=False,
+            send_chat=False,
+            final=True
+        )
+        autobus.publish(event)
 
-
-    # for key in convos:
-    #     (service, channel, convo_id) = key.split('|')
-    #     # TODO: Also check if the convo is too long, even if it hasn't expired
 
     #     # it should be stale and have more in it than a new_convo marker
     #     if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':

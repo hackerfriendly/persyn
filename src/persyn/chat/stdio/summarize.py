@@ -36,7 +36,7 @@ def main():
     parser.add_argument('--convo-id', type=str, help='Convo ID (optional)')
     parser.add_argument('--photo', action='store_true', help='Take a photo of the summary (default: False)')
     parser.add_argument('--send-chat', action='store_true', help='Send the summary to the channel (default: False)')
-    parser.add_argument('--save-memory', action='store_true', help='Save the summary permanently (default: False)')
+    parser.add_argument('--final', action='store_true', help='Save the final summary (default: False)')
 
     args = parser.parse_args()
 
@@ -48,7 +48,7 @@ def main():
         convo_id=args.convo_id,
         photo=args.photo,
         send_chat=args.send_chat,
-        save_memory=args.save_memory
+        final=args.final
     )
 
     async def inject_idea():

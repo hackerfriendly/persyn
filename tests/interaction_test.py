@@ -149,8 +149,10 @@ def setup_conversations(interact, cleanup):
         )
         # Expire the convo
         interact.recall.expire_convo(convo.id)
+        # Fake a final summary
+        interact.recall.redis.hset(f"{interact.recall.convo_prefix}:{convo.id}:summary", "final", summary)
 
-def test_get_recent_summaries(interact, setup_conversations, cleanup):
+def test_get_recent_summaries(interact, setup_conversations):
     service = "service"
     channel = "channel"
     speaker_name = "test_speaker"
@@ -167,7 +169,7 @@ def test_get_recent_summaries(interact, setup_conversations, cleanup):
     for i in range(4):
         assert summaries[i][1] < summaries[i+1][1]
 
-def test_get_relevant_memories(interact, setup_conversations, cleanup):
+def test_get_relevant_memories(interact, setup_conversations):
     service = "service"
     channel = "channel"
     speaker_name = "test_speaker"
@@ -191,7 +193,7 @@ def test_get_relevant_memories(interact, setup_conversations, cleanup):
     assert len(convo.visited) == 6
     # TODO: improve these tests to exercise relevance and expiration
 
-def test_get_aardvark_memories(interact, setup_conversations, cleanup):
+def test_get_aardvark_memories(interact, setup_conversations):
     service = "service"
     channel = "channel"
     speaker_name = "test_speaker"
