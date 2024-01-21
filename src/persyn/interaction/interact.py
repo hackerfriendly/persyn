@@ -3,10 +3,8 @@ interact.py
 
 The limbic system library.
 '''
-import random
 
 from dataclasses import dataclass
-import re
 from typing import Optional, Union, List, Tuple
 
 import ulid
@@ -82,6 +80,7 @@ class Interact:
 {bot}:"""
 
     def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
+        ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
         context = [self.get_sentiment_analysis(convo)]
         context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
         context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
@@ -108,6 +107,7 @@ class Interact:
         return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
     def get_relevant_memories(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+        ''' Return a list of tuples of (source, text) for relevant memories '''
         relevant_memories = []
         related_convos = self.recall.find_related_convos(
             convo.service,
@@ -152,7 +152,7 @@ class Interact:
 
     def current_dialog(self, convo: Convo) -> str:
         ''' Return the current dialog from convo '''
-        return convo.memories['summary'].load_memory_variables({})['history'].lstrip("System: ")
+        return convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
 
     def save_summary(self, convo: Convo) -> None:
         '''
@@ -193,7 +193,7 @@ class Interact:
 
         Returns the response. If send_chat is True, also send it to chat.
         '''
-        log.info(f"💬 get_reply to: {msg}")
+        log.info(f"💬 retort to: {msg}")
 
         convo = self.recall.fetch_convo(service, channel)
         if convo is None:
@@ -260,7 +260,7 @@ class Interact:
         # Also save the summary
         self.save_summary(convo)
 
-        log.info(f"💬 get_reply done: {reply}")
+        log.info(f"💬 retort done: {reply}")
         return trimmed
 
     def status(self, service: str, channel: str, speaker_name: str) -> str:
@@ -313,11 +313,10 @@ class Interact:
         if convo_id is None:
             return ""
 
-        summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id))
+        summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id), final=final)
 
         if final:
-            log.info(f"🎬 interact: Saving final summary for {service}|{channel} : {convo_id}")
+            log.info(f"🎬 Saving final summary for {service}|{channel} : {convo_id}")
             self.recall.redis.hset(f"{self.recall.convo_prefix}:{convo_id}:summary", "final", summary)
 
         return summary
-

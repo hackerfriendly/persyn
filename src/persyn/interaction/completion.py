@@ -80,6 +80,12 @@ class LanguageModel:
             temperature=self.config.completion.reasoning_temperature,
             max_tokens=100,
         )
+        self.final_summary_llm = setup_llm(
+            self.config,
+            model=self.reasoning_model,
+            temperature=self.config.completion.reasoning_temperature,
+            max_tokens=300,
+        )
         self.feels_llm = setup_llm(
             self.config,
             model=self.reasoning_model,
@@ -219,7 +225,11 @@ class LanguageModel:
             dtype=np.float32
         ).tobytes()
 
-    def summarize_text(self, text, summarizer="Summarize the following in one sentence. Your response must include only the summary and no other text:"):
+    def summarize_text(
+        self,
+        text: str,
+        summarizer: str = "Summarize the following in one sentence. Your response must include only the summary and no other text:",
+        final: Optional[bool] = False) -> str:
         ''' Ask the LLM for a summary'''
         if not text:
             log.warning('summarize_text():', "No text, skipping summary.")
@@ -227,7 +237,11 @@ class LanguageModel:
 
         log.warning(f'summarize_text(): summarizing: {text}')
         prompt = PromptTemplate.from_template(summarizer + "\n{input}")
-        chain = prompt | self.summary_llm | StrOutputParser()
+
+        if final:
+            chain = prompt | self.final_summary_llm | StrOutputParser()
+        else:
+            chain = prompt | self.summary_llm | StrOutputParser()
 
         reply = self.trim(chain.invoke({"input": text}))
 

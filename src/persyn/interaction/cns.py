@@ -110,7 +110,7 @@ class CNS:
         # TODO: Decide whether to delay reply, or to reply at all?
 
         the_reply = await asyncio.gather(in_thread(
-            chat.get_reply, [event.channel, event.speaker_name, event.msg, True, event.extra]
+            chat.get_reply, [event.channel, event.msg, event.speaker_name, None, True, event.extra]
         ))
 
         # the_reply = (
@@ -175,16 +175,12 @@ class CNS:
         chat = Chat(persyn_config=self.config, service=event.service)
 
         reply = await asyncio.gather(in_thread(
-            chat.get_summary, [event.channel, event.convo_id, event.photo]
+            chat.get_summary, [event.channel, event.convo_id, event.photo, None, event.final]
         ))
         summary = reply[0]
 
         if event.send_chat:
             self.send_chat(service=event.service, channel=event.channel, msg=summary)
-
-        if event.final:
-            log.info(f"🎬 cns: Saving final summary for {event.service}|{event.channel} : {event.convo_id}")
-            self.recall.redis.hset(f"{self.recall.convo_prefix}:{event.convo_id}:summary", "final", summary)
 
         return summary
 

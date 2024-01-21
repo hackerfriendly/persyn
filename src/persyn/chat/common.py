@@ -69,7 +69,8 @@ class Chat():
         channel: str,
         convo_id: Optional[str] = None,
         photo: Optional[bool] = False,
-        extra=None
+        extra: Optional[str] = None,
+        final: Optional[bool] = False
         ) -> str:
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
@@ -79,7 +80,8 @@ class Chat():
         req = {
             "service": self.service,
             "channel": channel,
-            "convo_id": convo_id
+            "convo_id": convo_id,
+            "final": final
         }
         try:
             reply = rs.post(f"{self.interact_url}/summary/", params=req, timeout=60)
