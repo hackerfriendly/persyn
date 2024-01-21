@@ -13,7 +13,6 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from typing import Optional
-from matplotlib.dates import SU
 
 import requests
 
@@ -64,7 +63,7 @@ class CNS:
         self.config = persyn_config
         self.mastodon = Mastodon(persyn_config)
         self.recall = Recall(persyn_config)
-        self.completion = LanguageModel(persyn_config)
+        self.lm = LanguageModel(persyn_config)
         self.datasources = {}
         self.rs = requests.Session()
 
@@ -261,9 +260,9 @@ class CNS:
             return
         summary = self.recall.fetch_summary(convo_id)
         if summary:
-            feels = self.completion.summarize_text(
+            feels = self.lm.ask_claude(
                 summary,
-                summarizer=f"""In the following text, these three words best describe {self.config.id.name}'s emotional state. You MUST include only three comma separated words:""" # type: ignore
+                prefix=f"""In the following text, these three words best describe {self.config.id.name}'s emotional state. You MUST include only three comma separated words:""" # type: ignore
             )
         else:
             feels = "nothing in particular"
@@ -274,30 +273,36 @@ class CNS:
     async def check_wikipedia(self, event: Wikipedia) -> None:
         ''' Extract concepts from the text and ask Claude for further reading.'''
         sckey = f"{event.service}|{event.channel}"
-        concepts = set(self.recall.lm.extract_entities(event.text) + self.recall.lm.extract_nouns(event.text))
+        concepts = set(self.recall.lm.extract_entities(event.text))
 
         if concepts:
             log.warning(f"🌍 Extracted concepts: {concepts}")
+        else:
+            log.warning("🌍 No concepts extracted. What are we even talking about?")
+            return
 
         if sckey not in self.concepts:
             self.concepts[sckey] = set()
 
         new = concepts - self.concepts[sckey]
 
-        reply = await asyncio.gather(in_thread(
-            self.recall.lm.ask_claude,
-            [
-                f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
-                str(new)
-            ]
-        ))
+        # vvv FIXME: this doesn't work...? Maybe just replace with an async llm call. vvv
+        # reply = await asyncio.gather(in_thread(
+        #     self.recall.lm.ask_claude,
+        #     [
+        #         f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
+        #         str(new)
+        #     ]
+        # ))
 
-        # reply = self.recall.lm.ask_claude(
-        #     prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
-        #     query=str(new)
-        # )
+        reply = self.recall.lm.ask_claude(
+            prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
+            query=str(new)
+        )
+        log.warning("🌍 Claude raw reply:", str(reply))
 
-        keywords = self.recall.lm.cleanup_keywords(reply[0])
+
+        keywords = self.recall.lm.cleanup_keywords(reply)
 
         log.warning("🌍 Claude suggests further reading:", str(keywords))
         if keywords:
@@ -533,35 +538,39 @@ class CNS:
         # TODO: FIX THIS to work with find_related_convos()
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
         return
+
+        # TODO: Clean this up and make it work again.
     #     log.warning("🪩  Reflecting...")
 
-    #     convo = '\n'.join(recall.convo(event.service, event.channel, feels=True))
-    #     convo_id = event.convo_id or recall.convo_id(event.service, event.channel)
-    #     chat = Chat(persyn_config=persyn_config, service=event.service)
+    #     convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
+    #     chat = Chat(persyn_config=self.config, service=event.service)
+    #     convo = cns.recall.fetch_convo(event.service, event.channel, convo_id=convo_id)
 
-    #     """
-    #     Given only the dialog above, what are the three most salient high-level question that can be asked about Anna?
+    #     # """
+    #     # Given only the dialog above, what are the three most salient high-level questions that can be asked about Anna?
 
-    #     What three actions can Anna take to answer those questions?
+    #     # What three actions can Anna take to answer those questions?
 
-    #     Please convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
+    #     # Please convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
 
-    #     {
-    #     "questions": ["THE QUESTIONS", "AS A LIST"],
-    #     "actions": ["THE ACTIONS", "AS A LIST"]
-    #     }
+    #     # {
+    #     # "questions": ["THE QUESTIONS", "AS A LIST"],
+    #     # "actions": ["THE ACTIONS", "AS A LIST"]
+    #     # }
 
-    #     Your response should only include JSON, no other text. Your response MUST return valid JSON.
-    #     """
+    #     # Your response should only include JSON, no other text. Your response MUST return valid JSON.
+    #     # """
 
-    #     questions = completion.get_reply(
-    #         f"""{convo}
+    #     dialog = convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
+    #     questions = cns.recall.lm.ask_claude(
+    #         dialog,
+    #         prefix=f"""
     # Given only the information above, what are three most salient high-level questions I can answer about the people in the statements?
-    # Questions only, no answers. Please convert pronouns and verbs to the first person.
+    # Questions only, no answers. Please convert all pronouns and verbs to the first person.
     # """
     #     ).split('?')
 
-    #     log.warning("🪩 ", questions)
+    #     log.warning("🪩 ", str(questions))
 
     #     # Answer each question, supplemented by relevant memories.
     #     for question in questions:
@@ -573,55 +582,55 @@ class CNS:
 
     #         log.warning("❓ ", question)
 
-    #         ranked = recall.find_related_convos(
+    #         ranked = self.recall.find_related_convos(
     #             event.service,
     #             event.channel,
-    #             text=convo,
-    #             exclude_convo_ids=[convo_id],
-    #             threshold=persyn_config.memory.relevance * 1.4,
+    #             text=dialog,
+    #             exclude_convo_ids=[convo.id],
+    #             threshold=self.config.memory.relevance * 1.4,
     #             size=5
     #         )
 
-    #         visited = []
-    #         context = [convo]
-    #         for hit in ranked:
-    #             if hit.convo_id not in visited:
-    #                 if hit.service == 'import_service':
-    #                     log.info("📚 Hit found from import:", hit.channel)
-    #                 the_summary = recall.get_summary_by_id(hit.convo_id)
-    #                 # Hit a sentence? Inject the summary and the sentence.
-    #                 if the_summary and the_summary not in convo:
-    #                     context.append(f"""
-    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago,
-    #                         f"{the_summary.summary} From that conversation, {hit.msg}"""
-    #                     )
-    #                 # No summary? Just inject the sentence.
-    #                 else:
-    #                     context.append(f"""
-    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
-    #                     )
-    #                 visited.append(hit.convo_id)
-    #                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
+    # #         visited = []
+    # #         context = [convo]
+    # #         for hit in ranked:
+    # #             if hit.convo_id not in visited:
+    # #                 if hit.service == 'import_service':
+    # #                     log.info("📚 Hit found from import:", hit.channel)
+    # #                 the_summary = recall.get_summary_by_id(hit.convo_id)
+    # #                 # Hit a sentence? Inject the summary and the sentence.
+    # #                 if the_summary and the_summary not in convo:
+    # #                     context.append(f"""
+    # #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago,
+    # #                         f"{the_summary.summary} From that conversation, {hit.msg}"""
+    # #                     )
+    # #                 # No summary? Just inject the sentence.
+    # #                 else:
+    # #                     context.append(f"""
+    # #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
+    # #                     )
+    # #                 visited.append(hit.convo_id)
+    # #                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
 
-    #         prompt = '\n'.join(context) + f"""
-    # {persyn_config.id.name} asks: {question}?
-    # Respond with the best possible answer from {persyn_config.id.name}'s point of view.
-    # Don't use proper names, and convert all pronouns and verbs to the first person.
-    # """
-    #         log.warning("✏️", question)
+    # #         prompt = '\n'.join(context) + f"""
+    # # {persyn_config.id.name} asks: {question}?
+    # # Respond with the best possible answer from {persyn_config.id.name}'s point of view.
+    # # Don't use proper names, and convert all pronouns and verbs to the first person.
+    # # """
+    # #         log.warning("✏️", question)
 
-    #         answer = completion.get_reply(prompt)
-    #         log.warning("❗️", answer)
+    # #         answer = completion.get_reply(prompt)
+    # #         log.warning("❗️", answer)
 
-    #         # Inject the question and answer.
-    #         chat.inject_idea(
-    #             channel=event.channel,
-    #             idea=f"{question}? {answer}",
-    #             verb="reflects"
-    #         )
+    # #         # Inject the question and answer.
+    # #         chat.inject_idea(
+    # #             channel=event.channel,
+    # #             idea=f"{question}? {answer}",
+    # #             verb="reflects"
+    # #         )
 
-    #     if event.send_chat:
-    #         await elaborate(event)
+    # #     if event.send_chat:
+    # #         await elaborate(event)
 
     #     log.warning("🪩  Done reflecting.")
 
@@ -770,6 +779,16 @@ async def auto_summarize() -> None:
     expired_convos = cns.recall.list_convo_ids(expired=True, after=4) # type: ignore
     for convo_id, meta in expired_convos.items():
         log.info(f"💔 Convo expired: {convo_id}")
+        # if len(cns.recall.fetch_summary(convo_id)) > 10:
+        #     log.info("🪩  Reflecting:", convo_id)
+        #     event = Reflect(
+        #         service=meta['service'],
+        #         channel=meta['channel'],
+        #         send_chat=True,
+        #         convo_id=convo_id
+        #     )
+        #     autobus.publish(event)
+
         event = Summarize(
             service=meta['service'],
             channel=meta['channel'],
@@ -781,34 +800,6 @@ async def auto_summarize() -> None:
         autobus.publish(event)
 
 
-    #     # it should be stale and have more in it than a new_convo marker
-    #     if recall.expired(service, channel) and recall.get_last_message(service, channel).verb != 'new_convo':
-    #         log.warning("💓 Convo expired:", key)
-
-    #         if len(recall.convo(service, channel, convo_id, verb='dialog')) > 3:
-    #             log.info("🪩  Reflecting:", convo_id)
-    #             event = Reflect(
-    #                 bot_name=persyn_config.id.name,
-    #                 bot_id=persyn_config.id.guid,
-    #                 service=service,
-    #                 channel=channel,
-    #                 send_chat=True,
-    #                 convo_id=convo_id
-    #             )
-    #             autobus.publish(event)
-
-    #             log.info("💓 Summarizing:", convo_id)
-    #             event = Summarize(
-    #                 bot_name=persyn_config.id.name,
-    #                 bot_id=persyn_config.id.guid,
-    #                 service=service,
-    #                 channel=channel,
-    #                 convo_id=convo_id,
-    #                 photo=True,
-    #                 max_tokens=30,
-    #                 send_chat=False
-    #             )
-    #             autobus.publish(event)
 
 @autobus.schedule(autobus.every(6).hours)
 async def plan_your_day() -> None:
