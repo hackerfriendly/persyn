@@ -13,6 +13,8 @@ import openai
 
 import numpy as np
 
+from ftfy import fix_text
+
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_openai.llms.base import BaseOpenAI
 from langchain_community.chat_models import ChatAnthropic
@@ -20,8 +22,6 @@ from langchain_community.chat_models import ChatAnthropic
 # from langchain.globals import set_verbose
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
-
-from ftfy import fix_text
 
 # Color logging
 from persyn.utils.color_logging import ColorLog
@@ -230,18 +230,22 @@ class LanguageModel:
         text: str,
         summarizer: str = "Summarize the following in one sentence. Your response must include only the summary and no other text:",
         final: Optional[bool] = False) -> str:
-        ''' Ask the LLM for a summary'''
+        ''' Ask the LLM for a summary. If final is True, use the final_summary_llm. '''
+
+        if final:
+            llm = self.final_summary_llm
+        else:
+            llm = self.summary_llm
+
+        text = self.truncate(text) # FIXME: proper model selection here
         if not text:
             log.warning('summarize_text():', "No text, skipping summary.")
             return ""
 
-        log.warning(f'summarize_text(): summarizing: {text}')
-        prompt = PromptTemplate.from_template(summarizer + "\n{input}")
+        log.warning(f'summarize_text(): summarizing: {text[:100]}…')
 
-        if final:
-            chain = prompt | self.final_summary_llm | StrOutputParser()
-        else:
-            chain = prompt | self.summary_llm | StrOutputParser()
+        prompt = PromptTemplate.from_template(summarizer + "\n{input}")
+        chain = prompt | llm | StrOutputParser()
 
         reply = self.trim(chain.invoke({"input": text}))
 
@@ -273,7 +277,7 @@ class LanguageModel:
                 continue
 
             if kw.lower() != bot_name:
-                keywords.append(kw.lower())
+                keywords.append(kw)
 
         return sorted(set(keywords))
 

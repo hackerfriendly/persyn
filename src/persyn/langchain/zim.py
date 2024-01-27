@@ -1,4 +1,4 @@
-"""Util that calls Zim."""
+'''Util that calls Zim.'''
 import logging
 import re
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 ZIM_MAX_QUERY_LENGTH = 300
 
 class ZimWrapper(BaseModel):
-    """Wrapper around libzim.
+    '''Wrapper around libzim.
 
     To use, you should have the ``libzim`` and ``ftfy`` python packages installed.
     This wrapper will use libzim to conduct searches and fetch page summaries.
@@ -32,7 +32,7 @@ class ZimWrapper(BaseModel):
     ...or the URL to the front page of a Kiwix instance:
 
         ZimWrapper(path="http://192.168.0.101:9999/viewer#wikipedia_en_all_maxi/")
-    """
+    '''
 
     path: str
     zim: Any  #: :meta private:
@@ -60,13 +60,13 @@ class ZimWrapper(BaseModel):
             self.zim = libzim.Archive(self.path)
 
     class Config:
-        """Configuration for this pydantic object."""
+        '''Configuration for this pydantic object.'''
 
         extra = Extra.forbid
 
     @root_validator()
     def validate_environment(cls, values: Dict) -> Dict:
-        """Validate that the python package exists in environment."""
+        '''Validate that the python package exists in environment.'''
         try:
             import libzim # pylint:disable=import-outside-toplevel
             import ftfy # pylint:disable=import-outside-toplevel
@@ -78,8 +78,8 @@ class ZimWrapper(BaseModel):
             ) from ex
         return values
 
-    def run(self, query: str) -> str:
-        """Run Zim search and get page summaries."""
+    def search(self, query: str) -> str:
+        '''Run Zim search and get page summaries for the closest match.'''
         if self.zim:
             query = libzim.Query().set_query(query)
             searcher = libzim.Searcher(self.zim)
@@ -95,6 +95,10 @@ class ZimWrapper(BaseModel):
         if not summaries:
             return "No good Zim Search Result was found"
         return "\n\n".join(summaries)[: self.doc_content_chars_max]
+
+    def run(self, query: str) -> str:
+        ''' Return a precise match for query '''
+        return self._fetch_page(query.replace(' ', '_', -1)) or ''
 
     def _web_search_results(self, query, top=5):
         ''' Return kiwix search results for query '''

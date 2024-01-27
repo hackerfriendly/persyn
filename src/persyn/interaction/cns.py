@@ -133,7 +133,8 @@ class CNS:
         wp = Wikipedia(
             service=event.service,
             channel=event.channel,
-            text=the_reply[0]
+            text=the_reply[0],
+            focus=event.msg
         )
         autobus.publish(wp)
 
@@ -274,6 +275,10 @@ class CNS:
         ''' Extract concepts from the text and ask Claude for further reading.'''
         sckey = f"{event.service}|{event.channel}"
         concepts = set(self.recall.lm.extract_entities(event.text))
+        if event.focus:
+            focus = f", paying close attention to '{event.focus}'"
+        else:
+            focus = ''
 
         if concepts:
             log.warning(f"🌍 Extracted concepts: {concepts}")
@@ -299,22 +304,35 @@ class CNS:
             prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
             query=str(new)
         )
-        log.warning("🌍 Claude raw reply:", str(reply))
-
-
         keywords = self.recall.lm.cleanup_keywords(reply)
-
         log.warning("🌍 Claude suggests further reading:", str(keywords))
-        if keywords:
-            chat = Chat(persyn_config=self.config, service=event.service)
-            for kw in keywords:
-                self.concepts[sckey].add(kw)
 
-                chat.inject_idea(
-                    channel=event.channel,
-                    idea=self.datasources['Wikipedia'].run(kw),
-                    verb='recalls'
+        if not keywords:
+            return
+
+        summaries = []
+        for kw in keywords:
+            self.concepts[sckey].add(kw)
+            page = self.datasources['Wikipedia'].run(kw)
+            if page:
+                summaries.append(
+                    self.recall.lm.summarize_text(
+                        text=str(page),
+                        summarizer=f"Summarize this Wikipedia page{focus}:\n",
+                        final=True
+                    )
                 )
+
+        if not summaries:
+            return
+
+        chat = Chat(persyn_config=self.config, service=event.service)
+        for summary in summaries:
+            chat.inject_idea(
+                channel=event.channel,
+                idea=summary,
+                verb='recalls'
+            )
 
     async def check_facts(self, event: FactCheck) -> None:
         ''' Ask for a second opinion about our side of the conversation. '''

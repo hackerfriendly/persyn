@@ -60,6 +60,7 @@ class Wikipedia(Event):
     service: str
     channel: str
     text: str
+    focus: Optional[str] = None
 
 
 class CheckGoals(Event):
