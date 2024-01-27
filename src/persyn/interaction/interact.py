@@ -102,7 +102,7 @@ class Interact:
         TODO: Allow llm selection (currently always uses chat_llm)
         '''
         max_tokens = int(self.lm.max_prompt_length() * self.config.memory.context)
-        history = convo.memories['summary'].load_memory_variables({})['history']
+        history = self.current_dialog(convo)
 
         return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
@@ -152,7 +152,7 @@ class Interact:
 
     def current_dialog(self, convo: Convo) -> str:
         ''' Return the current dialog from convo '''
-        return convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
+        return convo.memories['summary'].load_memory_variables({})['history'].replace("System: ", "", -1)
 
     def save_summary(self, convo: Convo) -> None:
         '''
@@ -280,7 +280,7 @@ class Interact:
 
         return prompt.format(
             kg='', # FIXME: this is a hack to avoid rendering {kg} in the template
-            history=convo.memories['summary'].load_memory_variables({})['history'],
+            history=self.current_dialog(convo),
             input='input'
         )
 
@@ -298,7 +298,7 @@ class Interact:
         if convo is None:
             return False
 
-        log.debug(convo.memories['summary'].load_memory_variables({})['history'])
+        log.debug(self.current_dialog(convo))
 
         convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
         self.save_summary(convo)
