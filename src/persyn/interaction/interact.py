@@ -84,6 +84,7 @@ class Interact:
         context = [self.get_sentiment_analysis(convo)]
         context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
         context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        # TODO: Also fetch recent dialog, if it's quite recent
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
     def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str]:

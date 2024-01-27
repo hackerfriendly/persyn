@@ -12,7 +12,7 @@ import asyncio
 
 from concurrent.futures import ThreadPoolExecutor
 
-from typing import Optional
+from typing import Optional, Union
 
 import requests
 
@@ -129,6 +129,14 @@ class CNS:
         )
         autobus.publish(vc)
 
+        # Elaborate?
+        el = Elaborate(
+            service=event.service,
+            channel=event.channel,
+            context=f"{event.msg}\n{self.config.id.name}: {the_reply[0]}"
+        )
+        autobus.publish(el)
+
         # Do some research
         wp = Wikipedia(
             service=event.service,
@@ -137,7 +145,6 @@ class CNS:
             focus=event.msg
         )
         autobus.publish(wp)
-
 
             # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
             #     # Check facts
@@ -184,8 +191,24 @@ class CNS:
 
         return summary
 
-    async def elaborate(self, event: Elaborate) -> str:
-        ''' Continue the train of thought '''
+    async def elaborate(self, event: Elaborate) -> Union[str, None]:
+        '''
+        Continue the train of thought.
+        If context is present, ask Claude whether we should continue (given the context) before elaborating.
+        Otherwise, elaborate immediately.
+        '''
+        log.warning(f"elaborate(): {event.service} {event.channel} {event.context}")
+        if event.context:
+            reply = self.recall.lm.ask_claude(
+                query=event.context,
+                prefix=f"In the following dialog, does {self.config.id.name} have anything else to add? You must answer ONLY yes or no, and nothing else. If you are not sure, make your best guess:",
+            )
+            log.warning(reply)
+            if 'yes' not in reply.lower():
+                log.warning("🤔 Claude says there is no need to elaborate.")
+                return None
+
+        log.warning("🤔 Elaborating...")
         chat = Chat(persyn_config=self.config, service=event.service)
         reply = chat.get_reply(
             channel=event.channel,
@@ -273,6 +296,10 @@ class CNS:
 
     async def check_wikipedia(self, event: Wikipedia) -> None:
         ''' Extract concepts from the text and ask Claude for further reading.'''
+
+        # Give other threads a chance. TODO: run this event in a separate thread.
+        await asyncio.sleep(2)
+
         sckey = f"{event.service}|{event.channel}"
         concepts = set(self.recall.lm.extract_entities(event.text))
         if event.focus:
@@ -333,6 +360,7 @@ class CNS:
                 idea=summary,
                 verb='recalls'
             )
+
 
     async def check_facts(self, event: FactCheck) -> None:
         ''' Ask for a second opinion about our side of the conversation. '''
@@ -785,14 +813,22 @@ async def wikipedia_event(event):
 async def auto_summarize() -> None:
     ''' Automatically summarize conversations when they expire. '''
     convos = cns.recall.list_convo_ids(expired=False) # type: ignore
-    if convos:
-        for convo_id in convos:
-            if cns.recall.convo_expired(convo_id=convo_id): # type: ignore
-                log.debug(f"{convo_id} expired.")
+    for convo_id, meta in convos.items():
+        if cns.recall.convo_expired(convo_id=convo_id): # type: ignore
+            log.debug(f"{convo_id} expired.")
 
-            remaining = cns.config.memory.conversation_interval - elapsed(cns.recall.id_to_timestamp(cns.recall.get_last_message_id(convo_id)), get_cur_ts()) # type: ignore
-            if remaining >= 5:
-                log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
+        remaining = cns.config.memory.conversation_interval - elapsed(cns.recall.id_to_timestamp(cns.recall.get_last_message_id(convo_id)), get_cur_ts()) # type: ignore
+        if remaining >= 5:
+            log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
+
+        # # Possibly elaborate? Not here, because it would poll Claude every 5 seconds(!)
+        # el = Elaborate(
+        #     service=meta['service'],
+        #     channel=meta['channel'],
+        #     context=cns.recall.fetch_convo(meta['service'], meta['channel'], convo_id=convo_id), # type: ignore
+        # )
+        # autobus.publish(el)
+
 
     expired_convos = cns.recall.list_convo_ids(expired=True, after=4) # type: ignore
     for convo_id, meta in expired_convos.items():

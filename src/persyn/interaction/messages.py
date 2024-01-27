@@ -4,6 +4,8 @@ CNS autobus messages
 # pylint: disable=too-few-public-methods
 
 from typing import Optional, List
+
+from sympy import O
 from persyn.autobus import Event
 
 class SendChat(Event):
@@ -46,6 +48,7 @@ class Elaborate(Event):
     ''' Continue the train of thought. '''
     service: str
     channel: str
+    context: Optional[str] = None
 
 
 class Opine(Event):
