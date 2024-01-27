@@ -138,9 +138,9 @@ class Interact:
             summary = self.recall.fetch_summary(convo_id, final=True)
             if not summary:
                 continue
-            recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"))
             if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in recent_summaries]), used):
                 break
+            recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"))
         return recent_summaries
 
     def get_time_preamble(self, convo_id: str) -> str:

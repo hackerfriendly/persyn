@@ -1,4 +1,12 @@
-'''Util that calls Zim.'''
+'''
+Langchain tool to fetch data from Zim files or Kiwix, https://kiwix.org/en/
+
+Zim is a compressed file format used for offline access to Wikipedia and other wikis.
+
+https://en.wikipedia.org/wiki/ZIM_(file_format)
+'''
+# pylint: disable=c-extension-no-member, no-name-in-module
+
 import logging
 import re
 
@@ -59,17 +67,17 @@ class ZimWrapper(BaseModel):
         else:
             self.zim = libzim.Archive(self.path)
 
-    class Config:
+    class Config: # pylint: disable=too-few-public-methods
         '''Configuration for this pydantic object.'''
 
         extra = Extra.forbid
 
     @root_validator()
-    def validate_environment(cls, values: Dict) -> Dict:
+    def validate_environment(cls, values: Dict) -> Dict: # pylint: disable=no-self-argument
         '''Validate that the python package exists in environment.'''
         try:
-            import libzim # pylint:disable=import-outside-toplevel
-            import ftfy # pylint:disable=import-outside-toplevel
+            import libzim # pylint:disable=import-outside-toplevel, reimported, unused-import, redefined-outer-name
+            import ftfy # pylint:disable=import-outside-toplevel, reimported, unused-import
 
         except ImportError as ex:
             raise ImportError(
@@ -164,7 +172,9 @@ class ZimWrapper(BaseModel):
         return self._cleanup('\n'.join(ret))
 
     def _page_to_document(self, page_title: str, wiki_page: Any) -> Document:
+        ''' not implemented '''
         raise NotImplementedError('Not yet implemented')
 
     def load(self, query: str) -> List[Document]:
+        ''' not implemented '''
         raise NotImplementedError('Not yet implemented')
