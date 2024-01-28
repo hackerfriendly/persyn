@@ -328,6 +328,10 @@ class Recall:
 
         return convo
 
+    def dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
+        ''' Fetch the convo and return only the current dialog. '''
+        return self.fetch_convo(service, channel, convo_id).memories['summary'].load_memory_variables({})['history']
+
     def current_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
         convo = self.fetch_convo(service, channel)

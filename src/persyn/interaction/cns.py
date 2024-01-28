@@ -129,14 +129,6 @@ class CNS:
         )
         autobus.publish(vc)
 
-        # Elaborate?
-        el = Elaborate(
-            service=event.service,
-            channel=event.channel,
-            context=f"{event.msg}\n{self.config.id.name}: {the_reply[0]}"
-        )
-        autobus.publish(el)
-
         # Do some research
         wp = Wikipedia(
             service=event.service,
@@ -715,6 +707,14 @@ async def sendchat_event(event):
     log.debug("SendChat received", event)
     await cns.say_something(event) # type: ignore
 
+    # Possibly elaborate
+    el = Elaborate(
+        service=event.service,
+        channel=event.channel,
+        context=cns.recall.dialog(event.service, event.channel)
+    )
+    autobus.publish(el)
+
 @autobus.subscribe(ChatReceived)
 async def chatreceived_event(event):
     ''' Dispatch ChatReceived event '''
@@ -820,15 +820,6 @@ async def auto_summarize() -> None:
         remaining = cns.config.memory.conversation_interval - elapsed(cns.recall.id_to_timestamp(cns.recall.get_last_message_id(convo_id)), get_cur_ts()) # type: ignore
         if remaining >= 5:
             log.info(f"💓 Active convo: {convo_id} (expires in {int(remaining)} seconds)")
-
-        # # Possibly elaborate? Not here, because it would poll Claude every 5 seconds(!)
-        # el = Elaborate(
-        #     service=meta['service'],
-        #     channel=meta['channel'],
-        #     context=cns.recall.fetch_convo(meta['service'], meta['channel'], convo_id=convo_id), # type: ignore
-        # )
-        # autobus.publish(el)
-
 
     expired_convos = cns.recall.list_convo_ids(expired=True, after=4) # type: ignore
     for convo_id, meta in expired_convos.items():
