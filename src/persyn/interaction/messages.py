@@ -48,6 +48,7 @@ class Elaborate(Event):
     ''' Continue the train of thought. '''
     service: str
     channel: str
+    convo_id: Optional[str] = None
     context: Optional[str] = None
 
 

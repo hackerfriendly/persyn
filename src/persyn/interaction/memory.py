@@ -11,6 +11,8 @@ import ulid
 
 import redis
 
+from redis.commands.search.query import Query
+
 from langchain.memory import (
     CombinedMemory,
     ConversationSummaryBufferMemory,
@@ -18,7 +20,6 @@ from langchain.memory import (
 )
 
 from langchain.vectorstores.redis import Redis
-from redis.commands.search.query import Query
 
 from persyn.interaction.chrono import elapsed, get_cur_ts, seconds_ago
 from persyn.interaction.completion import LanguageModel
@@ -189,6 +190,10 @@ class Recall:
     def set_convo_meta(self, convo_id: str, k: str, v: str) -> None:
         ''' Set metadata for a conversation '''
         self.redis.hset(f"{self.convo_prefix}:{convo_id}:meta", k, v)
+
+    def incr_convo_meta(self, convo_id: str, k: str, v: Optional[int] = 1) -> int:
+        ''' Increment a meta key for a conversation '''
+        return self.redis.hincrby(f"{self.convo_prefix}:{convo_id}:meta", k, v)
 
     def fetch_convo_meta(self, convo_id: str, k: Optional[str] = None) -> Any:
         ''' Fetch a metadata key from a conversation in Redis. If k is not provided, return all metadata. '''

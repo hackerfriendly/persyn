@@ -101,6 +101,12 @@ class CNS:
 
     async def chat_received(self, event: ChatReceived) -> None:
         ''' Somebody is talking to us '''
+
+        # Receiving new chat resets the elaborations counter
+        convo_id = self.recall.get_last_convo_id(event.service, event.channel)
+        if convo_id:
+            self.recall.set_convo_meta(convo_id, "elaborations", '0')
+
         chat = Chat(persyn_config=self.config, service=event.service)
 
         start = get_cur_ts()
@@ -185,11 +191,27 @@ class CNS:
 
     async def elaborate(self, event: Elaborate) -> Union[str, None]:
         '''
-        Continue the train of thought.
+        Continue the train of thought up to 5 times, checking Claude each time to see if we should continue.
+        If no convo_id is available, do nothing.
         If context is present, ask Claude whether we should continue (given the context) before elaborating.
         Otherwise, elaborate immediately.
         '''
         log.warning(f"elaborate(): {event.service} {event.channel} {event.context}")
+
+        if event.convo_id:
+            convo_id = event.convo_id
+        else:
+            convo_id = self.recall.get_last_convo_id(event.service, event.channel)
+
+        if convo_id is None:
+            log.warning("🤷‍♀️ No convo, nothing to elaborate.")
+            return None
+
+        # This should never happen, but is here as a safety valve in case Claude gets loquatious.
+        if self.recall.incr_convo_meta(convo_id, "elaborations") > 5:
+            log.warning("✋ Too many elaborations, stopping.")
+            return None
+
         if event.context:
             reply = self.recall.lm.ask_claude(
                 query=event.context,
@@ -711,6 +733,7 @@ async def sendchat_event(event):
     el = Elaborate(
         service=event.service,
         channel=event.channel,
+
         context=cns.recall.dialog(event.service, event.channel)
     )
     autobus.publish(el)

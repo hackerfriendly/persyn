@@ -5,7 +5,7 @@ Subroutines common to all chat services
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import random
-from typing import Optional, Union
+from typing import Optional
 
 import requests
 
@@ -91,9 +91,10 @@ class Chat():
             return " :writing_hand: :interrobang: "
 
         summary = reply.json()['summary']
-        log.warning(f"∑: » {reply.json()['summary']} «")
 
         if summary:
+            log.warning(f"∑: » {summary} «")
+
             if self.dreams_url and photo:
                 self.take_a_photo(
                     channel,
@@ -106,7 +107,7 @@ class Chat():
                 )
             return summary
 
-        return " :spiral_note_pad: :interrobang: "
+        return ""
 
     def get_reply(
         self,
