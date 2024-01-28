@@ -26,16 +26,16 @@ def lm() -> LanguageModel:
 @pytest.mark.parametrize("input_keywords, expected_keywords", [
     (f'this thing, that thing, {{bot_name}}, the other thing', ['that thing', 'the other thing', 'this thing']),
     ('#codebase #newfeatures #hackerfriendly #conversation #thankful', ['codebase', 'conversation', 'hackerfriendly', 'newfeatures', 'thankful']),
-    ('-Greeting', ['greeting']),
-    (' #Hackerfriendly #BugFix #Discord #DirectMessages', ['bugfix', 'directmessages', 'discord', 'hackerfriendly']),
-    ('-AI', ['ai']),
-    ('#Representation #Media #Acceptance #StockPhoto', ['acceptance', 'media', 'representation', 'stockphoto']),
-    ('- Artificial Intelligence (AI)', ['artificial intelligence (ai)']),
-    (r'#memory #art, memory, Art, \ #MEMORY, - art', ['art', 'memory']),
-    ('The Original Series', ['the original series']),
+    ('-Greeting', ['Greeting']),
+    (' #Hackerfriendly #BugFix #Discord #DirectMessages', ['BugFix', 'DirectMessages', 'Discord', 'Hackerfriendly']),
+    ('-AI', ['AI']),
+    ('#Representation #Media #Acceptance #StockPhoto', ['Acceptance', 'Media', 'Representation', 'StockPhoto']),
+    ('- Artificial Intelligence (AI)', ['Artificial Intelligence (AI)']),
+    (r'#memory #art, memory, Art, \ #MEMORY, - art', ['Art', 'MEMORY', 'art', 'memory']),
+    ('The Original Series', ['The Original Series']),
     ('#spock #paintings #manwithacigarette', ['manwithacigarette', 'paintings', 'spock']),
     ('memory, amnesia, scientist', ['amnesia', 'memory', 'scientist']),
-    ('- Spock', ['spock']),
+    ('- Spock', ['Spock']),
 ])
 def test_keywords(lm, input_keywords, expected_keywords):
     assert lm.cleanup_keywords(input_keywords.format(bot_name=lm.bot_name)) == expected_keywords
