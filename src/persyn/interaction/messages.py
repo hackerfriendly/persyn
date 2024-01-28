@@ -8,6 +8,8 @@ from typing import Optional, List
 from sympy import O
 from persyn.autobus import Event
 
+# FIXME: Constantly providing service + channel + convo_id is redundant and unwieldy. Rework messages to only require convo_id.
+
 class SendChat(Event):
     ''' Post text or images '''
     service: str

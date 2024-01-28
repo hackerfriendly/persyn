@@ -6,6 +6,7 @@ The central nervous system. Listen for events on the event bus and inject result
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
 import argparse
+import json
 import logging
 import os
 import asyncio
@@ -595,104 +596,107 @@ class CNS:
         #     return
 
     async def reflect_on(self, event: Reflect) -> None:
-        # TODO: FIX THIS to work with find_related_convos()
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
+
+        log.warning("🪩  Reflecting (not yet implemented)...")
         return
 
-        # TODO: Clean this up and make it work again.
-    #     log.warning("🪩  Reflecting...")
+        convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
+        convo = cns.recall.fetch_convo(event.service, event.channel, convo_id=convo_id)
 
-    #     convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
-    #     chat = Chat(persyn_config=self.config, service=event.service)
-    #     convo = cns.recall.fetch_convo(event.service, event.channel, convo_id=convo_id)
+        dialog = convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
+        reply = cns.lm.reflect(
+            text=dialog,
+            summarizer=f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals?
+For each question, also list up to two specific actions that {self.config.id.name} can take to answer those questions.
+Make your answers as concise as possible. Convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
+""" + """
+{{
+    "First question": [ "Answers to question 1", "as a list" ],
+    "Second optional question": [ "Answers to question 2", "as a list" ]
+}}
 
-    #     # """
-    #     # Given only the dialog above, what are the three most salient high-level questions that can be asked about Anna?
+Your response MUST only include JSON, no other text or preamble. Your response MUST return valid JSON, with no ``` or other special formatting.\n"""
+        )
+        if not reply.startswith('{'):
+            reply = '{' + reply.split('{', 1)[1].replace('`', '')
+        log.warning("🪩 ", str(reply))
 
-    #     # What three actions can Anna take to answer those questions?
-
-    #     # Please convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
-
-    #     # {
-    #     # "questions": ["THE QUESTIONS", "AS A LIST"],
-    #     # "actions": ["THE ACTIONS", "AS A LIST"]
-    #     # }
-
-    #     # Your response should only include JSON, no other text. Your response MUST return valid JSON.
-    #     # """
-
-    #     dialog = convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
-    #     questions = cns.recall.lm.ask_claude(
-    #         dialog,
-    #         prefix=f"""
+    # f"""
     # Given only the information above, what are three most salient high-level questions I can answer about the people in the statements?
     # Questions only, no answers. Please convert all pronouns and verbs to the first person.
     # """
-    #     ).split('?')
 
-    #     log.warning("🪩 ", str(questions))
+        try:
+            qa = json.loads(reply)
+        except json.decoder.JSONDecodeError as err:
+            log.error("🪩  Could not parse JSON response:", err)
+            return
 
-    #     # Answer each question, supplemented by relevant memories.
-    #     for question in questions:
-    #         question = question.strip().strip('"\'')
-    #         if len(question) < 10:
-    #             if question:
-    #                 log.warning("⁉️  Bad question:", question)
-    #             continue
 
-    #         log.warning("❓ ", question)
+        chat = Chat(persyn_config=self.config, service=event.service)
 
-    #         ranked = self.recall.find_related_convos(
-    #             event.service,
-    #             event.channel,
-    #             text=dialog,
-    #             exclude_convo_ids=[convo.id],
-    #             threshold=self.config.memory.relevance * 1.4,
-    #             size=5
+        # Answer each question, supplemented by relevant memories.
+        for question, answers in qa.items():
+            log.warning(f"🪩  {question}", str(answers))            # question = question.strip().strip('"\'')
+            # if len(question) < 10:
+            #     if question:
+            #         log.warning("⁉️  Bad question:", question)
+            #     continue
+
+            # log.warning("❓ ", question)
+
+            # ranked = self.recall.find_related_convos(
+            #     event.service,
+            #     event.channel,
+            #     text=dialog,
+            #     exclude_convo_ids=[convo.id],
+            #     threshold=self.config.memory.relevance * 1.4,
+            #     size=5
+            # )
+
+    #         visited = []
+    #         context = [convo]
+    #         for hit in ranked:
+    #             if hit.convo_id not in visited:
+    #                 if hit.service == 'import_service':
+    #                     log.info("📚 Hit found from import:", hit.channel)
+    #                 the_summary = recall.get_summary_by_id(hit.convo_id)
+    #                 # Hit a sentence? Inject the summary and the sentence.
+    #                 if the_summary and the_summary not in convo:
+    #                     context.append(f"""
+    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago,
+    #                         f"{the_summary.summary} From that conversation, {hit.msg}"""
+    #                     )
+    #                 # No summary? Just inject the sentence.
+    #                 else:
+    #                     context.append(f"""
+    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
+    #                     )
+    #                 visited.append(hit.convo_id)
+    #                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
+
+    #         prompt = '\n'.join(context) + f"""
+    # {persyn_config.id.name} asks: {question}?
+    # Respond with the best possible answer from {persyn_config.id.name}'s point of view.
+    # Don't use proper names, and convert all pronouns and verbs to the first person.
+    # """
+    #         log.warning("✏️", question)
+
+    #         answer = completion.get_reply(prompt)
+    #         log.warning("❗️", answer)
+
+    #         # Inject the question and answer.
+    #         chat.inject_idea(
+    #             channel=event.channel,
+    #             idea=f"{question}? {answer}",
+    #             verb="reflects"
     #         )
 
-    # #         visited = []
-    # #         context = [convo]
-    # #         for hit in ranked:
-    # #             if hit.convo_id not in visited:
-    # #                 if hit.service == 'import_service':
-    # #                     log.info("📚 Hit found from import:", hit.channel)
-    # #                 the_summary = recall.get_summary_by_id(hit.convo_id)
-    # #                 # Hit a sentence? Inject the summary and the sentence.
-    # #                 if the_summary and the_summary not in convo:
-    # #                     context.append(f"""
-    # #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago,
-    # #                         f"{the_summary.summary} From that conversation, {hit.msg}"""
-    # #                     )
-    # #                 # No summary? Just inject the sentence.
-    # #                 else:
-    # #                     context.append(f"""
-    # #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
-    # #                     )
-    # #                 visited.append(hit.convo_id)
-    # #                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
+    #     if event.send_chat:
+    #         await elaborate(event)
 
-    # #         prompt = '\n'.join(context) + f"""
-    # # {persyn_config.id.name} asks: {question}?
-    # # Respond with the best possible answer from {persyn_config.id.name}'s point of view.
-    # # Don't use proper names, and convert all pronouns and verbs to the first person.
-    # # """
-    # #         log.warning("✏️", question)
-
-    # #         answer = completion.get_reply(prompt)
-    # #         log.warning("❗️", answer)
-
-    # #         # Inject the question and answer.
-    # #         chat.inject_idea(
-    # #             channel=event.channel,
-    # #             idea=f"{question}? {answer}",
-    # #             verb="reflects"
-    # #         )
-
-    # #     if event.send_chat:
-    # #         await elaborate(event)
-
-    #     log.warning("🪩  Done reflecting.")
+        log.warning("🪩  Done reflecting.")
 
     async def generate_photo(self, event: Photo) -> None:
         ''' Generate a photo '''
@@ -847,15 +851,15 @@ async def auto_summarize() -> None:
     expired_convos = cns.recall.list_convo_ids(expired=True, after=4) # type: ignore
     for convo_id, meta in expired_convos.items():
         log.info(f"💔 Convo expired: {convo_id}")
-        # if len(cns.recall.fetch_summary(convo_id)) > 10:
-        #     log.info("🪩  Reflecting:", convo_id)
-        #     event = Reflect(
-        #         service=meta['service'],
-        #         channel=meta['channel'],
-        #         send_chat=True,
-        #         convo_id=convo_id
-        #     )
-        #     autobus.publish(event)
+        if len(cns.recall.fetch_summary(convo_id)) > 10:
+            log.info("🪩  Reflecting:", convo_id)
+            event = Reflect(
+                service=meta['service'],
+                channel=meta['channel'],
+                convo_id=convo_id,
+                send_chat=True
+            )
+            autobus.publish(event)
 
         event = Summarize(
             service=meta['service'],

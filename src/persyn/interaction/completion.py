@@ -98,7 +98,12 @@ class LanguageModel:
             temperature=self.config.completion.anthropic_temperature,
             max_tokens=250,
         )
-
+        self.reflection_llm = setup_llm(
+            self.config,
+            model=self.reasoning_model,
+            temperature=self.config.completion.reasoning_temperature,
+            max_tokens=500,
+        )
         self.embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.openai_api_key)
 
         log.debug(f"💬 chat model: {self.chat_model}")
@@ -252,6 +257,28 @@ class LanguageModel:
         # To the right of the Speaker: (if any)
         if re.match(r'^[\w\s]{1,12}:\s', reply):
             reply = reply.split(':')[1].strip()
+
+        log.warning("summarize_text():", reply)
+        return reply
+
+    def reflect(
+        self,
+        text: str,
+        summarizer: str = "Summarize the following in one sentence. Your response must include only the summary and no other text:",
+    ) -> Union[dict[str, list[str]], None]:
+        ''' Ask the LLM to reflect on text. Returns a dict of {question: [answer, answer, answer]} '''
+
+        llm = self.reflection_llm
+
+        text = self.truncate(text) # FIXME: proper model selection here
+        if not text:
+            log.warning('reflect():', "No text, skipping.")
+            return ""
+
+        prompt = PromptTemplate.from_template(summarizer + "\n{input}")
+        chain = prompt | llm | StrOutputParser()
+
+        reply = chain.invoke({"input": text})
 
         log.warning("summarize_text():", reply)
         return reply
