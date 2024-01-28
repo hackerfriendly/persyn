@@ -40,8 +40,6 @@ def main():
     persyn_config = load_config(args.config)
 
     event = Reflect(
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         service=args.service,
         channel=args.channel,
         send_chat=args.send_chat

@@ -3,42 +3,46 @@ config.py
 
 Simple configuration management with pyyaml.
 
-Loads a yaml file and returns a SimpleNamespace.
+Loads a yaml file and returns a DotWiz object (like a SimpleNamespace but easier to manage).
 '''
 import os
 from pathlib import Path
 from urllib.parse import urlparse
 from threading import Lock
-from subprocess import run
 
 import yaml
 import spacy
-import coreferee
 
-from dotwiz import DotWiz # pylint: disable=no-member
+from dotwiz import DotWiz
 
 class PersynConfig(DotWiz):
     ''' PersynConfig object '''
-    ...
+    def __init__(self, config):
+        # Keep pylint happy in other modules
+        self.chat = None
+        self.cns = None
+        self.completion = None
+        self.dreams = None
+        self.id = None # pylint: disable=invalid-name
+        self.interact = None
+        self.memory = None
+        self.spacy = None
+        self.web = None
+        self.zim = None
 
-def download_models(persyn_config):
+        super().__init__(config)
+
+def download_models(persyn_config) -> None:
     ''' Download any required ML models '''
     try:
         nlp = spacy.load(persyn_config.spacy.model)
     except OSError:
-        spacy.cli.download(persyn_config.spacy.model)
+        spacy.cli.download(persyn_config.spacy.model) # type: ignore
         nlp = spacy.load(persyn_config.spacy.model)
 
-    try:
-        nlp.add_pipe('coreferee')
-    except coreferee.errors.ModelNotSupportedError:
-        run(['python', '-m', 'coreferee', 'install', 'en'], shell=False, check=True)
-        nlp.add_pipe('coreferee')
-
-    nlp.remove_pipe('coreferee')
     del nlp
 
-def load_config(cfg=None):
+def load_config(cfg=None) -> PersynConfig:
     ''' Load the config and set some sensible default values. '''
 
     if cfg is None and 'PERSYN_CONFIG' not in os.environ:
@@ -125,6 +129,12 @@ def load_config(cfg=None):
         if 'conversation_interval' not in config['memory']:
             config['memory']['conversation_interval'] = 600
 
+        if 'context' not in config['memory']:
+            config['memory']['context'] = 0.3
+
+        if 'max_summary_size' not in config['memory']:
+            config['memory']['max_summary_size'] = 1000
+
         if 'relevance' not in config['memory']:
             config['memory']['relevance'] = 0.12
 
@@ -133,20 +143,25 @@ def load_config(cfg=None):
 
     if 'completion' in config:
         completion_defaults = {
-            'engine': 'openai',
             'openai_api_base': 'https://api.openai.com/v1',
+            'openai_api_key': None,
             'openai_org': None,
             'chat_model': 'gpt-3.5-turbo',
-            'reasoning_model': 'gpt-4'
+            'chat_temperature': 0.9,
+            'reasoning_model': 'gpt-4',
+            'reasoning_temperature': 0.9,
+            'anthropic_model': 'claude-2.1',
+            'anthropic_key': None,
+            'anthropic_temperature': 0
         }
         for setting, val in completion_defaults.items():
             if setting not in config['completion']:
                 config['completion'][setting] = val
 
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
-    config.setdefault('interact', {'url': None})
+    config.setdefault('interact', {'url': None, 'character': 'You are a Persyn. Persyns differ from AIs and digital assistants, because their motivations are self-directed and they are influenced by their own emotions and opinions.'})
     config.setdefault('web', {'default': 'body'})
-    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}})
+    config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}, 'upload': {'url_base': None}})
 
     # Check for required models
     persyn_config = PersynConfig(config)

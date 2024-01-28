@@ -118,7 +118,7 @@ def main():
 
     # Mastodon support
     global mastodon
-    mastodon = Mastodon(args.config_file)
+    mastodon = Mastodon(persyn_config)
     mastodon.login()
 
     # Chat library
@@ -164,9 +164,10 @@ def main():
     @app.message(re.compile(r"^goals$"))
     def goals(say, context): # pylint: disable=unused-argument
         ''' What are we doing again? '''
+        service = app.client.auth_test().data['url']
         channel = context['channel_id']
 
-        current_goals = chat.list_goals(channel)
+        current_goals = chat.recall.list_goals(service, channel)
         if current_goals:
             for goal in current_goals:
                 say(f":goal_net: {goal}")
@@ -195,8 +196,7 @@ def main():
         if not persyn_config.dreams.dalle:
             log.error('🎨 No DALL-E support available, check your config.')
             return
-        speaker_id = context['user_id']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(context['user_id'])
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
@@ -217,8 +217,7 @@ def main():
     @app.message(re.compile(r"^:frame_with_picture:(.+)$"))
     def dalle_portrait(say, context): # pylint: disable=unused-argument
         ''' Take a picture with Dall-E '''
-        speaker_id = context['user_id']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(context['user_id'])
         channel = context['channel_id']
         prompt = context['matches'][0].strip()
 
@@ -243,28 +242,32 @@ def main():
         say("💭 " + chat.get_summary(
             channel=channel,
             convo_id=None,
-            save=save,
-            include_keywords=False,
             photo=True)
         )
 
-    @app.message(re.compile(r"^status$", re.I))
+    @app.message(re.compile(r"^(status|:question:)$", re.I))
     def status(say, context):
         ''' Say a condensed summary of this channel '''
         channel = context['channel_id']
-        say("\n".join([f"> {line}" for line in chat.get_status(channel).split("\n")]))
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
+        say("\n".join([f"> {line}" for line in chat.get_status(channel, speaker_name).split("\n")]))
 
     @app.message(re.compile(r"^nouns$", re.I))
     def nouns(say, context):
         ''' Say the nouns mentioned on this channel '''
         channel = context['channel_id']
-        say("> " + ", ".join(chat.get_nouns(chat.get_status(channel))))
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
+        say("> " + ", ".join(chat.get_nouns(chat.get_status(channel, speaker_name))))
 
     @app.message(re.compile(r"^entities$", re.I))
     def entities(say, context):
         ''' Say the entities mentioned on this channel '''
         channel = context['channel_id']
-        say("> " + ", ".join(chat.get_entities(chat.get_status(channel))))
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
+        say("> " + ", ".join(chat.get_entities(chat.get_status(channel, speaker_name))))
 
     @app.message(re.compile(r"^opinions (.*)$", re.I))
     def opine_all(say, context):
@@ -294,8 +297,10 @@ def main():
     def reflect(say, context):
         ''' Fetch our opinion on all the nouns in the channel '''
         channel = context['channel_id']
+        speaker_id = context['user_id']
+        speaker_name = get_display_name(speaker_id)
 
-        for noun in chat.get_nouns(chat.get_status(channel)):
+        for noun in chat.get_nouns(chat.get_status(channel, speaker_name)):
             opinion = chat.get_opinions(channel, noun.lower(), condense=True)
             if not opinion:
                 opinion = [chat.opinion(channel, noun.lower())]
@@ -336,19 +341,10 @@ def main():
             if random.random() < 0.95:
                 return
 
-        # Save the line
-        chat.recall.save_convo_line(
-            service=service,
-            channel=channel,
-            msg=msg,
-            speaker_name=get_display_name(speaker_id),
-            speaker_id=speaker_id,
-            convo_id=chat.recall.convo_id(service, channel),
-            verb='dialog'
-        )
+        log.info(f"{speaker_name}: {msg}")
 
         # Dispatch a "message received" event. Replies are handled by CNS.
-        chat.chat_received(channel, msg, speaker_name, speaker_id)
+        chat.chat_received(channel, msg, speaker_name)
 
         # Interrupt any rejoinder in progress
         reminders.cancel(channel)
@@ -358,11 +354,10 @@ def main():
     def handle_app_mention_events(body, client, say): # pylint: disable=unused-argument
         ''' Reply to @mentions '''
         channel = body['event']['channel']
-        speaker_id = body['event']['user']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(body['event']['user'])
         msg = substitute_names(body['event']['text'])
 
-        chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+        chat.get_reply(channel, msg, speaker_name, send_chat=True)
 
     @app.event("reaction_added")
     def handle_reaction_added_events(body, logger): # pylint: disable=unused-argument
@@ -439,8 +434,7 @@ def main():
             log.warning("Message event with no user. 🤷")
             return
 
-        speaker_id = body['event']['user']
-        speaker_name = get_display_name(speaker_id)
+        speaker_name = get_display_name(body['event']['user'])
         msg = substitute_names(body['event']['text'])
 
         if 'files' not in body['event']:
@@ -480,7 +474,7 @@ def main():
                 if not msg.strip():
                     msg = "..."
 
-                chat.get_reply(channel, msg, speaker_name, speaker_id, send_chat=True)
+                chat.get_reply(channel, msg, speaker_name, send_chat=True)
 
             else:
                 say(

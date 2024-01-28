@@ -10,19 +10,34 @@ Used mostly by interact/autobus.py but can be called from anywhere.
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
 import json
+from typing import Optional
 
 import requests
+from persyn.chat.common import Chat
+from persyn.chat.mastodon.bot import Mastodon
+
+from persyn.utils.config import PersynConfig
 
 # Color logging
 from persyn.utils.color_logging import log
 
 rs = requests.Session()
+mastodon = None
 
-def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
+def slack_msg(
+    persyn_config: PersynConfig,
+    chat: Chat,
+    channel: str,
+    msg: str,
+    images: Optional[list[str]] = None,
+    extra: Optional[str] = None # pylint: disable=unused-argument
+    ) -> None:
     ''' Post a message to Slack with optional images '''
 
-    # TODO: Why does this call take ~three seconds to show up in the channel?
+    log.debug(f"slack_msg: {persyn_config}, {chat}, {channel}, {msg}, {images}, {extra}")
 
+    # TODO: Why does this call take ~three seconds to show up in the channel?
+    bot_name = persyn_config.id.name
     blocks = []
     if images:
         # Posting multiple images in a single block doesn't seem to be possible from a bot. Hmm.
@@ -62,14 +77,25 @@ def slack_msg(persyn_config, chat, channel, bot_name, msg, images=None):
         chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
     else:
         log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
-        chat.inject_idea(channel, msg, verb='dialog')
 
-def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
+
+def discord_msg(
+    persyn_config: PersynConfig,
+    chat: Chat,
+    channel: str,
+    msg: str,
+    images: Optional[list[str]] = None,
+    extra: Optional[str] = None # pylint: disable=unused-argument
+    ) -> None:
     ''' Post an image to Discord '''
+
+    log.debug(f"discord_msg: {persyn_config}, {chat}, {channel}, {msg}, {images}, {extra}")
+
+    bot_name = persyn_config.id.name
     req = {
         "username": persyn_config.id.name,
         # webhook is a different user id from the main bot, so set the avatar accordingly
-        "avatar_url": getattr(persyn_config.id, "avatar", "https://hackerfriendly.com/pub/anna/anna.png")
+        "avatar_url": getattr(persyn_config.id, "avatar", persyn_config.id.avatar)
     }
 
     if images:
@@ -101,4 +127,30 @@ def discord_msg(persyn_config, chat, channel, bot_name, msg, images=None):
         chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
     else:
         log.info(f"⚡️ Posted dialog to Discord as {bot_name}")
-        chat.inject_idea(channel, msg, verb='dialog')
+
+
+def mastodon_msg(
+    persyn_config: PersynConfig,
+    chat: Chat, # pylint: disable=unused-argument
+    channel: str, # pylint: disable=unused-argument
+    msg: str,
+    images: Optional[list[str]] = None,
+    extra: Optional[str] = None
+    ) -> None:
+    ''' Post a message to Mastodon with optional images '''
+    global mastodon
+
+    if mastodon is None:
+        mastodon = Mastodon(persyn_config)
+        mastodon.login()
+
+    if extra is None:
+        extra = '{}'
+
+    if images:
+        for image in images:
+            mastodon.fetch_and_post_image(
+                f"{persyn_config.dreams.upload.url_base}/{image}", f"{msg}\n#imagesynthesis #persyn", extra # type: ignore
+            )
+    else:
+        mastodon.toot(msg, kwargs=json.loads(extra))

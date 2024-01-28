@@ -5,4 +5,4 @@ else
   DBG="-vv"
 fi
 
-PYTHONPATH=src/ PERSYN_CONFIG=config/test.yaml pytest ${DBG} $*
+PYTHONPATH=src/ PERSYN_CONFIG=config/test.yaml pytest ${DBG} --cov=src/persyn/chat --cov=src/persyn/interaction --cov=src/persyn/utils $*

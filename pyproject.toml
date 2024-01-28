@@ -23,7 +23,6 @@ dependencies = [
   "beautifulsoup4",
   "certifi",
   "click",
-  "coreferee",
   "discord.py",
   "dotwiz",
   "duckduckgo-search",
@@ -80,11 +79,12 @@ captions = "persyn.dreams.BLIP.captions:main"
 
 [project.optional-dependencies]
 dev = [
-  "pytest",
-  "pylint",
-  "jupyterlab",
+  "freezegun",
+  "ipywidgets",
   "jupyter_contrib_nbextensions",
-  "ipywidgets"
+  "jupyterlab",
+  "pylint",
+  "pytest"
 ]
 
 all = [
@@ -99,7 +99,7 @@ all = [
   "torchvision",
   "tqdm",
   "transformers>=4.30.0",
-  "xformers",
+  "xformers"
 ]
 
 [project.urls]

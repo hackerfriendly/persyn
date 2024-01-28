@@ -5,11 +5,11 @@ beautifulsoup4
 boto3
 certifi
 click
-coreferee
 dalle2>=1.0.7
 discord.py
 dotwiz
 fastapi[all]
+freezegun
 ftfy
 humanize
 Levenshtein

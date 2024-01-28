@@ -4,160 +4,134 @@ CNS autobus messages
 # pylint: disable=too-few-public-methods
 
 from typing import Optional, List
-from persyn import autobus
 
-class SendChat(autobus.Event):
+from sympy import O
+from persyn.autobus import Event
+
+class SendChat(Event):
     ''' Post text or images '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     msg: str
-    images: Optional[list[str]]
+    images: Optional[list[str]] = []
+    extra: Optional[str] = None
 
 
-class ChatReceived(autobus.Event):
+class ChatReceived(Event):
     ''' Chat was received from a service + channel '''
     service: str
     channel: str
     speaker_name: str
-    speaker_id: str
     msg: str
+    extra: Optional[str] = None
 
 
-class Idea(autobus.Event):
+class Idea(Event):
     ''' Inject an idea '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     idea: str
     verb: str
 
 
-class Summarize(autobus.Event):
+class Summarize(Event):
     ''' Summarize the current channel immediately. '''
     service: str
     channel: str
-    convo_id: Optional[str]
-    bot_name: str
-    bot_id: str
+    convo_id: Optional[str] = None
     photo: bool
-    max_tokens: int
     send_chat: Optional[bool] = True
+    final: Optional[bool] = False
 
 
-class Elaborate(autobus.Event):
+class Elaborate(Event):
     ''' Continue the train of thought. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
+    convo_id: Optional[str] = None
+    context: Optional[str] = None
 
 
-class Opine(autobus.Event):
+class Opine(Event):
     ''' Recall your opinion about entities. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     entities: List[str]
 
 
-class Wikipedia(autobus.Event):
-    ''' Summarize some Wikipedia pages. '''
+class Wikipedia(Event):
+    ''' Use Wikipedia (via Zim) to look up entities. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
-    entities: List[str]
+    text: str
+    focus: Optional[str] = None
 
 
-class CheckGoals(autobus.Event):
+class CheckGoals(Event):
     ''' Check progress against goals. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     convo: str
     goals: List[str]
 
 
-class AddGoal(autobus.Event):
+class AddGoal(Event):
     ''' Add a new goal. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     goal: str
 
 
-class VibeCheck(autobus.Event):
+class VibeCheck(Event):
     ''' How we feelin'? '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
-    convo_id: Optional[str]
-    room: Optional[str]
 
 
-class FactCheck(autobus.Event):
+class FactCheck(Event):
     ''' How we thinkin'? '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
-    convo_id: Optional[str]
-    room: Optional[str]
+    convo_id: Optional[str] = None
+    room: Optional[str] = None
 
 
-class KnowledgeGraph(autobus.Event):
+class KnowledgeGraph(Event):
     '''
     The best lack all conviction, while the worst are full of passionate intensity.
     '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     convo_id: str
     convo: str
 
 
-class News(autobus.Event):
+class News(Event):
     ''' What's happening in the big world? '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     url: str
 
 
-class Web(autobus.Event):
+class Web(Event):
     ''' Be sure to surf responsibly. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     url: str
     reread: bool
 
 
-class Reflect(autobus.Event):
+class Reflect(Event):
     ''' Reflect on the current channel. '''
     service: str
     channel: str
-    bot_name: str
-    bot_id: str
     send_chat: Optional[bool] = True
-    convo_id: Optional[str]
+    convo_id: Optional[str] = None
 
 
-class Photo(autobus.Event):
+class Photo(Event):
     ''' Generate a photo. '''
     service: str
     channel: str
     prompt: str
     size: Optional[tuple] = (1024, 1024)
-    bot_name: str
-    bot_id: str

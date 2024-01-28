@@ -50,6 +50,8 @@ intents = discord.Intents.default()
 intents.message_content = True # pylint: disable=assigning-non-slot
 app = discord.Client(intents=intents)
 
+# TODO: Fix for new persyn chat! Discord channels are fubar!
+
 @app.event
 async def on_ready():
     ''' Ready player 0! '''
@@ -80,7 +82,7 @@ async def on_message(ctx):
 async def on_raw_reaction_add(ctx):
     ''' on_raw_reaction_add '''
     channel = await app.fetch_channel(ctx.channel_id)
-    message = await channel.fetch_message(ctx.message_id)
+    message = await channel.fetch_message(ctx.message_id) # type: ignore
 
     if not it_me(message.author.id):
         log.warning("👎 Not posting image that isn't mine.")
@@ -101,7 +103,7 @@ async def on_raw_reaction_add(ctx):
 async def on_raw_reaction_remove(ctx):
     ''' on_raw_reaction_remove '''
     channel = await app.fetch_channel(ctx.channel_id)
-    message = await channel.fetch_message(ctx.message_id)
+    message = await channel.fetch_message(ctx.message_id) # type: ignore
 
     log.info(f'Reaction removed: {ctx.member} : {ctx.emoji} ({message.id})')
 
@@ -114,13 +116,14 @@ async def on_raw_reaction_remove(ctx):
 
 def it_me(author_id):
     ''' Return True if the given id is one of ours '''
-    return author_id in [app.user.id, persyn_config.chat.discord.webhook_id]
+    return author_id in [app.user.id, persyn_config.chat.discord.webhook_id] # type: ignore
 
 def get_channel(ctx):
-    ''' Return the unique identifier for this guild+channel or DM '''
+    ''' Return the unique identifier for this guild/channel or DM '''
+    # Note: Don't use | as a separator here as it confuses memory.py
     if getattr(ctx, 'guild'):
-        return f"{ctx.guild.id}|{ctx.channel.id}"
-    return f"dm|{ctx.author.id}|{ctx.channel.id}"
+        return f"{ctx.guild.id}/{ctx.channel.id}"
+    return f"dm/{ctx.author.id}/{ctx.channel.id}"
 
 def say_something_later(ctx, when, what=None):
     ''' Continue the train of thought later. When is in seconds. If what, just say it. '''
@@ -138,7 +141,7 @@ def synthesize_image(ctx, prompt, engine="dall-e", width=None, height=None, styl
     ''' It's not AI art. It's _image synthesis_ '''
     channel = get_channel(ctx)
 
-    chat.take_a_photo(
+    chat.take_a_photo( # type: ignore
         channel,
         prompt,
         engine=engine,
@@ -188,21 +191,10 @@ async def schedule_reply(ctx):
     ''' Gather a reply and say it when ready '''
     channel = get_channel(ctx)
 
-    log.warning("⏰ schedule_reply")
-
-    # Save the line
-    chat.recall.save_convo_line(
-        service='discord',
-        channel=channel,
-        msg=ctx.content,
-        speaker_name=ctx.author.name,
-        speaker_id=ctx.author.id,
-        convo_id=chat.recall.convo_id('discord', channel),
-        verb='dialog'
-    )
+    log.warning("⏰ schedule_reply():", ctx.content)
 
     # Dispatch a "message received" event. Replies are handled by CNS.
-    chat.chat_received(channel, ctx.content, ctx.author.name, ctx.author.id)
+    chat.chat_received(channel, ctx.content, ctx.author.name)
 
     # Webhooks in discord are per-channel. Skip summarizing DMs since it would bleed over.
     # if not channel.startswith('dm|'):
@@ -224,7 +216,7 @@ async def handle_attachments(ctx):
             if not msg.strip():
                 msg = "..."
 
-            chat.get_reply(channel, msg, ctx.author.name, ctx.author.id, send_chat=True)
+            chat.get_reply(channel, msg, ctx.author.name, send_chat=True)
 
         else:
             await ctx.channel.send(
@@ -268,8 +260,8 @@ async def dispatch(ctx):
   :frame_with_picture: _prompt_ : Generate a portrait of _prompt_ using dall-e v3
 """)
 
-    elif ctx.content == 'status':
-        status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel).split("\n")])).rstrip("> \n")
+    elif ctx.content in ['status', ':question:', '❓']:
+        status = ("\n".join([f"> {line.strip()}" for line in chat.get_status(channel, ctx.author.name).split("\n")])).rstrip("> \n")
         if len(status) < 2000:
             await ctx.channel.send(status.strip())
         else:
@@ -285,13 +277,13 @@ async def dispatch(ctx):
                 await ctx.channel.send(reply)
 
     elif ctx.content == 'summary':
-        await ctx.channel.send("💭 " + chat.get_summary(channel, save=False, include_keywords=False, photo=True))
+        await ctx.channel.send("💭 " + chat.get_summary(channel, photo=True))
 
     elif ctx.content == 'summary!':
-        await ctx.channel.send("💭 " + chat.get_summary(channel, save=True, include_keywords=True, photo=False))
+        await ctx.channel.send("💭 " + chat.get_summary(channel, photo=False))
 
     elif ctx.content == 'nouns':
-        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(channel))))
+        await ctx.channel.send("> " + ", ".join(chat.get_nouns(chat.get_status(channel, ctx.author.name))))
 
     else:
         reminders.add(channel, 0, schedule_reply, f'reply-{uuid.uuid4()}', args=[ctx])
@@ -322,7 +314,7 @@ def main():
 
     # Mastodon support
     global mastodon
-    mastodon = Mastodon(args.config_file)
+    mastodon = Mastodon(persyn_config)
     mastodon.login()
 
     # Chat library

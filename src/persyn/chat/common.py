@@ -4,8 +4,8 @@ common.py
 Subroutines common to all chat services
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name
-import base64
 import random
+from typing import Optional
 
 import requests
 
@@ -16,6 +16,7 @@ from persyn.utils.color_logging import log
 
 # Long and short term memory
 from persyn.interaction.memory import Recall
+from persyn.utils.config import PersynConfig
 
 default_photo_triggers = [
     'look', 'see', 'show', 'watch', 'vision',
@@ -45,39 +46,42 @@ rs = requests.Session()
 
 class Chat():
     ''' Container class for common chat functions '''
-    def __init__(self, persyn_config, service):
+    def __init__(self, persyn_config: PersynConfig, service: str):
         ''' Container class for common chat functions. Pass the persyn config and the calling chat service. '''
         self.persyn_config = persyn_config
         self.service=service
 
-        self.bot_name=persyn_config.id.name
-        self.bot_id=persyn_config.id.guid
-        self.interact_url=persyn_config.interact.url
-        self.dreams_url=persyn_config.dreams.url
+        self.bot_name=persyn_config.id.name # type: ignore
+        self.bot_id=persyn_config.id.guid # type: ignore
+        self.interact_url=persyn_config.interact.url # type: ignore
+        self.dreams_url=persyn_config.dreams.url # type: ignore
 
         self.photo_triggers = default_photo_triggers
         self.recall = Recall(persyn_config)
 
         self.oai_client = OpenAI(
-            api_key=persyn_config.completion.openai_api_key,
-            organization=persyn_config.completion.openai_org
+            api_key=persyn_config.completion.openai_api_key, # type: ignore
+            organization=persyn_config.completion.openai_org # type: ignore
         )
 
-    def get_summary(self, channel, convo_id=None, save=False, photo=False, max_tokens=200, include_keywords=False, context_lines=0, model=None):
+    def get_summary(
+        self,
+        channel: str,
+        convo_id: Optional[str] = None,
+        photo: Optional[bool] = False,
+        extra: Optional[str] = None,
+        final: Optional[bool] = False
+        ) -> str:
         ''' Ask interact for a channel summary. '''
         if not self.interact_url:
-            log.error("∑ get_summary() called with no URL defined, skipping.")
-            return None
+            log.error("∑ get_summary() called with no interact_url defined, skipping.")
+            return ""
 
         req = {
             "service": self.service,
             "channel": channel,
             "convo_id": convo_id,
-            "save": save,
-            "max_tokens": max_tokens,
-            "include_keywords": include_keywords,
-            "context_lines": context_lines,
-            "model": model
+            "final": final
         }
         try:
             reply = rs.post(f"{self.interact_url}/summary/", params=req, timeout=60)
@@ -87,27 +91,37 @@ class Chat():
             return " :writing_hand: :interrobang: "
 
         summary = reply.json()['summary']
-        log.warning(f"∑: » {reply.json()['summary']} «")
 
         if summary:
+            log.warning(f"∑: » {summary} «")
+
             if self.dreams_url and photo:
                 self.take_a_photo(
                     channel,
                     summary,
                     engine="dall-e",
-                    width=self.persyn_config.dreams.dalle.width,
-                    height=self.persyn_config.dreams.dalle.height,
-                    style=self.persyn_config.dreams.dalle.quality
+                    width=self.persyn_config.dreams.dalle.width, # type: ignore
+                    height=self.persyn_config.dreams.dalle.height, # type: ignore
+                    style=self.persyn_config.dreams.dalle.quality, # type: ignore
+                    extra=extra
                 )
             return summary
 
-        return " :spiral_note_pad: :interrobang: "
+        return ""
 
-    def get_reply(self, channel, msg, speaker_name, speaker_id, reminders=None, send_chat=True):
+    def get_reply(
+        self,
+        channel: str,
+        msg: str,
+        speaker_name: str,
+        reminders=None,
+        send_chat: Optional[bool] = True,
+        extra: Optional[str] = None
+        ) -> str:
         ''' Ask interact for an appropriate response. '''
         if not self.interact_url:
-            log.error("💬 get_reply() called with no URL defined, skipping.")
-            return None
+            log.error("💬 get_reply() called with no interact_url defined, skipping.")
+            return ""
 
         if not msg:
             msg = '...'
@@ -120,8 +134,8 @@ class Chat():
             "channel": channel,
             "msg": msg,
             "speaker_name": speaker_name,
-            "speaker_id": speaker_id,
-            "send_chat": send_chat
+            "send_chat": send_chat,
+            "extra": extra
         }
         try:
             response = rs.post(f"{self.interact_url}/reply/", params=req, timeout=60)
@@ -129,7 +143,7 @@ class Chat():
         except requests.exceptions.RequestException as err:
             log.critical(f"🤖 Could not post /reply/ to interact: {err}")
             if reminders:
-                reminders.add(channel, 5, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name, speaker_id])
+                reminders.add(channel, 5, self.get_reply, name='retry_get_reply', args=[channel, msg, speaker_name])
             return random.choice(excuses)
 
         resp = response.json()
@@ -142,9 +156,10 @@ class Chat():
                 channel,
                 self.get_summary(channel),
                 engine="dall-e",
-                width=self.persyn_config.dreams.dalle.width,
-                height=self.persyn_config.dreams.dalle.height,
-                style=self.persyn_config.dreams.dalle.quality
+                width=self.persyn_config.dreams.dalle.width, # type: ignore
+                height=self.persyn_config.dreams.dalle.height, # type: ignore
+                style=self.persyn_config.dreams.dalle.quality, # type: ignore
+                extra=extra
             )
 
         return reply
@@ -166,7 +181,7 @@ class Chat():
     def inject_idea(self, channel, idea, verb='notices'):
         ''' Directly inject an idea into the stream of consciousness. '''
         if not self.interact_url:
-            log.error("💉 inject_idea() called with no URL defined, skipping.")
+            log.error("💉 inject_idea() called with no interact_url defined, skipping.")
             return None
 
         req = {
@@ -197,7 +212,8 @@ class Chat():
         steps=None,
         width=None,
         height=None,
-        guidance=None):
+        guidance=None,
+        extra=None):
 
         ''' Pick an image engine and generate a photo '''
         if not self.dreams_url:
@@ -220,7 +236,8 @@ class Chat():
             "steps": steps,
             "width": width,
             "height": height,
-            "guidance": guidance
+            "guidance": guidance,
+            "extra": extra
         }
         try:
             reply = rs.post(f"{self.dreams_url}/generate/", params=req, timeout=10)
@@ -230,13 +247,13 @@ class Chat():
                 log.error(f"{self.dreams_url}/generate/", f"{prompt}: {reply.status_code} {reply.json()}")
             return reply.ok
         except requests.exceptions.ConnectionError as err:
-            log.error(f"{self.dreams_url}/generate/", err)
+            log.error(f"{self.dreams_url}/generate/: {err}")
             return False
 
     def get_nouns(self, text):
         ''' Ask interact for all the nouns in text, excluding the speakers. '''
         if not self.interact_url:
-            log.error("📓 get_nouns() called with no URL defined, skipping.")
+            log.error("📓 get_nouns() called with no interact_url defined, skipping.")
             return []
 
         req = {
@@ -254,7 +271,7 @@ class Chat():
     def get_entities(self, text):
         ''' Ask interact for all the entities in text, excluding the speakers. '''
         if not self.interact_url:
-            log.error("👽 get_entities() called with no URL defined, skipping.")
+            log.error("👽 get_entities() called with no interact_url defined, skipping.")
             return None
 
         req = {
@@ -269,15 +286,16 @@ class Chat():
 
         return reply.json()['entities']
 
-    def get_status(self, channel):
+    def get_status(self, channel, speaker_name):
         ''' Ask interact for status. '''
         if not self.interact_url:
-            log.error("🗿 get_status() called with no URL defined, skipping.")
+            log.error("🗿 get_status() called with no interact_url defined, skipping.")
             return None
 
         req = {
             "service": self.service,
             "channel": channel,
+            "speaker_name": speaker_name
         }
         try:
             reply = rs.post(f"{self.interact_url}/status/", params=req, timeout=30)
@@ -291,7 +309,7 @@ class Chat():
     def get_opinions(self, channel, topic, condense=True):
         ''' Ask interact for its opinions on a topic in this channel. If summarize == True, merge them all. '''
         if not self.interact_url:
-            log.error("📌 get_opinions() called with no URL defined, skipping.")
+            log.error("📌 get_opinions() called with no interact_url defined, skipping.")
             return []
 
         req = {
@@ -313,33 +331,10 @@ class Chat():
 
         return []
 
-    def list_goals(self, channel):
-        ''' Return the goals for this channel, if any. '''
-        if not self.interact_url:
-            log.error("🏆 list_goals() called with no URL defined, skipping.")
-            return []
-
-        req = {
-            "service": self.service,
-            "channel": channel
-        }
-        try:
-            reply = rs.post(f"{self.interact_url}/list_goals/", params=req, timeout=20)
-            reply.raise_for_status()
-        except requests.exceptions.RequestException as err:
-            log.critical(f"🤖 Could not post /list_goals/ to interact: {err}")
-            return []
-
-        ret = reply.json()
-        if 'goals' in ret:
-            return ret['goals']
-
-        return []
-
     def opinion(self, channel, topic):
         ''' Form an opinion on topic '''
         if not self.interact_url:
-            log.error("🧷 opinion() called with no URL defined, skipping.")
+            log.error("🧷 opinion() called with no interact_url defined, skipping.")
             return None
 
         try:
@@ -374,21 +369,22 @@ class Chat():
         max_tokens=200,
         )
 
-        log.warning(f"🖼️  {response.choices[0].message.content}")
-        return response.choices[0].message.content
+        caption = self.recall.lm.trim(response.choices[0].message.content)
+        log.warning(f"🖼️  {caption}")
+        return caption
 
-    def chat_received(self, channel, msg, speaker_name, speaker_id):
-        ''' Dispatch a ChatReceived event. '''
+    def chat_received(self, channel, msg, speaker_name, extra=None):
+        ''' Dispatch a ChatReceived event. Extra is optional JSON for service options (Discord DM, Masto visibility, etc.) '''
         if not self.interact_url:
-            log.error("💬 chat_received() called with no URL defined, skipping.")
+            log.error("💬 chat_received() called with no interact_url defined, skipping.")
             return None
 
         req = {
             "service": self.service,
             "channel": channel,
             "speaker_name": speaker_name,
-            "speaker_id": speaker_id,
-            "msg": msg
+            "msg": msg,
+            "extra": extra
         }
         try:
             reply = rs.post(f"{self.interact_url}/chat_received/", params=req, timeout=60)

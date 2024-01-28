@@ -25,7 +25,7 @@ from persyn import autobus
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, ChatReceived, Opine, Wikipedia, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from persyn.interaction.messages import SendChat, ChatReceived, Opine, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -56,12 +56,12 @@ def root():
 async def handle_reply(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=5000),
-    speaker_id: str = Query(..., min_length=1, max_length=255),
+    msg: str = Query(..., min_length=1, max_length=65535),
     speaker_name: str = Query(..., min_length=1, max_length=255),
-    send_chat: Optional[bool] = Query(True)
+    send_chat: Optional[bool] = Query(True),
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
     ):
-    ''' Return the reply '''
+    ''' Get a reply to a message posted to a channel '''
 
     if not msg.strip():
         raise HTTPException(
@@ -70,7 +70,7 @@ async def handle_reply(
         )
 
     ret = await asyncio.gather(in_thread(
-        interact.retort, [service, channel, msg, speaker_name, speaker_id, send_chat]
+        interact.retort, [service, channel, msg, speaker_name, send_chat, extra]
     ))
     return {
         "reply": ret[0]
@@ -81,8 +81,8 @@ async def handle_chat_received(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     speaker_name: str = Query(..., min_length=1, max_length=255),
-    speaker_id: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=5000),
+    msg: str = Query(..., min_length=1, max_length=65535),
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
     ):
     ''' Notify CNS that a message was received '''
 
@@ -96,8 +96,8 @@ async def handle_chat_received(
         service=service,
         channel=channel,
         speaker_name=speaker_name,
-        speaker_id=speaker_id,
-        msg=msg
+        msg=msg,
+        extra=extra
     )
     autobus.publish(event)
 
@@ -109,15 +109,12 @@ async def handle_chat_received(
 async def handle_summary(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    save: Optional[bool] = Query(True),
-    include_keywords: Optional[bool] = Query(False),
-    context_lines: Optional[int] = Query(0),
-    dialog_only: Optional[bool] = Query(False),
-    convo_id: Optional[str] = Query(None, min_length=1, max_length=255)
+    convo_id: Optional[str] = Query(None, min_length=1, max_length=255),
+    final: Optional[bool] = Query(False)
 ):
-    ''' Return the reply '''
+    ''' Return the most recent summary from convo_id '''
     ret = await asyncio.gather(in_thread(
-        interact.summarize_convo, [service, channel, save, include_keywords, context_lines, dialog_only, convo_id]
+        interact.summarize_channel, [service, channel, convo_id, final]
     ))
     return {
         "summary": ret[0]
@@ -127,10 +124,11 @@ async def handle_summary(
 async def handle_status(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
+    speaker_name: str = Query(..., min_length=1, max_length=255),
     ):
-    ''' Return the reply '''
+    ''' Get the channel status, as it would be seen by /reply/ '''
     ret = await asyncio.gather(in_thread(
-        interact.get_status, [service, channel]
+        interact.status, [service, channel, speaker_name]
     ))
     return {
         "status": ret[0]
@@ -140,9 +138,9 @@ async def handle_status(
 async def handle_nouns(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Return the reply '''
+    ''' Extract nouns from a string '''
     ret = await asyncio.gather(in_thread(
-        interact.extract_nouns, [text]
+        interact.lm.extract_nouns, [text]
     ))
     return {
         "nouns": ret[0]
@@ -152,9 +150,9 @@ async def handle_nouns(
 async def handle_entities(
     text: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Return the reply '''
+    ''' Extract entities from a string '''
     ret = await asyncio.gather(in_thread(
-        interact.extract_entities, [text]
+        interact.lm.extract_entities, [text]
     ))
     return {
         "entities": ret[0]
@@ -181,10 +179,9 @@ async def handle_opinion(
     channel: str = Query(..., min_length=1, max_length=255),
     topic: str = Query(..., min_length=1, max_length=16384),
     size: Optional[int] = Query(10),
-    summarize: Optional[bool] = Query(True),
-    max_tokens: Optional[int] = Query(50)
+    summarize: Optional[bool] = Query(True)
     ):
-    ''' Get our opinion about topic '''
+    ''' Get our opinion about a topic '''
 
     ret = await asyncio.gather(in_thread(
         interact.surmise, [service, channel, topic, size]
@@ -212,12 +209,12 @@ async def handle_opinion(
     }
 
 @app.post("/add_goal/")
-async def add_goal(
+async def handle_add_goal(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     goal: str = Query(..., min_length=1, max_length=16384),
     ):
-    ''' Add a goal in a given context '''
+    ''' Add a goal to a channel '''
     ret = []
     if goal.strip():
         ret = await asyncio.gather(in_thread(
@@ -229,12 +226,12 @@ async def add_goal(
     }
 
 @app.post("/get_goals/")
-async def get_goals(
+async def handle_get_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     size: Optional[int] = Query(10),
 ):
-    ''' Fetch the current goals for a given context '''
+    ''' Fetch the current goals for a given channel '''
     ret = await asyncio.gather(in_thread(
         interact.get_goals, [service, channel, None, size]
     ))
@@ -244,12 +241,12 @@ async def get_goals(
     }
 
 @app.post("/list_goals/")
-async def list_goals(
+async def handle_list_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     size: Optional[int] = Query(10),
 ):
-    ''' List the current goals for a given context '''
+    ''' List the current goals for a channel '''
     ret = await asyncio.gather(in_thread(
         interact.list_goals, [service, channel, size]
     ))
@@ -259,18 +256,16 @@ async def list_goals(
     }
 
 @app.post("/check_goals/")
-async def check_goals(
+async def handle_check_goals(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo: str = Query(..., max_length=65535),
     goals: List[str] = Query(...)
 ):
-    ''' Ask the autobus check whether goals have been achieved '''
+    ''' Check whether goals have been achieved for this channel, via the autobus '''
     event = CheckGoals(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         convo=convo,
         goals=goals
     )
@@ -282,18 +277,18 @@ async def check_goals(
 
 
 @app.post("/send_msg/")
-async def send_msg(
+async def handle_send_msg(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
-    msg: str = Query(..., min_length=1, max_length=65535)
+    msg: str = Query(..., min_length=1, max_length=65535),
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
 ):
     ''' Send a chat message via the autobus '''
     event = SendChat(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        msg=msg
+        msg=msg,
+        extra=extra
     )
     autobus.publish(event)
 
@@ -303,7 +298,7 @@ async def send_msg(
 
 
 @app.post("/opine/")
-async def opine(
+async def handle_opine(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     entities: List[str] = Query(...)
@@ -312,29 +307,6 @@ async def opine(
     event = Opine(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        entities=entities
-    )
-    autobus.publish(event)
-
-    return {
-        "success": True
-    }
-
-@app.post("/wikipedia/")
-async def wiki(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    entities: List[str] = Query(..., min_length=1, max_length=255)
-):
-    ''' Summarize some Wikipedia pages '''
-
-    event = Wikipedia(
-        service=service,
-        channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         entities=entities
     )
     autobus.publish(event)
@@ -344,20 +316,14 @@ async def wiki(
     }
 
 @app.post("/vibe_check/")
-async def vibe_check(
+async def handle_vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: Optional[str] = Query("", min_length=1, max_length=255),
-    room: Optional[str] = Form("", max_length=2e6),
+    channel: str = Query(..., min_length=1, max_length=255)
 ):
     ''' Ask the autobus to vibe check the room '''
     event = VibeCheck(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
-        convo_id=convo_id,
-        room=room
     )
     autobus.publish(event)
 
@@ -367,7 +333,7 @@ async def vibe_check(
 
 
 @app.post("/build_graph/")
-async def build_graph(
+async def handle_build_graph(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     convo_id: str = Query(..., min_length=1, max_length=255),
@@ -377,8 +343,6 @@ async def build_graph(
     event = KnowledgeGraph(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         convo_id=convo_id,
         convo=convo
     )
@@ -390,7 +354,7 @@ async def build_graph(
 
 
 @app.post("/read_news/")
-async def read_news(
+async def handle_read_news(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     url: str = Query(..., min_length=9, max_length=4096),
@@ -399,8 +363,6 @@ async def read_news(
     event = News(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         url=url
     )
     autobus.publish(event)
@@ -411,7 +373,7 @@ async def read_news(
 
 
 @app.post("/read_url/")
-async def read_url(
+async def handle_read_url(
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     url: str = Query(..., min_length=9, max_length=4096),
@@ -421,8 +383,6 @@ async def read_url(
     event = Web(
         service=service,
         channel=channel,
-        bot_name=persyn_config.id.name,
-        bot_id=persyn_config.id.guid,
         url=url,
         reread=reread
     )

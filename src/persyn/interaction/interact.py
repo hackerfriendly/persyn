@@ -3,251 +3,55 @@ interact.py
 
 The limbic system library.
 '''
-# pylint: disable=import-error, wrong-import-position, wrong-import-order
-import random
-import re # used by custom filters
 
-from urllib.parse import urlparse
-from typing import Optional, List
+from dataclasses import dataclass
+from typing import Optional, Union, List, Tuple
 
+import ulid
 import requests
 
-from pydantic import Field
+from langchain.chains import ConversationChain
+from langchain.prompts import PromptTemplate
+
+from persyn.interaction import chrono
 
 # Long and short term memory
-from persyn.interaction.memory import Recall
-
-# Time handling
-from persyn.interaction.chrono import exact_time, natural_time, ago, today, elapsed, get_cur_ts
+from persyn.interaction.memory import Convo, Recall
 
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
 
-# Custom langchain
-from persyn.langchain.zim import ZimWrapper
-
 # Color logging
 from persyn.utils.color_logging import log
+from persyn.utils.config import PersynConfig
 
 rs = requests.Session()
 
-def doiify(text):
-    ''' Turn DOIs into doi.org links '''
-    return re.sub(
-        r"(https?://doi\.org/)?(10\.\d{4,9}/[-._;()/:a-zA-Z0-9]+)",
-        lambda match: match.group(0) if match.group(2) is None else f'https://doi.org/{match.group(2)}',
-        text
-    ).rstrip('.')
-
-class Interact():
+@dataclass
+class Interact:
     '''
     The Interact class contains all language handling routines and maintains
     the short and long-term memories for each service+channel.
     '''
-    def __init__(self, persyn_config):
-        self.config = persyn_config
+    config: PersynConfig
+
+    def __post_init__(self):
 
         # Pick a language model for completion
-        self.completion = LanguageModel(config=persyn_config)
+        self.lm = LanguageModel(self.config) # pylint: disable=invalid-name
 
-        # Identify a custom reply filter, if any. Should be a Python expression
-        # that receives the reply as the variable 'reply'. (Also has access to
-        # 'self' technically and anything else loaded at module scope, so be
-        # careful.)
-        self.custom_filter = None
-        if hasattr(self.config.interact, "filter"):
-            assert re # prevent "unused import" type linting
-            self.custom_filter = eval(f"lambda reply: {self.config.interact.filter}") # pylint: disable=eval-used
+        # Then create the Recall object (conversation management)
+        self.recall = Recall(self.config)
 
-        # Then create the Recall object (short-term, long-term, and graph memory).
-        self.recall = Recall(persyn_config)
-
-        # Langchain
-        self.llm = self.completion.model.completion_llm
-
-        # # zim / kiwix data sources
-        # if self.config.get('zim'):
-        #     for cfgtool in self.config.zim:
-        #         log.info("💿 Loading zim:", cfgtool)
-        #         zim = Tool(
-        #                 name=str(cfgtool),
-        #                 func=ZimWrapper(path=self.config.zim.get(cfgtool).path).run,
-        #                 description=self.config.zim.get(cfgtool).description
-        #             )
-        #         agent_tools.append(zim)
-        #         vector_tools.append(zim)
-
-        # Other tools: introspection (assess software + hardware), Claude (ask for facts)
-
-        self.enc = self.completion.model.get_enc()
-
-    def summarize_convo(
-        self,
-        service,
-        channel,
-        save=True,
-        include_keywords=False,
-        context_lines=0,
-        dialog_only=True,
-        convo_id=None
-    ):
-        '''
-        Generate a summary of the current conversation for this channel.
-        Also generate and save opinions about detected topics.
-
-        If save == True, save convo to long term memory and generate
-        knowledge graph nodes (via the autobus).
-
-        Returns the text summary.
-        '''
-        if convo_id is None:
-            convo_id = self.recall.convo_id(service, channel)
-            log.warning(f"∑ summarize_convo: {convo_id}")
-        if not convo_id:
-            log.error("∑ summarize_convo: no convo_id")
-            return ""
-
-        log.warning(f"{service} | {channel} | {convo_id}")
-        if dialog_only:
-            text = self.recall.convo(service, channel, convo_id=convo_id, verb='dialog') or self.recall.summaries(service, channel, size=3)
-        else:
-            text = self.recall.convo(service, channel, convo_id=convo_id, feels=True)
-
-        if not text:
-            log.error("∑ summarize_convo: no text")
-            return ""
-
-        log.warning("∑ summarizing convo")
-
-        convo_text = '\n'.join(text)
-
-        log.info(convo_text)
-
-        summary = self.completion.get_summary(
-            text=convo_text,
-            summarizer=f"""
-Briefly summarize this dialog, and convert pronouns and verbs to the first person.
-Your response must only include the summary and no other text.
-""",
-
-        )
-        keywords = self.completion.get_keywords(summary)
-
-        if save:
-            self.recall.save_summary(service, channel, convo_id, summary, keywords)
-
-        if include_keywords:
-            return summary + f"\nKeywords: {keywords}"
-
-        if context_lines:
-            return "\n".join(text[-context_lines:] + [summary])
-
-        return summary
-
-    def gather_memories(self, service, channel, entities, visited=None):
-        '''
-        Look for relevant convos and summaries using memory, relationship graphs, and entity matching.
-
-        TODO: weigh retrievals with "importance" and recency, a la Stanford Smallville
-        '''
-        if visited is None:
-            visited = []
-
-        convo = self.recall.convo(service, channel, feels=False)
-
-        if not convo:
-            return visited
-
-        ranked = self.recall.find_related_convos(
-            service, channel,
-            query='\n'.join(convo[:5]),
-            size=10,
-            current_convo_id=self.recall.convo_id(service, channel),
-            threshold=self.config.memory.relevance
-        )
-
-        # No hits? Don't try so hard.
-        if not ranked:
-            log.warning("🍸 Nothing relevant. Try lateral thinking.")
-            ranked = self.recall.find_related_convos(
-                service, channel,
-                query='\n'.join(convo),
-                size=1,
-                current_convo_id=self.recall.convo_id(service, channel),
-                threshold=self.config.memory.relevance * 1.4,
-                any_convo=True
-            )
-
-        for hit in ranked:
-            if hit.convo_id not in visited:
-                if hit.service == 'import_service':
-                    log.info("📚 Hit found from import:", hit.channel)
-                the_summary = self.recall.get_summary_by_id(hit.convo_id)
-                # Hit a sentence? Inject the summary.
-                # if the_summary:
-                #     self.inject_idea(
-                #         service, channel,
-                #         f"{the_summary.summary} In that conversation, {hit.speaker_name} said: {hit.msg}",
-                #         verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
-                #     )
-                if the_summary:
-                    self.inject_idea(
-                        service, channel,
-                        the_summary.summary,
-                        verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
-                    )
-                # No summary? Just inject the sentence.
-                else:
-                    self.inject_idea(
-                        service, channel,
-                        f"{hit.speaker_name} said: {hit.msg}",
-                        verb=f"remembers that {ago(self.recall.entity_id_to_timestamp(hit.convo_id))} ago"
-                    )
-                visited.append(hit.convo_id)
-                log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg)
-
-        # Look for other summaries that match detected entities
-        if entities:
-            visited = self.gather_summaries(service, channel, entities, size=2, visited=visited)
-
-        return visited
-
-    def gather_summaries(self, service, channel, entities, size, visited=None):
-        '''
-        If a previous convo summary matches entities and seems relevant, inject its memory.
-
-        Returns a list of ids of summaries injected.
-        '''
-        if not entities:
-            return []
-
-        if visited is None:
-            visited = []
-
-        search_term = ' '.join(entities)
-        log.warning(f"ℹ️  look up '{search_term}' in memories")
-
-        for summary in self.recall.summaries(service, channel, search_term, size=10, raw=True):
-            if summary.convo_id in visited:
-                continue
-            visited.append(summary.convo_id)
-
-            log.warning(f"🐘 Memory found: {summary.summary}")
-            self.inject_idea(service, channel, summary.summary, "remembers")
-
-            if len(visited) >= size:
-                break
-
-        return visited
-
-    def send_chat(self, service, channel, msg):
+    def send_chat(self, service: str, channel: str, msg: str, extra: Optional[str] = None) -> None:
         '''
         Send a chat message via the autobus.
         '''
         req = {
             "service": service,
             "channel": channel,
-            "msg": msg
+            "msg": msg,
+            "extra": extra
         }
 
         try:
@@ -257,271 +61,263 @@ Your response must only include the summary and no other text.
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
             return
 
-    def gather_facts(self, service, channel, entities):
+    def template(self, context: Optional[str] = "") -> str:
         '''
-        Gather facts (from Wikipedia) and opinions (from memory).
+        Return the current prompt template.
 
-        This happens asynchronously via the event bus, so facts and opinions
-        might not be immediately available for conversation.
+        Note that {kg} is used as a placeholder for knowledge graph memory but is never rendered.
+        It's overridden later in status() to provide the full prompt context.
+
+        Curly braces in the context are replaced with () to avoid template issues.
         '''
-        if not entities:
-            return
+        return f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
+{self.config.interact.character}
+""" + context.replace('{', '(').replace('}', ')') + """
+{kg}
+{history}
 
-        the_sample = random.sample(entities, k=min(3, len(entities)))
+{human}: {input}
+{bot}:"""
 
-        req = {
-            "service": service,
-            "channel": channel,
-            "entities": the_sample
-        }
+    def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
+        ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
+        context = [self.get_sentiment_analysis(convo)]
+        context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        # TODO: Also fetch recent dialog, if it's quite recent
+        return context if raw else '\n'.join([ctx[1] for ctx in context])
 
-        for endpoint in ['opine']:
-            log.warning(f"🧾 {endpoint} : {the_sample}")
-            try:
-                reply = rs.post(f"{self.config.interact.url}/{endpoint}/", params=req, timeout=10)
-                reply.raise_for_status()
-            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-                log.critical(f"🤖 Could not post /{endpoint}/ to interact: {err}")
-                return
+    def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str]:
+        ''' Fetch sentiment analysis for this convo '''
+        sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'
+        return (
+            'sentiment analysis',
+            f"{self.config.id.name} is feeling {sentiment}."
+        )
 
-    def check_goals(self, service, channel, convo):
-        ''' Have we achieved our goals? '''
-        goals = self.recall.list_goals(service, channel)
+    def too_many_tokens(self, convo: Convo, text: str, used: Optional[int] = 0) -> bool:
+        '''
+        Count tokens like this: tokens in convo + tokens in text + an arbitrary number of tokens already used
+        Return True if the token count is > than the fraction allowed by the config for chat_llm.
 
-        if goals:
-            req = {
-                "service": service,
-                "channel": channel,
-                "convo": '\n'.join(convo),
-                "goals": goals
-            }
+        TODO: Allow llm selection (currently always uses chat_llm)
+        '''
+        max_tokens = int(self.lm.max_prompt_length() * self.config.memory.context)
+        history = self.current_dialog(convo)
 
-            try:
-                reply = rs.post(f"{self.config.interact.url}/check_goals/", params=req, timeout=10)
-                reply.raise_for_status()
-            except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-                log.critical(f"🤖 Could not post /check_goals/ to interact: {err}")
+        return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
-    def get_feels(self, service, channel, convo_id, room):
-        ''' How are we feeling? Let's ask the autobus. '''
-        req = {
-            "service": service,
-            "channel": channel,
-            "convo_id": convo_id,
-        }
-        data = {
-            "room": room
-        }
+    def get_relevant_memories(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+        ''' Return a list of tuples of (source, text) for relevant memories '''
+        relevant_memories = []
+        related_convos = self.recall.find_related_convos(
+            convo.service,
+            convo.channel,
+            self.current_dialog(convo),
+            exclude_convo_ids=list(convo.visited),
+            threshold=self.config.memory.relevance,
+            size=5
+        )
+        for convo_id, score in related_convos:
+            if convo_id in convo.visited:
+                continue
+            convo.visited.add(convo_id)
+            summary = self.recall.fetch_summary(convo_id, final=True)
+            if summary:
+                if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in relevant_memories]), used):
+                    break
+                preamble = self.get_time_preamble(convo_id)
+                relevant_memories.append((f"relevant memory ({score})", f"{self.config.id.name} recalls{preamble}\n{summary}"))
+        return relevant_memories
 
-        try:
-            reply = rs.post(f"{self.config.interact.url}/vibe_check/", params=req, data=data, timeout=10)
-            reply.raise_for_status()
-        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-            log.critical(f"🤖 Could not post /vibe_check/ to interact: {err}")
+    def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+        ''' Return a list of tuples of (source, text) for recent summaries'''
+        recent_summaries = []
+        convo_ids = list(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
-    def save_knowledge_graph(self, service, channel, convo_id, convo):
-        ''' Build a pretty graph of this convo... via the autobus! '''
-        req = {
-            "service": service,
-            "channel": channel,
-            "convo_id": convo_id,
-        }
-        data = {
-            "convo": convo
-        }
+        for convo_id in convo_ids:
+            summary = self.recall.fetch_summary(convo_id, final=True)
+            if not summary:
+                continue
+            if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in recent_summaries]), used):
+                break
+            recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"))
+        return recent_summaries
 
-        try:
-            reply = rs.post(f"{self.config.interact.url}/build_graph/", params=req, data=data, timeout=10)
-            reply.raise_for_status()
-        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-            log.critical(f"🤖 Could not post /build_graph/ to interact: {err}")
+    def get_time_preamble(self, convo_id: str) -> str:
+        ''' Return an appropriate time elapsed preamble '''
+        last_ts = self.recall.id_to_timestamp(convo_id)
+        if chrono.elapsed(last_ts) > 7200:
+            return f" a conversation from {chrono.hence(last_ts)} ago:\n"
+        return ""
 
-    def retort(self, service, channel, msg, speaker_name, speaker_id, send_chat=True):  # pylint: disable=too-many-locals
+    def current_dialog(self, convo: Convo) -> str:
+        ''' Return the current dialog from convo '''
+        return convo.memories['summary'].load_memory_variables({})['history'].replace("System: ", "", -1)
+
+    def save_summary(self, convo: Convo) -> None:
+        '''
+        Save the summary for this convo.
+        While a convo is active, it contains the entire summary buffer (including most dialog).
+        After the convo has expired, it contains only the final summary.
+        '''
+        convo.memories['redis'].add_texts(
+            texts=[
+                self.current_dialog(convo)
+            ],
+            metadatas=[
+                {
+                    "service": convo.service,
+                    "channel": convo.channel,
+                    "convo_id": convo.id,
+                    "speaker_name": "narrator",
+                    "verb": "summary",
+                    "role": "bot"
+                }
+            ],
+            keys=[
+                f"{convo.id}:summary"
+            ]
+        )
+
+    def retort(
+        self,
+        service: str,
+        channel: str,
+        msg: str,
+        speaker_name: str,
+        send_chat: bool = True,
+        extra: Optional[str] = None
+        ) -> str:
         '''
         Get a completion for the given channel.
 
         Returns the response. If send_chat is True, also send it to chat.
         '''
-        log.info(f"💬 get_reply to: {msg}")
+        log.info(f"💬 retort to: {msg}")
 
-        convo_id = self.recall.convo_id(service, channel)
-        convo = self.recall.convo(service, channel, feels=False)
+        convo = self.recall.fetch_convo(service, channel)
+        if convo is None:
+            convo = self.recall.new_convo(service, channel, speaker_name)
 
-        lts = self.recall.get_last_timestamp(service, channel)
-        prompt = self.generate_prompt([], convo, service, channel, lts)
-
-
-        # TODO: vvv  Use this time to backfill context!  vvv
-
-        # Ruminate a bit
-        entities = self.extract_entities(msg)
-
-        if entities:
-            log.warning(f"🆔 extracted entities: {entities}")
-        else:
-            entities = self.extract_nouns('\n'.join(convo))[:8]
-            log.warning(f"🆔 extracted nouns: {entities}")
-
-        # Reflect on this conversation
-        visited = self.gather_memories(service, channel, entities)
-        summaries = []
-        for doc in self.recall.summaries(service, channel, None, size=1, raw=True):
-            if doc.convo_id not in visited and doc.summary not in summaries:
-                log.warning("💬 Adding summary:", doc.summary)
-                summaries.append(doc.summary)
-                visited.append(doc.convo_id)
-
-        # ^^^  end TODO  ^^^
-
-        reply = self.completion.get_reply(prompt)
-
-        if self.custom_filter:
-            try:
-                reply = self.custom_filter(reply)
-            except Exception as err: # pylint: disable=broad-except
-                log.warning(f"🤮 Custom filter failed: {err}")
-
-        # Say it!
-        if send_chat:
-            self.send_chat(service, channel, reply)
-
-        log.info(f"💬 get_reply done: {reply}")
-
-        return reply
-
-    def default_prompt_prefix(self, service, channel):
-        ''' The default prompt prefix '''
-        ret = [
-            f"It is {exact_time()} {natural_time()} on {today()}.",
-            getattr(self.config.interact, "character", ""),
-            f"{self.config.id.name} is feeling {self.recall.feels(self.recall.convo_id(service, channel))}.",
-        ]
-        goals = self.recall.list_goals(service, channel)
-        if goals:
-            ret.append(f"{self.config.id.name} is trying to accomplish the following goals: {', '.join(goals)}")
-        else:
-            log.warning(f"🙅‍♀️ No goal yet for {service} | {channel}")
-        return '\n'.join(ret)
-
-    def generate_prompt(self, summaries, convo, service, channel, lts=None):
-        ''' Generate the model prompt '''
-        newline = '\n'
-        timediff = ''
-        if lts and elapsed(lts, get_cur_ts()) > 600:
-            timediff = f"It has been {ago(lts)} since they last spoke."
-
-        # triples = set()
-        graph_summary = ''
-        convo_text = '\n'.join(convo)
-        # for noun in self.extract_entities(convo_text) + self.extract_nouns(convo_text):
-        #     for triple in self.recall.shortest_path(self.recall.bot_name, noun, src_type='Person'):
-        #         triples.add(triple)
-        # if triples:
-        #     graph_summary = self.completion.model.triples_to_text(list(triples))
-
-        # Is this just too much to think about?
-        if self.completion.toklen(convo_text + newline.join(summaries)) > self.completion.max_prompt_length():
-            log.warning("🥱 generate_prompt(): prompt too long, truncating.")
-            convo_text = self.enc.decode(self.enc.encode(convo_text)[:self.completion.max_prompt_length()])
-
-        return f"""{self.default_prompt_prefix(service, channel)}
-{newline.join(summaries)}
-{graph_summary}
-{convo_text}
-{timediff}
-{self.config.id.name}:"""
-
-    def get_status(self, service, channel):
-        ''' status report '''
-        return self.generate_prompt(
-            self.recall.summaries(service, channel, size=3),
-            self.recall.convo(service, channel, feels=True),
-            service,
-            channel
+        prompt = PromptTemplate(
+            input_variables=["input"],
+            template=self.template(self.add_context(convo)),
+            partial_variables={
+                "human": speaker_name,
+                "bot": self.config.id.name
+            }
         )
 
-    def extract_nouns(self, text):
-        ''' return a list of all nouns (except pronouns) in text '''
-        doc = self.completion.nlp(text)
-        nouns = {
-            n.text.strip()
-            for n in doc.noun_chunks
-            if n.text.strip() != self.config.id.name
-            for t in n
-            if t.pos_ != 'PRON'
-        }
-        return list(nouns)
+        chain = ConversationChain(
+            llm=self.lm.chat_llm,
+            verbose=True,
+            prompt=prompt,
+            memory=convo.memories['combined']
+        )
 
-    def extract_entities(self, text):
-        ''' return a list of all entities in text '''
-        doc = self.completion.nlp(text)
-        return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})
+        # Hand it to langchain.
+        reply = chain.invoke(input={'input':msg})['response']
 
-    def inject_idea(self, service, channel, idea, verb="recalls"):
+        # trim() should probably be an output parser, but I can't make that work with memories.
+        # So just rewrite history instead.
+        trimmed = self.lm.trim(reply)
+        if trimmed != reply:
+            for mem in chain.memory.memories:
+                if mem.chat_memory.messages:
+                    mem.chat_memory.messages[-1].content = trimmed
+
+        if send_chat:
+            self.send_chat(service, channel, trimmed, extra)
+
+        convo.memories['redis'].add_texts(
+            texts=[
+                msg,
+                trimmed
+            ],
+            metadatas=[
+                {
+                    "service": service,
+                    "channel": channel,
+                    "convo_id": convo.id,
+                    "speaker_name": speaker_name,
+                    "verb": "dialog",
+                    "role": "human"
+                },
+                {
+                    "service": service,
+                    "channel": channel,
+                    "convo_id": convo.id,
+                    "speaker_name": self.config.id.name,
+                    "verb": "dialog",
+                    "role": "bot"
+                },
+            ],
+            keys=[
+                f"{convo.id}:dialog:{str(ulid.ULID())}",
+                f"{convo.id}:dialog:{str(ulid.ULID())}",
+            ]
+        )
+        # Also save the summary
+        self.save_summary(convo)
+
+        log.info(f"💬 retort done: {reply}")
+        return trimmed
+
+    def status(self, service: str, channel: str, speaker_name: str) -> str:
+        ''' Return the prompt and chat history for this channel '''
+        convo = self.recall.fetch_convo(service, channel)
+        if convo is None:
+            convo = self.recall.new_convo(service, channel, speaker_name)
+
+        prompt = PromptTemplate(
+            input_variables=["input"],
+            template=self.template(self.add_context(convo)),
+            partial_variables={
+                "human": convo.memories['summary'].human_prefix,
+                "bot": self.config.id.name
+            }
+        )
+
+        return prompt.format(
+            kg='', # FIXME: this is a hack to avoid rendering {kg} in the template
+            history=self.current_dialog(convo),
+            input='input'
+        )
+
+    def inject_idea(self, service: str, channel: str, idea: str, verb: str="recalls") -> bool:
         '''
         Directly inject an idea into recall memory.
         '''
-        if verb != "decides" and idea in '\n'.join(self.recall.convo(service, channel, feels=True)):
-            log.warning("🤌  Already had this idea, skipping:", idea)
-            return
+        log.info(f"💉 inject_idea: {service}|{channel} ({verb}) {idea[:20]}…")
 
-        self.recall.save_convo_line(
-            service,
-            channel,
-            msg=idea,
-            speaker_name=self.config.id.name,
-            speaker_id=self.config.id.guid,
-            convo_id=self.recall.convo_id(service, channel),
-            verb=verb
-        )
+        if verb == 'dialog':
+            log.error("💉 inject_idea: dialog is handled by retort(), skipping.")
+            return False
 
-        log.warning(f"🤔 {verb}:", idea)
-        return
+        convo = self.recall.fetch_convo(service, channel)
+        if convo is None:
+            return False
 
-    def surmise(self, service, channel, topic, size=10):
-        ''' Stub for recall '''
-        return self.recall.surmise(service, channel, topic, size)
+        log.debug(self.current_dialog(convo))
 
-    def add_goal(self, service, channel, goal):
-        ''' Stub for recall '''
-        return self.recall.add_goal(service, channel, goal)
+        convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
+        self.save_summary(convo)
 
-    def get_goals(self, service, channel, goal=None, size=10):
-        ''' Stub for recall '''
-        return self.recall.get_goals(service, channel, goal, size)
+        return True
 
-    def list_goals(self, service, channel, size=10):
-        ''' Stub for recall '''
-        return self.recall.list_goals(service, channel, size)
+    def summarize_channel(self, service: str, channel: str, convo_id: Optional[str] = None, final: Optional[bool] = False) -> str:
+        ''' Summarize a channel in a few sentences. '''
+        if convo_id is None:
+            convo_id = self.recall.get_last_convo_id(service, channel)
 
-    def read_news(self, service, channel, url, title):
-        ''' Let's check the news while we ride the autobus. '''
-        req = {
-            "service": service,
-            "channel": channel,
-            "url": url,
-            "title": title
-        }
-        try:
-            reply = rs.post(f"{self.config.interact.url}/read_news/", params=req, timeout=10)
-            reply.raise_for_status()
-        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-            log.critical(f"🤖 Could not post /read_news/ to interact: {err}")
+        if convo_id is None:
+            return ""
 
-    def read_url(self, service, channel, url):
-        ''' Let's ride the autobus on the information superhighway. '''
-        parsed = urlparse(url)
-        if not bool(parsed.scheme) and bool(parsed.netloc):
-            log.warning("👨‍💻 Not a URL:", url)
-            return
+        summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id), final=final)
 
-        req = {
-            "service": service,
-            "channel": channel,
-            "url": url
-        }
-        try:
-            reply = rs.post(f"{self.config.interact.url}/read_url/", params=req, timeout=10)
-            reply.raise_for_status()
-        except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
-            log.critical(f"🤖 Could not post /read_url/ to interact: {err}")
+        if final:
+            log.info(f"🎬 Saving final summary for {service}|{channel} : {convo_id}")
+            self.recall.redis.hset(f"{self.recall.convo_prefix}:{convo_id}:summary", "final", summary)
+
+        return summary

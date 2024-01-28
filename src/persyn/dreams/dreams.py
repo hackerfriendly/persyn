@@ -19,6 +19,7 @@ import asyncio
 
 from pathlib import Path
 from subprocess import run
+from typing import Optional
 
 import requests
 import uvicorn
@@ -26,7 +27,7 @@ import boto3
 
 from PIL import Image
 from botocore.exceptions import ClientError
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response, Query
 from fastapi.responses import RedirectResponse
 
 from openai import OpenAI
@@ -50,15 +51,14 @@ rs = requests.Session()
 
 app = FastAPI()
 
-def post_to_autobus(service, channel, prompt, images, bot_name, bot_id):
+def post_to_autobus(service, channel, prompt, images, bot_name, bot_id, extra=None):
     ''' Post the completed image notification to autobus '''
     event = SendChat(
         service=service,
         channel=channel,
         images=images,
         msg=prompt,
-        bot_name=bot_name,
-        bot_id=bot_id
+        extra=extra
     )
     autobus.publish(event)
     log.info(f"🚌 Image post: {len(images)} sent to autobus")
@@ -88,7 +88,7 @@ def upload_files(files, config=None):
     else:
         run(['/usr/bin/scp'] + [str(f) for f in files] + [config.dreams.upload.dest_path], check=True)
 
-def sdd(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
+def sdd(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance, extra): # pylint: disable=unused-argument
     ''' Fetch images from stable_diffusion.py '''
     if not persyn_config.dreams.stable_diffusion.url:
         raise HTTPException(
@@ -123,9 +123,9 @@ def sdd(service, channel, prompt, model, image_id, bot_name, bot_id, style, step
         upload_files([fname])
 
     if service:
-        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name, bot_id)
+        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name, bot_id, extra)
 
-def dalle(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance): # pylint: disable=unused-argument
+def dalle(service, channel, prompt, model, image_id, bot_name, bot_id, style, steps, seed, width, height, guidance, extra): # pylint: disable=unused-argument
     ''' Fetch images from OpenAI '''
 
     if not model:
@@ -167,7 +167,7 @@ def dalle(service, channel, prompt, model, image_id, bot_name, bot_id, style, st
         upload_files([fname])
 
     if service:
-        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name, bot_id)
+        post_to_autobus(service, channel, prompt, [f"{image_id}.jpg"], bot_name, bot_id, extra)
 
 @app.get("/", status_code=302)
 async def root():
@@ -196,7 +196,8 @@ def generate(
     steps: int = 50,
     width: int = None,
     height: int = None,
-    guidance: int = 10
+    guidance: int = 10,
+    extra: Optional[str] = Query(None, min_length=1, max_length=65535),
     ):
     ''' Make an image and post it '''
     image_id = uuid.uuid4()
@@ -230,7 +231,8 @@ def generate(
         seed=seed,
         width=width,
         height=height,
-        guidance=guidance
+        guidance=guidance,
+        extra=extra
     )
 
     return {
