@@ -599,7 +599,6 @@ class CNS:
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
 
         log.warning("🪩  Reflecting (not yet implemented)...")
-        return
 
         convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
         convo = cns.recall.fetch_convo(event.service, event.channel, convo_id=convo_id)
@@ -607,7 +606,7 @@ class CNS:
         dialog = convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
         reply = cns.lm.reflect(
             text=dialog,
-            summarizer=f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals?
+            summarizer=f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals, desires, and opinions.
 For each question, also list up to two specific actions that {self.config.id.name} can take to answer those questions.
 Make your answers as concise as possible. Convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
 """ + """
