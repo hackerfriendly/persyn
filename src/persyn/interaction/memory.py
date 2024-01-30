@@ -5,7 +5,7 @@ import uuid
 import datetime as dt
 
 from dataclasses import dataclass
-from typing import Union, List, Dict, Any, Optional
+from typing import Union, List, Dict, Any, Optional, NewType
 
 import ulid
 
@@ -234,7 +234,10 @@ class Recall:
         )
 
         if convo_id:
-            log.warning("👉 Continuing convo:", convo)
+            if self.fetch_convo_meta(convo_id, "expired"):
+                log.warning("⚠️  Expired convo:", convo)
+            else:
+                log.warning("👉 Continuing convo:", convo)
             speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
         else:
             log.warning("⚠️  New convo:", convo)
@@ -242,9 +245,8 @@ class Recall:
             self.set_convo_meta(convo.id, "service", service)
             self.set_convo_meta(convo.id, "channel", channel)
             self.set_convo_meta(convo.id, "initiator", speaker_name)
-
-        self.set_convo_meta(convo.id, "expired", "False")
-        self.set_convo_meta(convo.id, "convo_id", convo.id)
+            self.set_convo_meta(convo.id, "expired", "False")
+            self.set_convo_meta(convo.id, "convo_id", convo.id)
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
@@ -339,7 +341,7 @@ class Recall:
 
     def dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
         ''' Fetch the convo and return only the current dialog. '''
-        return self.fetch_convo(service, channel, convo_id).memories['summary'].load_memory_variables({})['history']
+        return self.fetch_convo(service, channel, convo_id).memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
 
     def current_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
@@ -464,7 +466,7 @@ class Recall:
         return ret
 
     def add_goal(self, service: str, channel: str, goal: str) -> str:
-        ''' Add a new goal '''
+        ''' Add a new goal. Returns the goal_id. '''
         goal_id = str(ulid.ULID())
 
         self.redis.hset(f"{self.goal_prefix}:{goal_id}:meta", "service", service)
@@ -521,7 +523,7 @@ class Recall:
         text: str,
         threshold: Optional[float] = 1.0,
         size: Optional[int] = 1
-        ) -> List[tuple[str, float]]:
+        ) -> List:
         '''
         Find goals related to text using vector similarity
         '''

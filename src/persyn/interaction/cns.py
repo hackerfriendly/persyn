@@ -6,7 +6,6 @@ The central nervous system. Listen for events on the event bus and inject result
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
 import argparse
-import json
 import logging
 import os
 import asyncio
@@ -598,102 +597,35 @@ class CNS:
     async def reflect_on(self, event: Reflect) -> None:
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
 
-        log.warning("🪩  Reflecting (not yet implemented)...")
+        log.warning("🪩  Reflecting...")
 
         convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
-        convo = cns.recall.fetch_convo(event.service, event.channel, convo_id=convo_id)
+        dialog = cns.recall.dialog(event.service, event.channel, convo_id=convo_id)
 
-        dialog = convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
-        reply = cns.lm.reflect(
-            text=dialog,
-            summarizer=f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals, desires, and opinions.
-For each question, also list up to two specific actions that {self.config.id.name} can take to answer those questions.
-Make your answers as concise as possible. Convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
-""" + """
-{{
-    "First question": [ "Answers to question 1", "as a list" ],
-    "Second optional question": [ "Answers to question 2", "as a list" ]
-}}
-
-Your response MUST only include JSON, no other text or preamble. Your response MUST return valid JSON, with no ``` or other special formatting.\n"""
-        )
-        if not reply.startswith('{'):
-            reply = '{' + reply.split('{', 1)[1].replace('`', '')
-        log.warning("🪩 ", str(reply))
-
-    # f"""
-    # Given only the information above, what are three most salient high-level questions I can answer about the people in the statements?
-    # Questions only, no answers. Please convert all pronouns and verbs to the first person.
-    # """
-
-        try:
-            qa = json.loads(reply)
-        except json.decoder.JSONDecodeError as err:
-            log.error("🪩  Could not parse JSON response:", err)
+        qa = cns.lm.reflect(dialog)
+        if qa is None:
+            log.warning("🪩  No reply from lm, nothing to reflect.")
             return
 
-
-        chat = Chat(persyn_config=self.config, service=event.service)
-
-        # Answer each question, supplemented by relevant memories.
         for question, answers in qa.items():
-            log.warning(f"🪩  {question}", str(answers))            # question = question.strip().strip('"\'')
-            # if len(question) < 10:
-            #     if question:
-            #         log.warning("⁉️  Bad question:", question)
-            #     continue
+            log.warning(f"🪩  {question}", str(answers))
+            closest = cns.recall.find_related_goals(
+                event.service,
+                event.channel,
+                text=question,
+                threshold=self.config.memory.relevance,
+                size=1
+            )
+            if closest:
+                log.warning("🥅  Closest goal:", closest[0].content)
+                goal_id = closest[0].goal_id
+            else:
+                log.warning("🥅  New goal:", question)
+                goal_id = cns.recall.add_goal(event.service, event.channel, question)
 
-            # log.warning("❓ ", question)
-
-            # ranked = self.recall.find_related_convos(
-            #     event.service,
-            #     event.channel,
-            #     text=dialog,
-            #     exclude_convo_ids=[convo.id],
-            #     threshold=self.config.memory.relevance * 1.4,
-            #     size=5
-            # )
-
-    #         visited = []
-    #         context = [convo]
-    #         for hit in ranked:
-    #             if hit.convo_id not in visited:
-    #                 if hit.service == 'import_service':
-    #                     log.info("📚 Hit found from import:", hit.channel)
-    #                 the_summary = recall.get_summary_by_id(hit.convo_id)
-    #                 # Hit a sentence? Inject the summary and the sentence.
-    #                 if the_summary and the_summary not in convo:
-    #                     context.append(f"""
-    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago,
-    #                         f"{the_summary.summary} From that conversation, {hit.msg}"""
-    #                     )
-    #                 # No summary? Just inject the sentence.
-    #                 else:
-    #                     context.append(f"""
-    #                         {persyn_config.id.name} remembers that {hence(recall.id_to_timestamp(hit.convo_id))} ago, {hit.msg}"""
-    #                     )
-    #                 visited.append(hit.convo_id)
-    #                 log.info(f"🧵 Related convo {hit.convo_id} ({float(hit.score):0.3f}):", hit.msg[:50] + "...")
-
-    #         prompt = '\n'.join(context) + f"""
-    # {persyn_config.id.name} asks: {question}?
-    # Respond with the best possible answer from {persyn_config.id.name}'s point of view.
-    # Don't use proper names, and convert all pronouns and verbs to the first person.
-    # """
-    #         log.warning("✏️", question)
-
-    #         answer = completion.get_reply(prompt)
-    #         log.warning("❗️", answer)
-
-    #         # Inject the question and answer.
-    #         chat.inject_idea(
-    #             channel=event.channel,
-    #             idea=f"{question}? {answer}",
-    #             verb="reflects"
-    #         )
-
-    #     if event.send_chat:
-    #         await elaborate(event)
+            for answer in answers:
+                log.warning("⚽️  Adding goal action:", answer)
+                cns.recall.add_goal_action(goal_id, answer)
 
         log.warning("🪩  Done reflecting.")
 

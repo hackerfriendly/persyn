@@ -1,6 +1,7 @@
 ''' LLM completion '''
 # pylint: disable=invalid-name
 
+import json
 import re
 
 from dataclasses import dataclass
@@ -263,8 +264,7 @@ class LanguageModel:
 
     def reflect(
         self,
-        text: str,
-        summarizer: str = "Summarize the following in one sentence. Your response must include only the summary and no other text:",
+        text: str
     ) -> Union[dict[str, list[str]], None]:
         ''' Ask the LLM to reflect on text. Returns a dict of {question: [answer, answer, answer]} '''
 
@@ -273,15 +273,36 @@ class LanguageModel:
         text = self.truncate(text) # FIXME: proper model selection here
         if not text:
             log.warning('reflect():', "No text, skipping.")
-            return ""
+            return None
 
-        prompt = PromptTemplate.from_template(summarizer + "\n{input}")
+        prompt = PromptTemplate.from_template(
+            f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals, desires, and opinions.
+For each question, also list up to two specific actions that {self.config.id.name} can take to answer those questions.
+Make your answers as concise as possible. Convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
+""" + """
+{{
+    "First question": [ "Answers to question 1", "as a list" ],
+    "Second optional question": [ "Answers to question 2", "as a list" ]
+}}
+
+Your response MUST only include JSON, no other text or preamble. Your response MUST return valid JSON, with no ``` or other special formatting.\n
+{input}""")
+
         chain = prompt | llm | StrOutputParser()
 
         reply = chain.invoke({"input": text})
 
-        log.warning("summarize_text():", reply)
-        return reply
+        # Try to remove any preamble and ``` if present
+        if not reply.startswith('{'):
+            reply = '{' + reply.split('{', 1)[1].replace('`', '')
+
+        try:
+            ret = json.loads(reply)
+        except json.decoder.JSONDecodeError as err:
+            log.error("reflect(): Could not parse JSON response:", str(err))
+            return None
+
+        return ret
 
     def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''
