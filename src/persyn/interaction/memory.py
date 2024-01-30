@@ -339,9 +339,13 @@ class Recall:
 
         return convo
 
-    def dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
+    def fetch_dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
         ''' Fetch the convo and return only the current dialog. '''
-        return self.fetch_convo(service, channel, convo_id).memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
+        return self.convo_dialog(self.fetch_convo(service, channel, convo_id))
+
+    def convo_dialog(self, convo: Convo) -> str:
+        ''' Return the current dialog from a Convo object. '''
+        return convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
 
     def current_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''

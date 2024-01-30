@@ -82,6 +82,7 @@ class Interact:
     def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
         ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
         context = [self.get_sentiment_analysis(convo)]
+        context += self.get_relevant_goals(convo)
         context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
         context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
         # TODO: Also fetch recent dialog, if it's quite recent
@@ -103,7 +104,7 @@ class Interact:
         TODO: Allow llm selection (currently always uses chat_llm)
         '''
         max_tokens = int(self.lm.max_prompt_length() * self.config.memory.context)
-        history = self.current_dialog(convo)
+        history = self.recall.convo_dialog(convo)
 
         return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
@@ -113,7 +114,7 @@ class Interact:
         related_convos = self.recall.find_related_convos(
             convo.service,
             convo.channel,
-            self.current_dialog(convo),
+            self.recall.convo_dialog(convo),
             exclude_convo_ids=list(convo.visited),
             threshold=self.config.memory.relevance,
             size=5
@@ -129,6 +130,15 @@ class Interact:
                 preamble = self.get_time_preamble(convo_id)
                 relevant_memories.append((f"relevant memory ({score})", f"{self.config.id.name} recalls{preamble}\n{summary}"))
         return relevant_memories
+
+    def get_relevant_goals(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+        ''' Return a list of tuples of (source, text) for relevant goals '''
+        relevant_goals = []
+        for goal in self.recall.find_related_goals(convo.service, convo.channel, self.recall.convo_dialog(convo)):
+            if self.too_many_tokens(convo, goal + '\n'.join([ctx[1] for ctx in relevant_goals]), used):
+                break
+            relevant_goals.append(("relevant goal", f"{self.config.id.name} recalls\n{goal}"))
+        return relevant_goals
 
     def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
         ''' Return a list of tuples of (source, text) for recent summaries'''
@@ -151,10 +161,6 @@ class Interact:
             return f" a conversation from {chrono.hence(last_ts)} ago:\n"
         return ""
 
-    def current_dialog(self, convo: Convo) -> str:
-        ''' Return the current dialog from convo '''
-        return convo.memories['summary'].load_memory_variables({})['history'].replace("System: ", "", -1)
-
     def save_summary(self, convo: Convo) -> None:
         '''
         Save the summary for this convo.
@@ -163,7 +169,7 @@ class Interact:
         '''
         convo.memories['redis'].add_texts(
             texts=[
-                self.current_dialog(convo)
+                self.recall.convo_dialog(convo)
             ],
             metadatas=[
                 {
@@ -281,7 +287,7 @@ class Interact:
 
         return prompt.format(
             kg='', # FIXME: this is a hack to avoid rendering {kg} in the template
-            history=self.current_dialog(convo),
+            history=self.recall.convo_dialog(convo),
             input='input'
         )
 
@@ -299,7 +305,7 @@ class Interact:
         if convo is None:
             return False
 
-        log.debug(self.current_dialog(convo))
+        log.debug(self.recall.convo_dialog(convo))
 
         convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
         self.save_summary(convo)

@@ -600,7 +600,7 @@ class CNS:
         log.warning("🪩  Reflecting...")
 
         convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
-        dialog = cns.recall.dialog(event.service, event.channel, convo_id=convo_id)
+        dialog = cns.recall.fetch_dialog(event.service, event.channel, convo_id=convo_id)
 
         qa = cns.lm.reflect(dialog)
         if qa is None:
@@ -669,7 +669,7 @@ async def sendchat_event(event):
         service=event.service,
         channel=event.channel,
 
-        context=cns.recall.dialog(event.service, event.channel)
+        context=cns.recall.fetch_dialog(event.service, event.channel)
     )
     autobus.publish(el)
 
