@@ -373,8 +373,4 @@ Your response MUST only include JSON, no other text or preamble. Your response M
     def extract_entities(self, text: str) -> Set[str]:
         ''' Return a set of all entities in text '''
         doc = self.nlp(text)
-        entities = {n.text.strip() for n in doc.ents}
-        for ent in entities:
-            if len(ent) < 3:
-                entities.remove(ent)
-        return entities
+        return {n.text.strip() for n in doc.ents if len(n.text.strip()) > 2}
