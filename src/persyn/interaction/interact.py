@@ -5,6 +5,7 @@ The limbic system library.
 '''
 
 from dataclasses import dataclass
+import random
 from typing import Optional, Union, List, Tuple
 
 import ulid
@@ -81,10 +82,19 @@ class Interact:
 
     def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
         ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
+        log.warning(f"🧠 add_context: {convo.service}|{convo.channel} ({convo.id})")
+        if not self.recall.convo_dialog(convo):
+            log.warning(f"🧠 No dialog, no context to add.")
+            return [] if raw else ''
+
         context = [self.get_sentiment_analysis(convo)]
-        context += self.get_relevant_goals(convo)
+        log.warning(f"🧠 add_context: got sentiment analysis")
+        context += self.get_relevant_goals(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        log.warning(f"🧠 add_context: got relevant goals")
         context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        log.warning(f"🧠 add_context: got relevant memories")
         context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
+        log.warning(f"🧠 add_context: got recent summaries")
         # TODO: Also fetch recent dialog, if it's quite recent
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
@@ -93,7 +103,7 @@ class Interact:
         sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'
         return (
             'sentiment analysis',
-            f"{self.config.id.name} is feeling {sentiment}."
+            f"{self.config.id.name}'s emotional state: {sentiment}."
         )
 
     def too_many_tokens(self, convo: Convo, text: str, used: Optional[int] = 0) -> bool:
@@ -134,10 +144,21 @@ class Interact:
     def get_relevant_goals(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
         ''' Return a list of tuples of (source, text) for relevant goals '''
         relevant_goals = []
-        for goal in self.recall.find_related_goals(convo.service, convo.channel, self.recall.convo_dialog(convo)):
-            if self.too_many_tokens(convo, goal + '\n'.join([ctx[1] for ctx in relevant_goals]), used):
+        for goal in self.recall.find_related_goals(
+            convo.service,
+            convo.channel,
+            self.recall.convo_dialog(convo),
+            threshold=self.config.memory.relevance,
+            size=2
+        ):
+            actions = self.recall.list_goal_actions(goal.goal_id)
+            if not actions:
+                continue
+            action = f"{self.config.id.name} wants to: {random.sample(actions, 1)[0]}"
+            if self.too_many_tokens(convo, action, used):
                 break
-            relevant_goals.append(("relevant goal", f"{self.config.id.name} recalls\n{goal}"))
+            log.warning(f"🎯 To achieve {goal.content}, {action}")
+            relevant_goals.append(("relevant goal", action))
         return relevant_goals
 
     def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
@@ -322,7 +343,7 @@ class Interact:
 
         summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id), final=final)
 
-        if final:
+        if final and summary:
             log.info(f"🎬 Saving final summary for {service}|{channel} : {convo_id}")
             self.recall.redis.hset(f"{self.recall.convo_prefix}:{convo_id}:summary", "final", summary)
 

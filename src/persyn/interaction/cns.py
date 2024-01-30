@@ -597,8 +597,6 @@ class CNS:
     async def reflect_on(self, event: Reflect) -> None:
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
 
-        log.warning("🪩  Reflecting...")
-
         convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
         dialog = cns.recall.fetch_dialog(event.service, event.channel, convo_id=convo_id)
 
