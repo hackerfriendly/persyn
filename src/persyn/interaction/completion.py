@@ -5,7 +5,7 @@ import json
 import re
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Union, Set
 import pydantic
 import spacy
 import tiktoken
@@ -370,7 +370,11 @@ Your response MUST only include JSON, no other text or preamble. Your response M
         }
         return list(nouns)
 
-    def extract_entities(self, text: str) -> list[str]:
-        ''' return a list of all entities in text '''
+    def extract_entities(self, text: str) -> Set[str]:
+        ''' Return a set of all entities in text '''
         doc = self.nlp(text)
-        return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})
+        entities = {n.text.strip() for n in doc.ents}
+        for ent in entities:
+            if len(ent) < 3:
+                entities.remove(ent)
+        return entities

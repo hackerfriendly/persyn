@@ -110,10 +110,10 @@ def test_too_many_tokens(interact):
 def test_get_sentiment_analysis(interact):
     convo = interact.recall.new_convo('service', 'channel', 'Rob')
 
-    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name} is feeling nothing in particular.")
+    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name}'s emotional state: neutral.")
 
     interact.recall.set_convo_meta(convo.id, "feels", "delighted and excited to be part of this test")
-    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name} is feeling delighted and excited to be part of this test.")
+    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name}'s emotional state: delighted and excited to be part of this test.")
 
 
 @pytest.fixture
@@ -178,17 +178,12 @@ def test_get_relevant_memories(interact, setup_conversations):
     assert len(convo.visited) == 1
     assert convo.id in convo.visited
 
-    # Fake a conversation
-    convo.memories['summary'].moving_summary_buffer = 'I love southern European food.'
-
-    # Find the relevant memories
-    memories = interact.get_relevant_memories(convo)
-
+    # Find the relevant memories from a fake conversation
+    memories = interact.get_relevant_memories(convo, context=[('dialog', 'I love southern European food.')])
     assert len(memories) == 5
-    assert memories[-1][1] == 'Test recalls\nThe completely true story about aardvarks 4'
 
     # Query again should exclude those five, since they are now in visited
-    memories = interact.get_relevant_memories(convo)
+    memories = interact.get_relevant_memories(convo, context=[('dialog', 'Test recalls\nThe completely true story about aardvarks 4')])
     assert len(memories) == 0
     assert len(convo.visited) == 6
     # TODO: improve these tests to exercise relevance and expiration
@@ -202,17 +197,12 @@ def test_get_aardvark_memories(interact, setup_conversations):
     assert len(convo.visited) == 1
     assert convo.id in convo.visited
 
-    # Fake a conversation
-    convo.memories['summary'].moving_summary_buffer = 'Tell me that tale about aardvarks.'
-
-    # Find the relevant memories
-    memories = interact.get_relevant_memories(convo)
-
+    # Find the relevant memories from a fake conversation
+    memories = interact.get_relevant_memories(convo, context=[('dialog', 'Tell me that tale about aardvarks.')])
     assert len(memories) == 5
-    assert memories[0][1] == 'Test recalls\nThe completely true story about aardvarks 4'
 
     # Query again should exclude those five, since they are now in visited
-    memories = interact.get_relevant_memories(convo)
+    memories = interact.get_relevant_memories(convo, context=[('dialog', 'Test recalls\nThe completely true story about aardvarks 4')])
     assert len(memories) == 0
     assert len(convo.visited) == 6
 

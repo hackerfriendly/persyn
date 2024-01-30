@@ -83,24 +83,30 @@ class Interact:
     def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
         ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
         log.warning(f"🧠 add_context: {convo.service}|{convo.channel} ({convo.id})")
-        if not self.recall.convo_dialog(convo):
-            log.warning(f"🧠 No dialog, no context to add.")
-            return [] if raw else ''
 
-        context = [self.get_sentiment_analysis(convo)]
-        log.warning(f"🧠 add_context: got sentiment analysis")
-        context += self.get_relevant_goals(convo, used=len('\n'.join([ctx[1] for ctx in context])))
-        log.warning(f"🧠 add_context: got relevant goals")
-        context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
-        log.warning(f"🧠 add_context: got relevant memories")
-        context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
-        log.warning(f"🧠 add_context: got recent summaries")
-        # TODO: Also fetch recent dialog, if it's quite recent
+        dialog = self.recall.convo_dialog(convo)
+
+        context = []
+        if not dialog:
+            log.warning("🧠 ...without dialog.")
+        else:
+            log.warning("🧠 ...including goals and memories.")
+            context += self.get_relevant_goals(convo, [('dialog', dialog)] + context)
+            context += self.get_relevant_memories(convo, [('dialog', dialog)] + context)
+
+        # Always retrieve recent summaries
+        context += self.get_recent_summaries(convo, context)
+
+        # TODO: Also fetch dialog from recently expired convos.
+
+        # End with feels
+        context += [self.get_sentiment_analysis(convo)]
+
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
     def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str]:
         ''' Fetch sentiment analysis for this convo '''
-        sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'
+        sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'neutral'
         return (
             'sentiment analysis',
             f"{self.config.id.name}'s emotional state: {sentiment}."
@@ -118,17 +124,18 @@ class Interact:
 
         return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
-    def get_relevant_memories(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+    def get_relevant_memories(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = []) -> List[Tuple[str, str]]:
         ''' Return a list of tuples of (source, text) for relevant memories '''
         relevant_memories = []
         related_convos = self.recall.find_related_convos(
             convo.service,
             convo.channel,
-            self.recall.convo_dialog(convo),
+            '\n'.join([ctx[1] for ctx in context]),
             exclude_convo_ids=list(convo.visited),
             threshold=self.config.memory.relevance,
             size=5
         )
+        used = len('\n'.join([ctx[1] for ctx in context]))
         for convo_id, score in related_convos:
             if convo_id in convo.visited:
                 continue
@@ -141,29 +148,31 @@ class Interact:
                 relevant_memories.append((f"relevant memory ({score})", f"{self.config.id.name} recalls{preamble}\n{summary}"))
         return relevant_memories
 
-    def get_relevant_goals(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+    def get_relevant_goals(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = []) -> List[Tuple[str, str]]:
         ''' Return a list of tuples of (source, text) for relevant goals '''
         relevant_goals = []
+        used = len('\n'.join([ctx[1] for ctx in context]))
         for goal in self.recall.find_related_goals(
             convo.service,
             convo.channel,
-            self.recall.convo_dialog(convo),
+            '\n'.join([ctx[1] for ctx in context]),
             threshold=self.config.memory.relevance,
             size=2
         ):
             actions = self.recall.list_goal_actions(goal.goal_id)
             if not actions:
                 continue
-            action = f"{self.config.id.name} wants to: {random.sample(actions, 1)[0]}"
+            action = f"{self.config.id.name}'s objective: {random.sample(actions, 1)[0]}"
             if self.too_many_tokens(convo, action, used):
                 break
             log.warning(f"🎯 To achieve {goal.content}, {action}")
             relevant_goals.append(("relevant goal", action))
         return relevant_goals
 
-    def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+    def get_recent_summaries(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = []) -> List[Tuple[str, str]]:
         ''' Return a list of tuples of (source, text) for recent summaries'''
         recent_summaries = []
+        used = len('\n'.join([ctx[1] for ctx in context]))
         convo_ids = list(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
         for convo_id in convo_ids:

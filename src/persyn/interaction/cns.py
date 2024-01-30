@@ -300,7 +300,7 @@ class CNS:
         if summary:
             feels = self.lm.ask_claude(
                 summary,
-                prefix=f"""In the following text, these three words best describe {self.config.id.name}'s emotional state. You MUST include only three comma separated words:""" # type: ignore
+                prefix=f"""In the following text, choose three words that best describe how {self.config.id.name} feels. You MUST include ONLY three comma separated words with no other preface or commentary. If you are not sure, make your best guess based on the information provided. The three words are:""" # type: ignore
             )
         else:
             feels = "nothing in particular"
@@ -315,7 +315,13 @@ class CNS:
         await asyncio.sleep(2)
 
         sckey = f"{event.service}|{event.channel}"
-        concepts = set(self.recall.lm.extract_entities(event.text))
+
+        convo = self.recall.fetch_convo(event.service, event.channel)
+        # Fetch and filter concepts
+        concepts = self.recall.lm.extract_entities(event.text)
+        concepts.remove(self.config.id.name)
+        concepts.remove(self.recall.fetch_convo_meta(convo.id, 'speaker'))
+
         if event.focus:
             focus = f", paying close attention to '{event.focus}'"
         else:

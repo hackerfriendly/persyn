@@ -5,7 +5,7 @@ import uuid
 import datetime as dt
 
 from dataclasses import dataclass
-from typing import Union, List, Dict, Any, Optional, NewType
+from typing import Union, List, Dict, Any, Optional
 
 import ulid
 
@@ -234,11 +234,11 @@ class Recall:
         )
 
         if convo_id:
-            if self.fetch_convo_meta(convo_id, "expired"):
+            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
+            if self.fetch_convo_meta(convo_id, "expired") == 'True':
                 log.warning("⚠️  Expired convo:", convo)
             else:
                 log.warning("👉 Continuing convo:", convo)
-            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
         else:
             log.warning("⚠️  New convo:", convo)
 
@@ -324,9 +324,6 @@ class Recall:
 
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
-            # Only continue active convos
-            if convo_id and self.convo_expired(convo_id=convo_id):
-                return None
 
         if convo_id is None:
             return None
@@ -352,6 +349,9 @@ class Recall:
         convo = self.fetch_convo(service, channel)
         if not convo:
             log.warning("🤷 No previous convo for:", f"{service}|{channel}")
+            return None
+
+        if self.fetch_convo_meta(convo.id, "expired") == 'True':
             return None
 
         return convo.id
