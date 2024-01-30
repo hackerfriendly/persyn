@@ -74,7 +74,7 @@ def slack_msg(
 
     if images:
         log.info(f"⚡️ Posted image to Slack as {bot_name}")
-        chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
+        chat.inject_idea(channel, chat.get_caption(url), verb='describing a picture')
     else:
         log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
 
@@ -124,7 +124,7 @@ def discord_msg(
 
     if images:
         log.info(f"⚡️ Posted image to Discord as {bot_name}")
-        chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
+        chat.inject_idea(channel, chat.get_caption(url), verb='describing a picture')
     else:
         log.info(f"⚡️ Posted dialog to Discord as {bot_name}")
 
