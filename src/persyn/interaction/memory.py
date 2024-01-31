@@ -225,10 +225,9 @@ class Recall:
         log.debug("👎 No summary found for:", convo_id)
         return ""
 
-    def new_convo(self, service: str, channel: str, speaker_name: str, convo_id: Optional[str] = None) -> Union[Convo, None]:
+    def new_convo(self, service: str, channel: str, speaker_name: str, convo_id: Optional[str] = None) -> Convo:
         '''
         Start or continue a conversation. If convo_id is not supplied, generate a new one.
-        If the supplied convo_id has expired, return None.
         '''
         convo = Convo(
             service=service,
@@ -236,26 +235,22 @@ class Recall:
             id=convo_id
         )
 
-        if convo_id:
-            if self.fetch_convo_meta(convo_id, "expired") == 'False':
+        if convo_id is None:
+            log.warning("🤙 Starting new convo:", convo)
+
+            self.set_convo_meta(convo.id, "service", service)
+            self.set_convo_meta(convo.id, "channel", channel)
+            self.set_convo_meta(convo.id, "initiator", speaker_name)
+            self.set_convo_meta(convo.id, "expired", "False")
+            self.set_convo_meta(convo.id, "convo_id", convo.id)
+
+        else:
+            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
+
+            if self.convo_expired(convo_id=convo.id):
+                log.warning("⚠️  Expired convo:", convo)
+            else:
                 log.warning("👉 Continuing convo:", convo)
-                speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
-
-                convo.memories=self.create_lc_memories()
-                convo.memories['summary'].human_prefix = speaker_name
-                convo.memories['kg'].human_prefix = speaker_name
-                return convo
-
-            log.warning("⚠️  Expired convo:", convo)
-            return None
-
-        log.warning("🤙 Starting new convo:", convo)
-
-        self.set_convo_meta(convo.id, "service", service)
-        self.set_convo_meta(convo.id, "channel", channel)
-        self.set_convo_meta(convo.id, "initiator", speaker_name)
-        self.set_convo_meta(convo.id, "expired", "False")
-        self.set_convo_meta(convo.id, "convo_id", convo.id)
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
@@ -339,8 +334,6 @@ class Recall:
 
         speaker_name = self.fetch_convo_meta(convo_id, "initiator") or "unknown"
         convo = self.new_convo(service, channel, speaker_name, convo_id)
-        if convo is None:
-            return None
         summary = self.fetch_summary(convo_id)
         if summary:
             convo.memories['summary'].moving_summary_buffer = summary

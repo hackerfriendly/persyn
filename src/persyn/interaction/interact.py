@@ -246,7 +246,7 @@ class Interact:
         log.info(f"💬 retort to: {msg}")
 
         convo = self.recall.fetch_convo(service, channel)
-        if convo is None:
+        if convo is None or self.recall.convo_expired(convo_id = convo.id):
             convo = self.recall.new_convo(service, channel, speaker_name)
 
         prompt = PromptTemplate(
@@ -316,7 +316,7 @@ class Interact:
     def status(self, service: str, channel: str, speaker_name: str) -> str:
         ''' Return the prompt and chat history for this channel '''
         convo = self.recall.fetch_convo(service, channel)
-        if convo is None:
+        if convo is None or self.recall.convo_expired(convo_id = convo.id):
             convo = self.recall.new_convo(service, channel, speaker_name)
 
         prompt = PromptTemplate(
@@ -345,7 +345,7 @@ class Interact:
             return False
 
         convo = self.recall.fetch_convo(service, channel)
-        if convo is None:
+        if convo is None or self.recall.convo_expired(convo_id = convo.id):
             return False
 
         log.debug(self.recall.convo_dialog(convo))
