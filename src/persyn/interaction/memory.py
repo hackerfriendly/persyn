@@ -41,6 +41,16 @@ def scquery(service: Optional[str] = None, channel: Optional[str] = None) -> str
         ret.append("(@channel:{" + escape(channel) + "})")
     return  ' '.join(ret)
 
+def decode_dict(d: dict[str, Any]) -> dict:
+    ''' Decode a dict fetched from Redis '''
+    ret = {}
+    for (k, v) in d.items():
+        try:
+            ret[k.decode()] = v.decode()
+        except UnicodeDecodeError:
+            ret[k.decode()] = v
+    return ret
+
 @dataclass
 class Convo:
     ''' Container class for conversations. '''
@@ -181,16 +191,6 @@ class Recall:
                 'redis': rds
         }
 
-    def decode_dict(self, d: dict[str, Any]) -> dict:
-        ''' Decode a dict fetched from Redis '''
-        ret = {}
-        for (k, v) in d.items():
-            try:
-                ret[k.decode()] = v.decode()
-            except UnicodeDecodeError:
-                ret[k.decode()] = v
-        return ret
-
     def set_convo_meta(self, convo_id: str, k: str, v: str) -> None:
         ''' Set metadata for a conversation '''
         self.redis.hset(f"{self.convo_prefix}:{convo_id}:meta", k, v)
@@ -203,7 +203,7 @@ class Recall:
         ''' Fetch a metadata key from a conversation in Redis. If k is not provided, return all metadata. '''
         try:
             if k is None:
-                return self.decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
+                return decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
             return self.redis.hget(f"{self.convo_prefix}:{convo_id}:meta", k).decode()
         except AttributeError:
             return None

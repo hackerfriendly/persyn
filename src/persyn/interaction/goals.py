@@ -7,7 +7,7 @@ import ulid
 
 from redis.commands.search.query import Query
 
-from persyn.interaction.memory import Recall
+from persyn.interaction.memory import Recall, decode_dict
 from persyn.utils.color_logging import ColorLog
 
 log = ColorLog()
@@ -43,7 +43,7 @@ class Goal(Recall):
 
     def fetch(self, goal_id: str) -> Dict[str, Any]:
         ''' Fetch a goal from Redis '''
-        return self.decode_dict(self.redis.hgetall(f"{self.goal_prefix}:{goal_id}:meta"))
+        return decode_dict(self.redis.hgetall(f"{self.goal_prefix}:{goal_id}:meta"))
 
     def list_for_channel(self, service: str, channel: str, size: Optional[int] = 1) -> List[Dict[str, Any]]:
         ''' List goals for a channel '''
@@ -72,6 +72,12 @@ class Goal(Recall):
         Save a goal + action for later evaluation when the conversation has expired.
         '''
         self.redis.hset(f"{self.convo_prefix}:{convo_id}:actions", goal_id, action)
+
+    def list_undertaken_actions(self, convo_id: str) -> List[Dict[str, Any]]:
+        '''
+        List actions undertaken in a conversation.
+        '''
+        return decode_dict(self.redis.hgetall(f"{self.convo_prefix}:{convo_id}:actions"))
 
     def find_related_goals(
         self,
