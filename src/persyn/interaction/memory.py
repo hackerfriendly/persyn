@@ -225,8 +225,11 @@ class Recall:
         log.debug("👎 No summary found for:", convo_id)
         return ""
 
-    def new_convo(self, service: str, channel: str, speaker_name: str, convo_id: Optional[str] = None) -> Convo:
-        ''' Start a new conversation. If convo_id is not supplied, generate a new one. '''
+    def new_convo(self, service: str, channel: str, speaker_name: str, convo_id: Optional[str] = None) -> Union[Convo, None]:
+        '''
+        Start or continue a conversation. If convo_id is not supplied, generate a new one.
+        If the supplied convo_id has expired, return None.
+        '''
         convo = Convo(
             service=service,
             channel=channel,
@@ -234,19 +237,25 @@ class Recall:
         )
 
         if convo_id:
-            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
-            if self.fetch_convo_meta(convo_id, "expired") == 'True':
-                log.warning("⚠️  Expired convo:", convo)
-            else:
+            if self.fetch_convo_meta(convo_id, "expired") == 'False':
                 log.warning("👉 Continuing convo:", convo)
-        else:
-            log.warning("⚠️  New convo:", convo)
+                speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
 
-            self.set_convo_meta(convo.id, "service", service)
-            self.set_convo_meta(convo.id, "channel", channel)
-            self.set_convo_meta(convo.id, "initiator", speaker_name)
-            self.set_convo_meta(convo.id, "expired", "False")
-            self.set_convo_meta(convo.id, "convo_id", convo.id)
+                convo.memories=self.create_lc_memories()
+                convo.memories['summary'].human_prefix = speaker_name
+                convo.memories['kg'].human_prefix = speaker_name
+                return convo
+
+            log.warning("⚠️  Expired convo:", convo)
+            return None
+
+        log.warning("🤙 Starting new convo:", convo)
+
+        self.set_convo_meta(convo.id, "service", service)
+        self.set_convo_meta(convo.id, "channel", channel)
+        self.set_convo_meta(convo.id, "initiator", speaker_name)
+        self.set_convo_meta(convo.id, "expired", "False")
+        self.set_convo_meta(convo.id, "convo_id", convo.id)
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
@@ -330,6 +339,8 @@ class Recall:
 
         speaker_name = self.fetch_convo_meta(convo_id, "initiator") or "unknown"
         convo = self.new_convo(service, channel, speaker_name, convo_id)
+        if convo is None:
+            return None
         summary = self.fetch_summary(convo_id)
         if summary:
             convo.memories['summary'].moving_summary_buffer = summary
@@ -338,7 +349,10 @@ class Recall:
 
     def fetch_dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
         ''' Fetch the convo and return only the current dialog. '''
-        return self.convo_dialog(self.fetch_convo(service, channel, convo_id))
+        convo = self.fetch_convo(service, channel, convo_id)
+        if convo is None:
+            return ""
+        return self.convo_dialog(convo)
 
     def convo_dialog(self, convo: Convo) -> str:
         ''' Return the current dialog from a Convo object. '''
@@ -347,7 +361,7 @@ class Recall:
     def current_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
         convo = self.fetch_convo(service, channel)
-        if not convo:
+        if convo is None:
             log.warning("🤷 No previous convo for:", f"{service}|{channel}")
             return None
 

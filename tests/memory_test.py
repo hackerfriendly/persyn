@@ -362,33 +362,6 @@ def test_convo_expired(recall, cleanup):
     # Convo should now be expired
     assert recall.convo_expired(service, channel, convo.id) is True
 
-def test_convo_expired_with_convo_id(recall, cleanup):
-    # Test with a convo_id
-    service = "test_service"
-    channel = "test_channel"
-    speaker_name = "test_speaker"
-
-    # Backdate the conversation
-    convo_id = str(ulid.ULID().from_datetime(dt.datetime(2021, 1, 1)))
-
-    # Start a new conversation without an expired convo_id and no conversation
-    convo = recall.new_convo(service, channel, speaker_name, convo_id)
-    assert recall.convo_expired(service, channel, convo.id) is True
-
-    # Revive the convo
-    new_convo_id = str(ulid.ULID())
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{new_convo_id}", "service", service)
-    recall.set_convo_meta(convo.id, "expired", "False")
-    assert recall.convo_expired(service, channel, convo.id) is False
-
-    # Now expire it again
-    recall.redis.delete(f"{recall.convo_prefix}:{convo.id}:dialog:{new_convo_id}")
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{convo_id}", "service", service)
-    recall.redis.hset(f"{recall.convo_prefix}:{convo.id}:dialog:{convo_id}", "channel", channel)
-
-    # Convo should now be expired
-    assert recall.convo_expired(service, channel, convo.id) is True
-
 def test_post_convo_init():
     convo = Convo(service="test_service", channel="test_channel")
     assert isinstance(convo.id, str)
