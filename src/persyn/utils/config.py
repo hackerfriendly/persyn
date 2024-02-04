@@ -144,6 +144,9 @@ def load_config(cfg=None) -> PersynConfig:
         if 'redis' not in config['memory']:
             config['memory']['redis'] = 'redis://localhost:6379/'
 
+        if 'embedding_model' not in config['memory']:
+            config['memory']['embedding_model'] = 'text-embedding-3-small'
+
     if 'completion' in config:
         completion_defaults = {
             'openai_api_base': 'https://api.openai.com/v1',

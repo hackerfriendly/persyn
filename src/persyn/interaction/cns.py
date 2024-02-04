@@ -72,7 +72,6 @@ class CNS:
                 log.info("💿 Loading Zim:", cfgtool)
                 self.datasources[cfgtool] = ZimWrapper(path=self.config.zim.get(cfgtool).path) # type: ignore
 
-        self.concepts = {}
         self.mastodon.login()
 
     def send_chat(self, service: str, channel: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
@@ -196,7 +195,7 @@ class CNS:
         If context is present, ask Claude whether we should continue (given the context) before elaborating.
         Otherwise, elaborate immediately.
         '''
-        log.warning(f"elaborate(): {event.service} {event.channel} {event.context}")
+        log.warning(f"elaborate(): {event.service} {event.channel} {event.context[:100]}…")
 
         if event.convo_id:
             convo_id = event.convo_id
@@ -226,7 +225,7 @@ class CNS:
         chat = Chat(persyn_config=self.config, service=event.service)
         reply = chat.get_reply(
             channel=event.channel,
-            msg='...',
+            msg='',
             speaker_name=self.config.id.name
         )
         return reply
@@ -300,7 +299,7 @@ class CNS:
         if summary:
             feels = self.lm.ask_claude(
                 summary,
-                prefix=f"""In the following text, choose three words that best describe how {self.config.id.name} feels. You MUST include ONLY three comma separated words with no other preface or commentary. If you are not sure, make your best guess based on the information provided. The three words are:""" # type: ignore
+                prefix=f"""In the following text, choose three words that best describe how {self.config.id.name} feels. You MUST include ONLY three comma separated words with no other preface or commentary. If you are not sure, make your best guess based on the information provided. The three words are: """ # type: ignore
             )
         else:
             feels = "nothing in particular"
@@ -312,15 +311,13 @@ class CNS:
         ''' Extract concepts from the text and ask Claude for further reading.'''
 
         # Give other threads a chance. TODO: run this event in a separate thread.
-        await asyncio.sleep(2)
-
-        sckey = f"{event.service}|{event.channel}"
+        await asyncio.sleep(3)
 
         convo = self.recall.fetch_convo(event.service, event.channel)
+
         # Fetch and filter concepts
         concepts = self.recall.lm.extract_entities(event.text)
-        concepts.remove(self.config.id.name)
-        concepts.remove(self.recall.fetch_convo_meta(convo.id, 'speaker'))
+        concepts = concepts.difference({self.config.id.name, self.recall.fetch_convo_meta(convo.id, 'initiator')})
 
         if event.focus:
             focus = f", paying close attention to '{event.focus}'"
@@ -333,11 +330,6 @@ class CNS:
             log.warning("🌍 No concepts extracted. What are we even talking about?")
             return
 
-        if sckey not in self.concepts:
-            self.concepts[sckey] = set()
-
-        new = concepts - self.concepts[sckey]
-
         # vvv FIXME: this doesn't work...? Maybe just replace with an async llm call. vvv
         # reply = await asyncio.gather(in_thread(
         #     self.recall.lm.ask_claude,
@@ -349,17 +341,17 @@ class CNS:
 
         reply = self.recall.lm.ask_claude(
             prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
-            query=str(new)
+            query=str(concepts)
         )
         keywords = self.recall.lm.cleanup_keywords(reply)
         log.warning("🌍 Claude suggests further reading:", str(keywords))
 
         if not keywords:
+            log.warning("🌍 No keywords, nothing to do.")
             return
 
         summaries = []
         for kw in keywords:
-            self.concepts[sckey].add(kw)
             page = self.datasources['Wikipedia'].run(kw)
             if page:
                 summaries.append(
@@ -371,8 +363,10 @@ class CNS:
                 )
 
         if not summaries:
+            log.warning("🌍 No summaries, nothing to do.")
             return
 
+        log.warning("🌍 Injecting summaries:", str(summaries))
         chat = Chat(persyn_config=self.config, service=event.service)
         for summary in summaries:
             chat.inject_idea(

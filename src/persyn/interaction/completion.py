@@ -212,11 +212,14 @@ class LanguageModel:
         enc = self.get_enc(model)
         return enc.decode(enc.encode(text)[:maxlen])
 
-    def get_embedding(self, text, model='text-embedding-ada-002', max_tokens=8192):
+    def get_embedding(self, text, model=None, max_tokens=8192):
         '''
         Return the embedding for text as bytes. Truncates text to the max size supported by the model.
         TODO: embedding model should determine its own size, but embedding models are not (yet?) in BaseOpenAI.modelname_to_contextsize()
         '''
+        if model is None:
+            model = self.config.memory.embedding_model
+
         text = text.replace("\n", " ")
 
         return  np.array(
@@ -243,7 +246,7 @@ class LanguageModel:
         else:
             llm = self.summary_llm
 
-        text = self.truncate(text) # FIXME: proper model selection here
+        text = self.truncate(text.strip()) # FIXME: proper model selection here
         if not text:
             log.warning('summarize_text():', "No text, skipping summary.")
             return ""
