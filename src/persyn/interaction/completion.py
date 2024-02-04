@@ -105,7 +105,10 @@ class LanguageModel:
             temperature=self.config.completion.reasoning_temperature,
             max_tokens=500,
         )
-        self.embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.openai_api_key)
+        self.embeddings = OpenAIEmbeddings(
+            openai_api_key=self.config.completion.openai_api_key,
+            model=self.config.memory.embedding_model
+        )
 
         log.debug(f"💬 chat model: {self.chat_model}")
         log.debug(f"🧠 reasoning model: {self.reasoning_model}")

@@ -145,7 +145,7 @@ def load_config(cfg=None) -> PersynConfig:
             config['memory']['redis'] = 'redis://localhost:6379/'
 
         if 'embedding_model' not in config['memory']:
-            config['memory']['embedding_model'] = 'text-embedding-3-small'
+            config['memory']['embedding_model'] = 'text-embedding-ada-002'
 
     if 'completion' in config:
         completion_defaults = {
@@ -179,6 +179,7 @@ def load_config(cfg=None) -> PersynConfig:
     config.setdefault('web', {'default': 'body'})
     config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}, 'upload': {'url_base': None}})
     config.setdefault('dev', {'debug': False, 'langchain_api_key': None, 'langchain_endpoint': 'https://api.smith.langchain.com'})
+    config.setdefault('memory', {'conversation_interval': 600, 'context': 0.3, 'max_summary_size': 1000, 'relevance': 0.12, 'redis': 'redis://localhost:6379/', 'embedding_model': 'text-embedding-ada-002'})
 
     # Check for required models
     persyn_config = PersynConfig(config)
