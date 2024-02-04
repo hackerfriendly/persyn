@@ -447,7 +447,7 @@ class Recall:
                     "(" + service_channel + exclude + ") @content_vector:[VECTOR_RANGE $threshold $emb]=>{$YIELD_DISTANCE_AS: score}"
                 )
                 .sort_by("score")
-                .return_fields("service", "channel", "content", "score")
+                .return_fields("service", "channel", "convo_id", "content", "score")
                 .paging(0, size)
                 .dialect(2)
             )
