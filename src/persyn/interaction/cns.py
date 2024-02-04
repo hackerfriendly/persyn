@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import asyncio
+import datetime as dt
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -17,6 +18,8 @@ from typing import Optional, Union
 import requests
 
 from bs4 import BeautifulSoup
+
+from scheduler import Scheduler
 
 from persyn.langchain.zim import ZimWrapper
 
@@ -36,6 +39,9 @@ from persyn.interaction.chrono import get_cur_ts, elapsed
 # Long and short term memory
 from persyn.interaction.memory import Recall
 
+# Goals
+from persyn.interaction.goals import Goal
+
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
 
@@ -49,6 +55,7 @@ from persyn.utils.color_logging import log
 from persyn.utils.config import PersynConfig, load_config
 
 cns = None
+schedule = Scheduler(n_threads=0)
 
 _executor = ThreadPoolExecutor(8)
 
@@ -63,6 +70,7 @@ class CNS:
         self.config = persyn_config
         self.mastodon = Mastodon(persyn_config)
         self.recall = Recall(persyn_config)
+        self.goal = Goal(self.config)
         self.lm = LanguageModel(persyn_config)
         self.datasources = {}
         self.rs = requests.Session()
@@ -98,7 +106,7 @@ class CNS:
         log.debug(f'SendChat received: {event.service} {event.channel} {event.msg} {event.images} {event.extra}')
         self.send_chat(service=event.service, channel=event.channel, msg=event.msg, images=event.images, extra=event.extra)
 
-    async def chat_received(self, event: ChatReceived) -> None:
+    def chat_received(self, event: ChatReceived) -> None:
         ''' Somebody is talking to us '''
 
         # Receiving new chat resets the elaborations counter
@@ -113,19 +121,17 @@ class CNS:
 
         # TODO: Decide whether to delay reply, or to reply at all?
 
-        the_reply = await asyncio.gather(in_thread(
-            chat.get_reply, [event.channel, event.msg, event.speaker_name, None, True, event.extra]
-        ))
-
-        # the_reply = (
-        #     channel=event.channel,
-        #     speaker_name=event.speaker_name,
-        #     msg=event.msg,
-        #     send_chat=True,
-        #     extra=event.extra
-        # )
+        the_reply = chat.get_reply(
+            channel=event.channel,
+            msg=event.msg,
+            speaker_name=event.speaker_name,
+            send_chat=True,
+            extra=event.extra
+        )
 
         # Time for self-examination.
+
+        # TODO: schedule jobs instead of publishing more messages
 
         # Update emotional state
         vc = VibeCheck(
@@ -138,34 +144,14 @@ class CNS:
         wp = Wikipedia(
             service=event.service,
             channel=event.channel,
-            text=the_reply[0],
+            text=the_reply,
             focus=event.msg
         )
         autobus.publish(wp)
 
-            # if len(recall.convo(event.service, event.channel, convo_id, verb='dialog')) > 5:
-            #     # Check facts
-            #     fc = FactCheck(
-            #         service=event.service,
-            #         channel=event.channel,
-            #         convo_id=None,
-            #         room=None
-            #     )
-            #     autobus.publish(fc)
-
-
-            # TODO: Should this be a priority queue?
-
-            # Dispatch an event to gather facts
-
-                # # Facts and opinions
-                # self.gather_facts(service, channel, entities)
-
-            #     self.check_goals(service, channel, convo)
-
         log.warning("💬 chat_received done in:", f"{elapsed(start, get_cur_ts()):0.2f} sec")
 
-    async def new_idea(self, event: Idea) -> None:
+    def new_idea(self, event: Idea) -> None:
         ''' Inject a new idea '''
         chat = Chat(persyn_config=self.config, service=event.service)
         chat.inject_idea(
@@ -174,14 +160,17 @@ class CNS:
             verb=event.verb
         )
 
-    async def cns_summarize_channel(self, event: Summarize) -> str:
+    def cns_summarize_channel(self, event: Summarize) -> str:
         ''' Summarize the channel '''
         chat = Chat(persyn_config=self.config, service=event.service)
 
-        reply = await asyncio.gather(in_thread(
-            chat.get_summary, [event.channel, event.convo_id, event.photo, None, event.final]
-        ))
-        summary = reply[0]
+        summary = chat.get_summary(
+            channel=event.channel,
+            convo_id=event.convo_id,
+            photo=event.photo,
+            extra=None,
+            final=event.final
+        )
 
         if event.send_chat:
             self.send_chat(service=event.service, channel=event.channel, msg=summary)
@@ -272,22 +261,6 @@ class CNS:
         #             verb=f"thinks about {entity}"
         #         )
 
-    async def add_goal(self, event: AddGoal) -> None:
-        ''' Add a new goal '''
-        return
-
-        # if not event.goal.strip():
-        #     return
-
-        # # Don't repeat yourself
-        # goals = self.recall.list_goals(event.service, event.channel) or ['']
-        # for goal in goals:
-        #     if ratio(goal, event.goal) > 0.6:
-        #         log.warning(f'🏅 We already have a goal like "{event.goal}", skipping.')
-        #         return
-
-        # log.info("🥇 New goal:", event.goal)
-        # recall.add_goal(event.service, event.channel, event.goal)
 
     async def check_feels(self, event: VibeCheck) -> None:
         ''' Run sentiment analysis on ourselves. '''
@@ -307,22 +280,16 @@ class CNS:
         log.warning("😄 Feeling:", feels)
 
 
-    async def check_wikipedia(self, event: Wikipedia) -> None:
+    def check_wikipedia(self, event: Wikipedia) -> None:
         ''' Extract concepts from the text and ask Claude for further reading.'''
 
-        # Give other threads a chance. TODO: run this event in a separate thread.
-        await asyncio.sleep(3)
-
         convo = self.recall.fetch_convo(event.service, event.channel)
+
+        log.info(f"🌍 Extract concepts:", event.text)
 
         # Fetch and filter concepts
         concepts = self.recall.lm.extract_entities(event.text)
         concepts = concepts.difference({self.config.id.name, self.recall.fetch_convo_meta(convo.id, 'initiator')})
-
-        if event.focus:
-            focus = f", paying close attention to '{event.focus}'"
-        else:
-            focus = ''
 
         if concepts:
             log.warning(f"🌍 Extracted concepts: {concepts}")
@@ -330,14 +297,10 @@ class CNS:
             log.warning("🌍 No concepts extracted. What are we even talking about?")
             return
 
-        # vvv FIXME: this doesn't work...? Maybe just replace with an async llm call. vvv
-        # reply = await asyncio.gather(in_thread(
-        #     self.recall.lm.ask_claude,
-        #     [
-        #         f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
-        #         str(new)
-        #     ]
-        # ))
+        if event.focus:
+            focus = f", paying close attention to '{event.focus}'"
+        else:
+            focus = ''
 
         reply = self.recall.lm.ask_claude(
             prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
@@ -418,71 +381,6 @@ class CNS:
         #         entities=random.sample(list(so), k=min(max_opinions, len(so)))
         #     )
         # )
-
-    # async def find_goals(event: ...):
-    #     ''' Interrogate the conversation, looking for goals '''
-
-    #     preamble = f"-----\nIn the previous dialog, does {event.bot_name} express any desires or goals? "
-    #     prompt = preamble + """
-    # Answer in the first person and in JSON format using the following template with no other text or explanation:
-
-    # {
-    #   goals: ["LIST", "OF", "GOALS"]
-    # }
-
-    # If no goals or desires are expressed, return an empty JSON list in this format, with no other text:
-
-    # {
-    #   goals: []
-    # }
-
-    # Your response MUST return valid JSON.
-    # """
-
-    async def goals_achieved(self, event: CheckGoals) -> None:
-        ''' Have we achieved our goals? '''
-        return
-        # chat = Chat(persyn_config=self.config, service=event.service)
-
-        # for goal in event.goals:
-        #     goal_achieved = self.completion.get_summary(
-        #         event.convo,
-        #         summarizer=f"Q: True or False: {self.config.id.name} achieved the goal of {goal}.\nA:"
-        #     )
-
-        #     log.warning(f"🧐 Did we achieve our goal? {goal_achieved}")
-        #     if 'true' in goal_achieved.lower():
-        #         log.warning(f"🏆 Goal achieved: {goal}")
-        #         self.services[self.get_service(event.service)](persyn_config, chat, event.channel, event.bot_name, f"🏆 _achievement unlocked: {goal}_")
-        #         self.recall.achieve_goal(event.service, event.channel, goal)
-        #     else:
-        #         log.warning(f"🚫 Goal not yet achieved: {goal}")
-
-        # # Any new goals?
-        # summary = completion.nlp(completion.get_summary(
-        #     text=event.convo,
-        #     summarizer=f"In a few words, {persyn_config.id.name}'s overall goal is:",
-        #     max_tokens=100
-        # ))
-
-        # # 1 sentence max please.
-        # the_goal = ' '.join([s.text for s in summary.sents][:1])
-
-        # log.warning("🥅 Potential goal:", the_goal)
-
-        # # some goals are too easy
-        # for taboo in ['remember', 'learn']:
-        #     if taboo in the_goal:
-        #         return
-
-        # new_goal = AddGoal(
-        #     bot_name=persyn_config.id.name,
-        #     bot_id=persyn_config.id.guid,
-        #     service=event.service,
-        #     channel=event.channel,
-        #     goal=the_goal
-        # )
-        # await add_goal(new_goal)
 
     def text_from_url(self, url: str, selector: Optional[str] = 'body') -> str:
         ''' Return just the text from url. You probably want a better selector than <body>. '''
@@ -594,9 +492,8 @@ class CNS:
         #     # only one at a time
         #     return
 
-    async def reflect_on(self, event: Reflect) -> None:
+    def reflect_on(self, event: Reflect) -> None:
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
-
         convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
         dialog = cns.recall.fetch_dialog(event.service, event.channel, convo_id=convo_id)
 
@@ -607,7 +504,7 @@ class CNS:
 
         for question, answers in qa.items():
             log.warning(f"🪩  {question}", str(answers))
-            closest = cns.recall.find_related_goals(
+            closest = self.goal.find_related_goals(
                 event.service,
                 event.channel,
                 text=question,
@@ -619,33 +516,35 @@ class CNS:
                 goal_id = closest[0].goal_id
             else:
                 log.warning("🥅  New goal:", question)
-                goal_id = cns.recall.add_goal(event.service, event.channel, question)
+                goal_id = self.goal.add(event.service, event.channel, question)
 
             for answer in answers:
                 log.warning("⚽️  Adding goal action:", answer)
-                cns.recall.add_goal_action(goal_id, answer)
+                self.goal.add_action(goal_id, answer)
 
         log.warning("🪩  Done reflecting.")
 
-    async def generate_photo(self, event: Photo) -> None:
+    def generate_photo(self, event: Photo) -> None:
         ''' Generate a photo '''
         chat = Chat(persyn_config=self.config, service=event.service)
 
-        await asyncio.gather(in_thread(
-            chat.take_a_photo,
-            [
-                    event.channel,
-                    event.prompt,
-                    event.size[0],
-                    event.size[1]
-            ]
-        ))
+        chat.take_a_photo(
+            channel=event.channel,
+            prompt=event.prompt,
+            width=event.size[0],
+            height=event.size[1]
+        )
 
-        # chat.take_a_photo(event.channel, event.prompt, width=event.size[0], height=event.size[1]) # type: ignore
+    def plan_your_day(self) -> None:
+        ''' Make a schedule of actions for the next part of the day '''
+        log.info("📅 Time to make a schedule")
+        # TODO: use LangChain to decide on the actions to take for the next interval, and inject as an idea.
 
     def run(self):
         ''' Main event loop '''
         log.info(f"⚡️ {self.config.id.name}'s CNS is online") # type: ignore
+
+        schedule.cyclic(dt.timedelta(hours=4), self.plan_your_day)
 
         try:
             autobus.run(url=self.config.cns.redis, namespace=self.config.id.guid) # type: ignore
@@ -675,19 +574,22 @@ async def sendchat_event(event):
 async def chatreceived_event(event):
     ''' Dispatch ChatReceived event '''
     log.debug("ChatReceived received", event)
-    await cns.chat_received(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=0), cns.chat_received, kwargs={'event':event})
+    # await cns.chat_received(event) # type: ignore
 
 @autobus.subscribe(Idea)
 async def idea_event(event):
     ''' Dispatch idea event. '''
     log.debug("Idea received", event)
-    await cns.new_idea(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=0), cns.new_idea, kwargs={'event':event})
+    # await cns.new_idea(event) # type: ignore
 
 @autobus.subscribe(Summarize)
 async def summarize_event(event):
     ''' Dispatch summarize event. '''
     log.debug("Summarize received", event)
-    await cns.cns_summarize_channel(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=0), cns.cns_summarize_channel, kwargs={'event':event})
+    # await cns.cns_summarize_channel(event) # type: ignore
 
 @autobus.subscribe(Elaborate)
 async def elaborate_event(event):
@@ -748,20 +650,21 @@ async def web_event(event):
 async def reflect_event(event):
     ''' Dispatch Reflect event. '''
     log.debug("Reflect received", event)
-    await cns.reflect_on(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=1), cns.reflect_on, kwargs={'event':event})
+    # await cns.reflect_on(event) # type: ignore
 
 @autobus.subscribe(Photo)
 async def photo_event(event):
-    ''' Dispatch Reflect event. '''
+    ''' Dispatch Photo event. '''
     log.debug("Photo received", event)
-    await cns.generate_photo(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=2), cns.generate_photo, kwargs={'event':event})
+    # await cns.generate_photo(event) # type: ignore
 
 @autobus.subscribe(Wikipedia)
 async def wikipedia_event(event):
     ''' Dispatch Wikipedia event. '''
     log.debug("Wikipedia", event)
-    await cns.check_wikipedia(event) # type: ignore
-
+    schedule.once(dt.timedelta(seconds=1), cns.check_wikipedia, kwargs={'event':event})
 
 # Autobus scheduled events. These must also be top-level functions.
 
@@ -800,14 +703,11 @@ async def auto_summarize() -> None:
         )
         autobus.publish(event)
 
-
-
-@autobus.schedule(autobus.every(6).hours)
-async def plan_your_day() -> None:
-    ''' Make a schedule of actions for the next part of the day '''
-    log.info("📅 Time to make a schedule")
-    # TODO: use LangChain to decide on the actions to take for the next interval, and inject as an idea.
-
+@autobus.schedule(autobus.every(1).seconds)
+async def run_schedule() -> None:
+    ''' Run the schedule '''
+    # log.warning("Running jobs", str(schedule))
+    schedule.exec_jobs()
 
 def main() -> None:
     ''' Main event '''

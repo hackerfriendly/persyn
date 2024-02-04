@@ -136,4 +136,4 @@ class Photo(Event):
     service: str
     channel: str
     prompt: str
-    size: Optional[tuple] = (1024, 1024)
+    size: Optional[tuple[int, int]] = (1024, 1024)
