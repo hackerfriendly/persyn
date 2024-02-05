@@ -85,22 +85,23 @@ class Interact:
         log.warning(f"🧠 add_context: {convo.service}|{convo.channel} ({convo.id})")
 
         dialog = self.recall.convo_dialog(convo)
+        feels = self.get_sentiment_analysis(convo)
 
         context = []
         if not dialog:
             log.warning("🧠 ...without dialog.")
         else:
             log.warning("🧠 ...including goals and memories.")
-            context += self.get_relevant_goals(convo, [('dialog', dialog)] + context)
-            context += self.get_relevant_memories(convo, [('dialog', dialog)] + context)
+            context += self.get_relevant_goals(convo, [('dialog', dialog)] + context + [feels])
+            context += self.get_relevant_memories(convo, [('dialog', dialog)] + context + [feels])
 
         # Always retrieve recent summaries
-        context += self.get_recent_summaries(convo, context)
+        context += self.get_recent_summaries(convo, context + [feels])
 
         # TODO: Also fetch dialog from recently expired convos.
 
         # End with feels
-        context += [self.get_sentiment_analysis(convo)]
+        context += [feels]
 
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
@@ -138,7 +139,7 @@ class Interact:
             threshold=self.config.memory.relevance,
             size=5
         )
-        used = len('\n'.join([ctx[1] for ctx in context]))
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
         for convo_id, score in related_convos:
             if convo_id in convo.visited:
                 continue
@@ -157,7 +158,7 @@ class Interact:
             context = []
 
         relevant_goals = []
-        used = len('\n'.join([ctx[1] for ctx in context]))
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
         for goal in self.goal.find_related_goals(
             convo.service,
             convo.channel,
@@ -185,7 +186,7 @@ class Interact:
             context = []
 
         recent_summaries = []
-        used = len('\n'.join([ctx[1] for ctx in context]))
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
         convo_ids = list(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
         for convo_id in convo_ids:
