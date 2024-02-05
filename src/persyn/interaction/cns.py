@@ -57,12 +57,6 @@ from persyn.utils.config import PersynConfig, load_config
 cns = None
 schedule = Scheduler(n_threads=0)
 
-_executor = ThreadPoolExecutor(8)
-
-async def in_thread(func, args):
-    ''' Run a function in its own thread and await the result '''
-    return await asyncio.get_event_loop().run_in_executor(_executor, func, *args)
-
 class CNS:
     ''' Container class for the Central Nervous System '''
 
@@ -101,7 +95,7 @@ class CNS:
         except Exception as err:
             log.error(f"💬 Could not send chat to {service}|{channel}: {err}")
 
-    async def say_something(self, event: SendChat) -> None:
+    def say_something(self, event: SendChat) -> None:
         ''' Send a message to a service + channel '''
         log.debug(f'SendChat received: {event.service} {event.channel} {event.msg} {event.images} {event.extra}')
         self.send_chat(service=event.service, channel=event.channel, msg=event.msg, images=event.images, extra=event.extra)
@@ -177,7 +171,7 @@ class CNS:
 
         return summary
 
-    async def elaborate(self, event: Elaborate) -> Union[str, None]:
+    def elaborate(self, event: Elaborate) -> Union[str, None]:
         '''
         Continue the train of thought up to 5 times, checking Claude each time to see if we should continue.
         If no convo_id is available, do nothing.
@@ -262,7 +256,7 @@ class CNS:
         #         )
 
 
-    async def check_feels(self, event: VibeCheck) -> None:
+    def check_feels(self, event: VibeCheck) -> None:
         ''' Run sentiment analysis on ourselves. '''
         convo_id = self.recall.get_last_convo_id(event.service, event.channel)
         if convo_id is None:
@@ -285,7 +279,7 @@ class CNS:
 
         convo = self.recall.fetch_convo(event.service, event.channel)
 
-        log.info(f"🌍 Extract concepts:", event.text)
+        log.debug("🌍 Extract concepts from text:", event.text)
 
         # Fetch and filter concepts
         concepts = self.recall.lm.extract_entities(event.text)
@@ -508,7 +502,7 @@ class CNS:
                 event.service,
                 event.channel,
                 text=question,
-                threshold=self.config.memory.relevance,
+                threshold=self.config.memory.relevance / 2, # be strict
                 size=1
             )
             if closest:
@@ -559,13 +553,14 @@ class CNS:
 async def sendchat_event(event):
     ''' Dispatch SendChat event w/ optional images. '''
     log.debug("SendChat received", event)
-    await cns.say_something(event) # type: ignore
+
+    schedule.once(dt.timedelta(seconds=0), cns.say_something, kwargs={'event':event})
+    # await cns.say_something(event) # type: ignore
 
     # Possibly elaborate
     el = Elaborate(
         service=event.service,
         channel=event.channel,
-
         context=cns.recall.fetch_dialog(event.service, event.channel)
     )
     autobus.publish(el)
@@ -595,7 +590,8 @@ async def summarize_event(event):
 async def elaborate_event(event):
     ''' Dispatch elaborate event. '''
     log.debug("Elaborate received", event)
-    await cns.elaborate(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=3), cns.elaborate, kwargs={'event':event})
+    # await cns.elaborate(event) # type: ignore
 
 @autobus.subscribe(Opine)
 async def opine_event(event):
@@ -603,24 +599,24 @@ async def opine_event(event):
     log.debug("Opine received", event)
     await cns.opine(event) # type: ignore
 
-@autobus.subscribe(CheckGoals)
-async def check_goals_event(event):
-    ''' Dispatch CheckGoals event. '''
-    log.debug("CheckGoals received", event)
-    await cns.goals_achieved(event) # type: ignore
+# @autobus.subscribe(CheckGoals)
+# async def check_goals_event(event):
+#     ''' Dispatch CheckGoals event. '''
+#     log.debug("CheckGoals received", event)
+#     await cns.goals_achieved(event) # type: ignore
 
-@autobus.subscribe(AddGoal)
-async def goals_event(event):
-    ''' Dispatch AddGoal event. '''
-    log.debug("AddGoal received", event)
-    await cns.add_goal(event) # type: ignore
+# @autobus.subscribe(AddGoal)
+# async def goals_event(event):
+#     ''' Dispatch AddGoal event. '''
+#     log.debug("AddGoal received", event)
+#     await cns.add_goal(event) # type: ignore
 
 @autobus.subscribe(VibeCheck)
 async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
     log.debug("VibeCheck received", event)
-    # asyncio.sleep(3)
-    await cns.check_feels(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=3), cns.check_feels, kwargs={'event':event})
+    # await cns.check_feels(event) # type: ignore
 
 @autobus.subscribe(FactCheck)
 async def facts_event(event):
