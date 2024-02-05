@@ -8,10 +8,7 @@ The central nervous system. Listen for events on the event bus and inject result
 import argparse
 import logging
 import os
-import asyncio
 import datetime as dt
-
-from concurrent.futures import ThreadPoolExecutor
 
 from typing import Optional, Union
 
@@ -213,50 +210,7 @@ class CNS:
         )
         return reply
 
-    async def opine(self, event: Opine) -> None:
-        ''' Recall opinions of entities (if any). Form a new opinion if none is found. '''
-        return
-        # chat = Chat(persyn_config=self.config, service=event.service)
-        # log.info(f"🙆‍♂️ Opinion time for {len(event.entities)} entities on {event.service} | {event.channel}")
-        # for entity in event.entities:
-        #     if not entity.strip() or entity in STOP_WORDS:
-        #         continue
-
-        #     opinions = self.recall.surmise(event.service, event.channel, entity)
-        #     if opinions:
-        #         log.warning(f"🙋‍♂️ Opinions about {entity}: {len(opinions)}")
-        #         if len(opinions) == 1:
-        #             opinion = opinions[0]
-        #         else:
-        #             opinion = completion.nlp(completion.get_summary(
-        #                 text='\n'.join(opinions),
-        #                 summarizer=f"Briefly state {event.bot_name}'s opinion about {entity} from {event.bot_name}'s point of view, and convert pronouns and verbs to the first person."
-        #             )).text
-
-        #         chat.inject_idea(
-        #             channel=event.channel,
-        #             idea=opinion,
-        #             verb=f"thinks about {entity}"
-        #         )
-
-        #     else:
-        #         log.warning(f"💁‍♂️ Forming an opinion about {entity}")
-        #         opinion = completion.get_opinions(recall.convo(event.service, event.channel), entity)
-        #         recall.judge(
-        #             event.service,
-        #             event.channel,
-        #             entity,
-        #             opinion,
-        #             recall.convo_id(event.service, event.channel)
-        #         )
-        #         chat.inject_idea(
-        #             channel=event.channel,
-        #             idea=opinion,
-        #             verb=f"thinks about {entity}"
-        #         )
-
-
-    def check_feels(self, event: VibeCheck) -> None:
+    def vibe_check(self, event: VibeCheck) -> None:
         ''' Run sentiment analysis on ourselves. '''
         convo_id = self.recall.get_last_convo_id(event.service, event.channel)
         if convo_id is None:
@@ -331,50 +285,6 @@ class CNS:
                 idea=summary,
                 verb='recalls'
             )
-
-
-    async def check_facts(self, event: FactCheck) -> None:
-        ''' Ask for a second opinion about our side of the conversation. '''
-        return
-        # if not event.room:
-        #     event.room = '\n'.join(self.recall.convo(event.service, event.channel))
-        # if not event.convo_id:
-        #     event.convo_id = self.recall.convo_id(event.service, event.channel)
-
-        # facts = self.completion.fact_check(event.room)
-        # if facts:
-        #     self.recall.save_convo_line(
-        #         service=event.service,
-        #         channel=event.channel,
-        #         msg=facts,
-        #         speaker_name=event.bot_name,
-        #         convo_id=event.convo_id,
-        #         verb='realizes'
-        #     )
-        #     log.warning("🧠 Thinking:", facts)
-
-    # async def build_knowledge_graph(event, max_opinions=3) -> None:
-    #     ''' Build the knowledge graph. '''
-    #     pass
-        # triples = completion.generate_triples(event.convo)
-        # log.warning(f'📉 Saving {len(triples)} triples to the knowledge graph')
-        # recall.triples_to_kg(triples)
-
-        # # Recall any relevant opinions about subjects and predicates
-        # so = set()
-        # for triple in triples:
-        #     so.add(triple[0])
-        #     so.add(triple[2])
-
-        # await opine(
-        #     Opine(
-        #         service=event.service,
-        #         channel=event.channel,
-        #         bot_name=event.bot_name,
-        #         bot_id=event.bot_id,
-        #         entities=random.sample(list(so), k=min(max_opinions, len(so)))
-        #     )
-        # )
 
     def text_from_url(self, url: str, selector: Optional[str] = 'body') -> str:
         ''' Return just the text from url. You probably want a better selector than <body>. '''
@@ -555,7 +465,6 @@ async def sendchat_event(event):
     log.debug("SendChat received", event)
 
     schedule.once(dt.timedelta(seconds=0), cns.say_something, kwargs={'event':event})
-    # await cns.say_something(event) # type: ignore
 
     # Possibly elaborate
     el = Elaborate(
@@ -570,34 +479,24 @@ async def chatreceived_event(event):
     ''' Dispatch ChatReceived event '''
     log.debug("ChatReceived received", event)
     schedule.once(dt.timedelta(seconds=0), cns.chat_received, kwargs={'event':event})
-    # await cns.chat_received(event) # type: ignore
 
 @autobus.subscribe(Idea)
 async def idea_event(event):
     ''' Dispatch idea event. '''
     log.debug("Idea received", event)
     schedule.once(dt.timedelta(seconds=0), cns.new_idea, kwargs={'event':event})
-    # await cns.new_idea(event) # type: ignore
 
 @autobus.subscribe(Summarize)
 async def summarize_event(event):
     ''' Dispatch summarize event. '''
     log.debug("Summarize received", event)
     schedule.once(dt.timedelta(seconds=0), cns.cns_summarize_channel, kwargs={'event':event})
-    # await cns.cns_summarize_channel(event) # type: ignore
 
 @autobus.subscribe(Elaborate)
 async def elaborate_event(event):
     ''' Dispatch elaborate event. '''
     log.debug("Elaborate received", event)
     schedule.once(dt.timedelta(seconds=3), cns.elaborate, kwargs={'event':event})
-    # await cns.elaborate(event) # type: ignore
-
-@autobus.subscribe(Opine)
-async def opine_event(event):
-    ''' Dispatch opine event. '''
-    log.debug("Opine received", event)
-    await cns.opine(event) # type: ignore
 
 # @autobus.subscribe(CheckGoals)
 # async def check_goals_event(event):
@@ -615,20 +514,7 @@ async def opine_event(event):
 async def feels_event(event):
     ''' Dispatch VibeCheck event. '''
     log.debug("VibeCheck received", event)
-    schedule.once(dt.timedelta(seconds=3), cns.check_feels, kwargs={'event':event})
-    # await cns.check_feels(event) # type: ignore
-
-@autobus.subscribe(FactCheck)
-async def facts_event(event):
-    ''' Dispatch FactCheck event. '''
-    log.debug("FactCheck received", event)
-    await cns.check_facts(event) # type: ignore
-
-# @autobus.subscribe(KnowledgeGraph)
-# async def kg_event(event):
-#     ''' Dispatch KnowledgeGraph event. '''
-#     log.debug("KnowledgeGraph received", event)
-#     await build_knowledge_graph(event)
+    schedule.once(dt.timedelta(seconds=3), cns.vibe_check, kwargs={'event':event})
 
 @autobus.subscribe(News)
 async def news_event(event):
@@ -647,14 +533,12 @@ async def reflect_event(event):
     ''' Dispatch Reflect event. '''
     log.debug("Reflect received", event)
     schedule.once(dt.timedelta(seconds=1), cns.reflect_on, kwargs={'event':event})
-    # await cns.reflect_on(event) # type: ignore
 
 @autobus.subscribe(Photo)
 async def photo_event(event):
     ''' Dispatch Photo event. '''
     log.debug("Photo received", event)
     schedule.once(dt.timedelta(seconds=2), cns.generate_photo, kwargs={'event':event})
-    # await cns.generate_photo(event) # type: ignore
 
 @autobus.subscribe(Wikipedia)
 async def wikipedia_event(event):
