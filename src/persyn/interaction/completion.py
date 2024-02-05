@@ -5,12 +5,14 @@ import json
 import re
 
 from dataclasses import dataclass
+from time import sleep
 from typing import Optional, Union, Set
 import pydantic
 import spacy
 import tiktoken
 
 import openai
+import anthropic
 
 import numpy as np
 
@@ -342,7 +344,13 @@ Your response MUST only include JSON, no other text or preamble. Your response M
             return ""
 
         prompt = PromptTemplate.from_template(f"{prefix}{{input}}")
-        chain = prompt | self.anthropic_llm | StrOutputParser()
+
+        try:
+            chain = prompt | self.anthropic_llm | StrOutputParser()
+        except anthropic.RateLimitError:
+            log.warning('ask_claude():', "Rate limit error, retrying.")
+            sleep(2)
+            chain = prompt | self.anthropic_llm | StrOutputParser()
 
         reply = self.trim(chain.invoke({"input": query}))
 
