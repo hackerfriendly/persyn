@@ -80,38 +80,36 @@ class Interact:
 {human}: {input}
 {bot}:"""
 
-    def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
+    def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str, int]]]:
         ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
         log.warning(f"🧠 add_context: {convo.service}|{convo.channel} ({convo.id})")
 
-        dialog = self.recall.convo_dialog(convo)
-        feels = self.get_sentiment_analysis(convo)
+        the_dialog = self.recall.convo_dialog(convo)
+        dialog = [('dialog', the_dialog, self.lm.toklen(the_dialog))]
+        feels = [self.get_sentiment_analysis(convo)]
 
         context = []
         if not dialog:
             log.warning("🧠 ...without dialog.")
         else:
             log.warning("🧠 ...including goals and memories.")
-            context += self.get_relevant_goals(convo, [('dialog', dialog)] + context + [feels])
-            context += self.get_relevant_memories(convo, [('dialog', dialog)] + context + [feels])
+            context += self.get_relevant_goals(convo, dialog + context + feels)
+            context += self.get_relevant_memories(convo, dialog + context + feels)
 
         # Always retrieve recent summaries
-        context += self.get_recent_summaries(convo, context + [feels])
+        context += self.get_recent_summaries(convo, context + feels)
 
         # TODO: Also fetch dialog from recently expired convos.
 
-        # End with feels
-        context += [feels]
+        # Sentiment analysis
+        context += feels
 
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
-    def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str]:
+    def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str, int]:
         ''' Fetch sentiment analysis for this convo '''
-        sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'neutral'
-        return (
-            'sentiment analysis',
-            f"{self.config.id.name}'s emotional state: {sentiment}."
-        )
+        sentiment = f"{self.config.id.name}'s emotional state: {self.recall.fetch_convo_meta(convo.id, 'feels') or 'neutral'}."
+        return ('sentiment analysis', sentiment, self.lm.toklen(sentiment))
 
     def too_many_tokens(self, convo: Convo, text: str, used: Optional[int] = 0) -> bool:
         '''
@@ -125,7 +123,7 @@ class Interact:
 
         return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
-    def get_relevant_memories(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str]]: # dangerous-default-value
+    def get_relevant_memories(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]: # dangerous-default-value
         ''' Return a list of tuples of (source, text) for relevant memories '''
         if context is None:
             context = []
@@ -148,11 +146,11 @@ class Interact:
             if summary:
                 if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in relevant_memories]), used):
                     break
-                preamble = self.get_time_preamble(convo_id)
-                relevant_memories.append((f"relevant memory ({score})", f"{self.config.id.name} recalls{preamble}\n{summary}"))
+                mem = f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"
+                relevant_memories.append((f"relevant memory ({score})", mem, self.lm.toklen(mem)))
         return relevant_memories
 
-    def get_relevant_goals(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str]]:
+    def get_relevant_goals(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]:
         ''' Return a list of tuples of (source, text) for relevant goals '''
         if context is None:
             context = []
@@ -177,10 +175,10 @@ class Interact:
             if self.too_many_tokens(convo, todo, used):
                 break
             log.warning(f"🎯 To achieve {goal.content}, {todo}")
-            relevant_goals.append(("relevant goal", todo))
+            relevant_goals.append(("relevant goal", todo, self.lm.toklen(todo)))
         return relevant_goals
 
-    def get_recent_summaries(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str]]:
+    def get_recent_summaries(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]:
         ''' Return a list of tuples of (source, text) for recent summaries'''
         if context is None:
             context = []
@@ -195,7 +193,8 @@ class Interact:
                 continue
             if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in recent_summaries]), used):
                 break
-            recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"))
+            the_summary = f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"
+            recent_summaries.append(("recent summary", the_summary, self.lm.toklen(the_summary)))
         return recent_summaries
 
     def get_time_preamble(self, convo_id: str) -> str:
@@ -322,16 +321,25 @@ class Interact:
 
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=self.template(self.add_context(convo)),
+            template=self.template(),
             partial_variables={
                 "human": convo.memories['summary'].human_prefix,
                 "bot": self.config.id.name
             }
         )
 
+        context = self.add_context(convo, raw=True)
+
+        the_dialog = self.recall.convo_dialog(convo)
+        tokens = self.lm.toklen(the_dialog)
+        dialog = [
+            ('recent dialog', the_dialog, tokens),
+            ('token count', '', sum(ctx[2] for ctx in context) + tokens) # type: ignore
+        ]
+
         return prompt.format(
-            kg='', # FIXME: this is a hack to avoid rendering {kg} in the template
-            history=self.recall.convo_dialog(convo),
+            kg='\n'.join([str(ctx) for ctx in context]),
+            history='\n'.join([str(ctx) for ctx in dialog]),
             input='input'
         )
 

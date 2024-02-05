@@ -25,7 +25,7 @@ from persyn import autobus
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, ChatReceived, Opine, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from persyn.interaction.messages import SendChat, ChatReceived, CheckGoals, VibeCheck, News, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -297,24 +297,6 @@ async def handle_send_msg(
     }
 
 
-@app.post("/opine/")
-async def handle_opine(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    entities: List[str] = Query(...)
-):
-    ''' Ask the autobus to gather opinions about entities '''
-    event = Opine(
-        service=service,
-        channel=channel,
-        entities=entities
-    )
-    autobus.publish(event)
-
-    return {
-        "success": True
-    }
-
 @app.post("/vibe_check/")
 async def handle_vibe_check(
     service: str = Query(..., min_length=1, max_length=255),
@@ -324,27 +306,6 @@ async def handle_vibe_check(
     event = VibeCheck(
         service=service,
         channel=channel,
-    )
-    autobus.publish(event)
-
-    return {
-        "success": True
-    }
-
-
-@app.post("/build_graph/")
-async def handle_build_graph(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: str = Query(..., min_length=1, max_length=255),
-    convo: str = Form(..., max_length=2e6),
-):
-    ''' Add to this convo to the knowledge graph '''
-    event = KnowledgeGraph(
-        service=service,
-        channel=channel,
-        convo_id=convo_id,
-        convo=convo
     )
     autobus.publish(event)
 

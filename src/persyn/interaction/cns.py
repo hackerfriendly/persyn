@@ -6,9 +6,11 @@ The central nervous system. Listen for events on the event bus and inject result
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
 import argparse
+import asyncio
 import logging
 import os
 import datetime as dt
+from time import sleep
 
 from typing import Optional, Union
 
@@ -303,9 +305,15 @@ class CNS:
 
         return '\n'.join(story)
 
-    async def read_web(self, event: Web) -> None:
+    def read_web(self, event: Web) -> None:
         ''' Read a web page '''
+        log.info("🕸️ Reading web:", event.url)
+        sleep(5)
+        log.info("🕸️ Still reading web:", event.url)
+        sleep(5)
+        log.info("🕸️ Done reading web:", event.url)
         return None
+
         # if self.config.web.get(urlparse(event.url).netloc, None):
         #     cfg = self.config.web.get(urlparse(event.url).netloc) # type: ignore
         #     selector = cfg.get('selector', 'body')
@@ -367,9 +375,14 @@ class CNS:
         #     if done:
         #         return
 
-    async def read_news(self, event: News) -> None:
+    def read_news(self, event: News) -> None:
         ''' Check our RSS feed. Read the first unread article. '''
-        return
+        log.info("🗞️  Reading news feed:", event.url)
+        sleep(5)
+        log.info("🗞️  Still reading news feed:", event.url)
+        sleep(5)
+        log.info("🗞️  Done reading news feed:", event.url)
+        return None
         # log.info("🗞️  Reading news feed:", event.url)
         # try:
         #     page = rs.get(event.url, timeout=30)
@@ -467,12 +480,12 @@ async def sendchat_event(event):
     schedule.once(dt.timedelta(seconds=0), cns.say_something, kwargs={'event':event})
 
     # Possibly elaborate
-    el = Elaborate(
+    event = Elaborate(
         service=event.service,
         channel=event.channel,
         context=cns.recall.fetch_dialog(event.service, event.channel)
     )
-    autobus.publish(el)
+    schedule.once(dt.timedelta(seconds=1), cns.elaborate, kwargs={'event':event})
 
 @autobus.subscribe(ChatReceived)
 async def chatreceived_event(event):
@@ -520,13 +533,13 @@ async def feels_event(event):
 async def news_event(event):
     ''' Dispatch News event. '''
     log.debug("News received", event)
-    await cns.read_news(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=0), cns.read_news, kwargs={'event':event})
 
 @autobus.subscribe(Web)
 async def web_event(event):
     ''' Dispatch Web event. '''
     log.debug("Web received", event)
-    await cns.read_web(event) # type: ignore
+    schedule.once(dt.timedelta(seconds=0), cns.read_web, kwargs={'event':event})
 
 @autobus.subscribe(Reflect)
 async def reflect_event(event):
