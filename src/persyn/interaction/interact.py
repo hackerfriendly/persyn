@@ -14,6 +14,10 @@ import requests
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
 
+# Fast send chat
+from persyn.chat.simple import send_msg
+
+# Time
 from persyn.interaction import chrono
 
 # Long and short term memory
@@ -286,7 +290,14 @@ class Interact:
                     mem.chat_memory.messages[-1].content = trimmed
 
         if send_chat:
-            self.send_chat(service, channel, trimmed, extra)
+            send_msg(
+                persyn_config=self.config,
+                service=service,
+                channel=channel,
+                msg=trimmed,
+                images=None,
+                extra=extra
+            )
 
         convo.memories['redis'].add_texts(
             texts=[
