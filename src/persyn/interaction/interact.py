@@ -249,13 +249,22 @@ class Interact:
         if convo is None or self.recall.convo_expired(convo_id = convo.id):
             convo = self.recall.new_convo(service, channel, speaker_name)
 
+        if msg == '...':
+            msg = ''
+            partial_variables = {
+                'human': '',
+                'bot': f'{self.config.id.name} continues',
+            }
+        else:
+            partial_variables = {
+                'human': speaker_name,
+                'bot': self.config.id.name
+            }
+
         prompt = PromptTemplate(
             input_variables=["input"],
             template=self.template(self.add_context(convo)),
-            partial_variables={
-                "human": speaker_name,
-                "bot": self.config.id.name
-            }
+            partial_variables=partial_variables
         )
 
         chain = ConversationChain(
