@@ -13,7 +13,7 @@ import os
 from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, HTTPException, Query, Form
+from fastapi import FastAPI, HTTPException, Query, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse
 
 import uvicorn
@@ -54,13 +54,14 @@ def root():
 
 @app.post("/reply/")
 async def handle_reply(
+    background_tasks: BackgroundTasks,
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535),
     speaker_name: str = Query(..., min_length=1, max_length=255),
     send_chat: Optional[bool] = Query(True),
     extra: Optional[str] = Query(None, min_length=1, max_length=65535),
-    ):
+    ) -> dict[str, str]:
     ''' Get a reply to a message posted to a channel '''
 
     if not msg.strip():
@@ -69,11 +70,13 @@ async def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
-    ret = await asyncio.gather(in_thread(
-        interact.retort, [service, channel, msg, speaker_name, send_chat, extra]
-    ))
+    # ret = await asyncio.gather(in_thread(
+    #     interact.retort, [service, channel, msg, speaker_name, send_chat, extra]
+    # ))
+    background_tasks.add_task(interact.retort, service, channel, msg, speaker_name, send_chat, extra)
+
     return {
-        "reply": ret[0]
+        "reply": "queued"
     }
 
 @app.post("/chat_received/")
