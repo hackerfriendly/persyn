@@ -369,6 +369,8 @@ def main():
             return
 
         channel = body['event']['item']['channel']
+        speaker_name = get_display_name(body['event']['user'])
+
         try:
             result = app.client.conversations_history(
                 channel=channel,
@@ -414,7 +416,10 @@ def main():
                         except RuntimeError as err:
                             log.error(f"🎺 Could not post {blk['image_url']}: {err}")
                     else:
-                        log.error(f"🎺 Unhandled reaction {msg['reactions'][0]['name']} to: {msg['text']}")
+                        log.info(f"{speaker_name} reacted {msg['reactions'][0]['name']} to: {msg['text']}")
+                        chat.inject_idea(
+                            channel, f"{speaker_name} reacted {msg['reactions'][0]['name']} to: {msg['text']}"
+                        )
 
         except SlackApiError as err:
             log.error(f"Slack error: {err}")
