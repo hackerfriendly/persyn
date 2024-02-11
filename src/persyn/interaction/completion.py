@@ -34,6 +34,47 @@ log = ColorLog()
 
 # set_verbose(True)
 
+max_tokens_for_model = {
+    # OpenAI, https://platform.openai.com/docs/models/overview
+    "ada": 2049,
+    "babbage-002": 16384,
+    "babbage": 2049,
+    "code-cushman-001": 2048,
+    "code-cushman-002": 2048,
+    "code-davinci-001": 8001,
+    "code-davinci-002": 8001,
+    "curie": 2049,
+    "davinci-002": 16384,
+    "davinci": 2049,
+    "gpt-3.5-turbo-0125": 16385,
+    "gpt-3.5-turbo-0301": 4096,
+    "gpt-3.5-turbo-0613": 4096,
+    "gpt-3.5-turbo-1106": 16385,
+    "gpt-3.5-turbo-16k-0613": 16385,
+    "gpt-3.5-turbo-16k": 16385,
+    "gpt-3.5-turbo-instruct": 4096,
+    "gpt-3.5-turbo": 4096,
+    "gpt-4-0125-preview": 128000,
+    "gpt-4-0314": 8192,
+    "gpt-4-0613": 8192,
+    "gpt-4-1106-preview": 128000,
+    "gpt-4-32k-0314": 32768,
+    "gpt-4-32k-0613": 32768,
+    "gpt-4-32k": 32768,
+    "gpt-4-turbo-preview": 128000,
+    "gpt-4": 8192,
+    "text-ada-001": 2049,
+    "text-babbage-001": 2040,
+    "text-curie-001": 2049,
+    "text-davinci-002": 4097,
+    "text-davinci-003": 4097,
+
+    # Anthropic, https://docs.anthropic.com/claude/reference/input-and-output-sizes
+    "claude-2.0": 200000,
+    "claude-2.1": 100000,
+    "claude-instant-2.1": 100000,
+}
+
 def setup_llm(config, **kwargs) -> Union[ChatOpenAI, ChatAnthropic, None]:
     ''' Construct the proper Chat object for model. TODO: support for other LLMs. '''
     if kwargs['model'].startswith('claude-'):
@@ -131,18 +172,10 @@ class LanguageModel:
             model = self.chat_model
 
         try:
+            return max_tokens_for_model[model]
+        except ValueError:
+            log.error(f"Unknown model: {model}, please update completion.py:max_tokens_for_model. Trying BaseOpenAI...")
             return BaseOpenAI.modelname_to_contextsize(model)
-        except ValueError as err:
-            # Anthropic
-            if model.startswith('claude-'):
-                if model == 'claude-2.1':
-                    return 200000
-                return 100000
-            # Beta OpenAI models
-            if model.startswith('gpt-4-') and model.endswith('-preview'):
-                return 128000
-            # Unknown model
-            raise err
 
     def toklen(self, text, model=None):
         ''' Return the number of tokens in text '''
@@ -251,7 +284,7 @@ class LanguageModel:
         else:
             llm = self.summary_llm
 
-        text = self.truncate(text.strip()) # FIXME: proper model selection here
+        text = self.truncate(text.strip(), model=self.reasoning_model)
         if not text:
             log.warning('summarize_text():', "No text, skipping summary.")
             return ""
@@ -278,13 +311,14 @@ class LanguageModel:
 
         llm = self.reflection_llm
 
-        text = self.truncate(text) # FIXME: proper model selection here
+        text = self.truncate(text, model=self.reasoning_model)
         if not text:
             log.warning('reflect():', "No text, skipping.")
             return None
 
         prompt = PromptTemplate.from_template(
-            f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals, desires, and opinions.
+            f"""
+Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals, desires, and opinions.
 For each question, also list up to two specific actions that {self.config.id.name} can take to answer those questions.
 Make your answers as concise as possible. Convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
 """ + """
