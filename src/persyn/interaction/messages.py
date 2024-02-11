@@ -52,7 +52,6 @@ class Wikipedia(Event):
     ''' Use Wikipedia (via Zim) to look up entities. '''
     service: str
     channel: str
-    text: str
     focus: Optional[str] = None
 
 class CheckGoals(Event):

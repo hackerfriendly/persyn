@@ -114,7 +114,7 @@ class CNS:
 
         # TODO: Decide whether to delay reply, or to reply at all?
 
-        the_reply = chat.get_reply(
+        chat.get_reply(
             channel=event.channel,
             msg=event.msg,
             speaker_name=event.speaker_name,
@@ -137,7 +137,6 @@ class CNS:
         wp = Wikipedia(
             service=event.service,
             channel=event.channel,
-            text=the_reply,
             focus=event.msg
         )
         autobus.publish(wp)
@@ -170,7 +169,7 @@ class CNS:
 
         return summary
 
-    def elaborate(self, event: Elaborate) -> Union[str, None]:
+    def elaborate(self, event: Elaborate) -> None:
         '''
         Continue the train of thought up to 5 times, checking Claude each time to see if we should continue.
         If no convo_id is available, do nothing.
@@ -205,12 +204,12 @@ class CNS:
 
         log.warning("🤔 Elaborating...")
         chat = Chat(persyn_config=self.config, service=event.service)
-        reply = chat.get_reply(
+        chat.get_reply(
             channel=event.channel,
-            msg='',
+            msg='...',
             speaker_name=self.config.id.name
         )
-        return reply
+        return None
 
     def vibe_check(self, event: VibeCheck) -> None:
         ''' Run sentiment analysis on ourselves. '''
@@ -234,11 +233,13 @@ class CNS:
         ''' Extract concepts from the text and ask Claude for further reading.'''
 
         convo = self.recall.fetch_convo(event.service, event.channel)
+        dialog = cns.recall.fetch_dialog(event.service, event.channel, convo_id=convo.id)
+        last_lines = '\n'.join(dialog.split('\n')[-10:])
 
-        log.debug("🌍 Extract concepts from text:", event.text)
+        log.info("🌍 Extract concepts from text:", last_lines)
 
         # Fetch and filter concepts
-        concepts = self.recall.lm.extract_entities(event.text)
+        concepts = self.recall.lm.extract_entities(last_lines)
         concepts = concepts.difference({self.config.id.name, self.recall.fetch_convo_meta(convo.id, 'initiator')})
 
         if concepts:
@@ -253,7 +254,7 @@ class CNS:
             focus = ''
 
         reply = self.recall.lm.ask_claude(
-            prefix=f"In the following dialog:\n{event.text}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
+            prefix=f"In the following dialog:\n{last_lines}\nWhich Wikipedia pages would be most useful to learn about these concepts? You must reply ONLY with a comma-separated list of the three most important pages that {self.config.id.name} should read, and nothing else.",
             query=str(concepts)
         )
         keywords = self.recall.lm.cleanup_keywords(reply)
