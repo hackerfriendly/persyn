@@ -110,10 +110,10 @@ def test_too_many_tokens(interact):
 def test_get_sentiment_analysis(interact):
     convo = interact.recall.new_convo('service', 'channel', 'Rob')
 
-    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name}'s emotional state: neutral.")
+    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name}'s emotional state: neutral.", 7)
 
     interact.recall.set_convo_meta(convo.id, "feels", "delighted and excited to be part of this test")
-    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name}'s emotional state: delighted and excited to be part of this test.")
+    assert interact.get_sentiment_analysis(convo) == ("sentiment analysis", f"{persyn_config.id.name}'s emotional state: delighted and excited to be part of this test.", 15)
 
 
 @pytest.fixture
