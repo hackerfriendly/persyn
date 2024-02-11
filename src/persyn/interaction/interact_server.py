@@ -21,11 +21,14 @@ import uvicorn
 # The event bus
 from persyn import autobus
 
+# Fast send chat
+from persyn.chat.simple import send_msg
+
 # Interaction routines
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, ChatReceived, CheckGoals, VibeCheck, News, Web
+from persyn.interaction.messages import ChatReceived, CheckGoals, VibeCheck, News, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -70,9 +73,6 @@ async def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
-    # ret = await asyncio.gather(in_thread(
-    #     interact.retort, [service, channel, msg, speaker_name, send_chat, extra]
-    # ))
     background_tasks.add_task(interact.retort, service, channel, msg, speaker_name, send_chat, extra)
 
     return {
@@ -281,19 +281,15 @@ async def handle_check_goals(
 
 @app.post("/send_msg/")
 async def handle_send_msg(
+    background_tasks: BackgroundTasks,
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535),
     extra: Optional[str] = Query(None, min_length=1, max_length=65535),
 ):
-    ''' Send a chat message via the autobus '''
-    event = SendChat(
-        service=service,
-        channel=channel,
-        msg=msg,
-        extra=extra
-    )
-    autobus.publish(event)
+    ''' Send a chat message immediately '''
+
+    background_tasks.add_task(send_msg, persyn_config, service, channel, msg, None, extra) # type: ignore
 
     return {
         "success": True

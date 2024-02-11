@@ -6,13 +6,12 @@ The central nervous system. Listen for events on the event bus and inject result
 '''
 # pylint: disable=import-error, wrong-import-position, wrong-import-order, invalid-name, no-member, unused-wildcard-import
 import argparse
-import asyncio
 import logging
 import os
 import datetime as dt
 from time import sleep
 
-from typing import Optional, Union
+from typing import Optional
 
 import requests
 
@@ -27,7 +26,7 @@ from persyn import autobus
 
 # Common chat library
 from persyn.chat.common import Chat
-from persyn.chat.simple import slack_msg, discord_msg, mastodon_msg
+from persyn.chat.simple import send_msg
 
 # Mastodon support for image posting
 from persyn.chat.mastodon.bot import Mastodon
@@ -75,29 +74,10 @@ class CNS:
 
         self.mastodon.login()
 
-    def send_chat(self, service: str, channel: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
-        ''' Send a chat message to a service + channel '''
-
-        if 'slack.com' in service:
-            func = slack_msg
-        elif service == 'discord':
-            func = discord_msg
-        elif service == 'mastodon':
-            func = mastodon_msg
-        else:
-            log.critical(f"Unknown service: {service}")
-            return
-
-        chat = Chat(persyn_config=self.config, service=service)
-        try:
-            func(self.config, chat, channel, msg, images, extra)
-        except Exception as err:
-            log.error(f"💬 Could not send chat to {service}|{channel}: {err}")
-
     def say_something(self, event: SendChat) -> None:
         ''' Send a message to a service + channel '''
         log.debug(f'SendChat received: {event.service} {event.channel} {event.msg} {event.images} {event.extra}')
-        self.send_chat(service=event.service, channel=event.channel, msg=event.msg, images=event.images, extra=event.extra)
+        send_msg(persyn_config=self.config, service=event.service, channel=event.channel, msg=event.msg, images=event.images, extra=event.extra)
 
     def chat_received(self, event: ChatReceived) -> None:
         ''' Somebody is talking to us '''
@@ -165,7 +145,7 @@ class CNS:
         )
 
         if event.send_chat:
-            self.send_chat(service=event.service, channel=event.channel, msg=summary)
+            send_msg(persyn_config=self.config, service=event.service, channel=event.channel, msg=summary)
 
         return summary
 

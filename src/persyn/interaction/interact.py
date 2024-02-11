@@ -60,7 +60,7 @@ class Interact:
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
-            return
+            return None
 
     def template(self, context: Optional[str] = "") -> str:
         '''

@@ -154,3 +154,22 @@ def mastodon_msg(
             )
     else:
         mastodon.toot(msg, kwargs=json.loads(extra))
+
+def send_msg(persyn_config: PersynConfig, service: str, channel: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
+    ''' Send a chat message to the correct service + channel '''
+
+    if 'slack.com' in service:
+        func = slack_msg
+    elif service == 'discord':
+        func = discord_msg
+    elif service == 'mastodon':
+        func = mastodon_msg
+    else:
+        log.critical(f"Unknown service: {service}")
+        return
+
+    chat = Chat(persyn_config=persyn_config, service=service)
+    try:
+        func(persyn_config, chat, channel, msg, images, extra)
+    except Exception as err:
+        log.error(f"💬 Could not send chat to {service}|{channel}: {err}")
