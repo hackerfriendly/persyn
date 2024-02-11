@@ -29,6 +29,7 @@ class PersynConfig(DotWiz):
         self.spacy = None
         self.web = None
         self.zim = None
+        self.dev = None
 
         super().__init__(config)
 
@@ -41,6 +42,8 @@ def download_models(persyn_config) -> None:
         nlp = spacy.load(persyn_config.spacy.model)
 
     del nlp
+
+# FIXME: This is a messy hodgepodge. Write a simple default yaml config and merge in config changes instead.
 
 def load_config(cfg=None) -> PersynConfig:
     ''' Load the config and set some sensible default values. '''
@@ -141,6 +144,9 @@ def load_config(cfg=None) -> PersynConfig:
         if 'redis' not in config['memory']:
             config['memory']['redis'] = 'redis://localhost:6379/'
 
+        if 'embedding_model' not in config['memory']:
+            config['memory']['embedding_model'] = 'text-embedding-ada-002'
+
     if 'completion' in config:
         completion_defaults = {
             'openai_api_base': 'https://api.openai.com/v1',
@@ -158,13 +164,35 @@ def load_config(cfg=None) -> PersynConfig:
             if setting not in config['completion']:
                 config['completion'][setting] = val
 
+    if 'dev' in config:
+        dev_defaults = {
+            'debug': False,
+            'langchain_api_key': None,
+            'langchain_endpoint': 'https://api.smith.langchain.com'
+        }
+        for setting, val in dev_defaults.items():
+            if setting not in config['dev']:
+                config['dev'][setting] = val
+
     config.setdefault('spacy', {'model': 'en_core_web_sm'})
     config.setdefault('interact', {'url': None, 'character': 'You are a Persyn. Persyns differ from AIs and digital assistants, because their motivations are self-directed and they are influenced by their own emotions and opinions.'})
     config.setdefault('web', {'default': 'body'})
     config.setdefault('dreams', {'url': None, 'captions': {'url': None}, 'stable_diffusion': {'url': None}, 'upload': {'url_base': None}})
+    config.setdefault('dev', {'debug': False, 'langchain_api_key': None, 'langchain_endpoint': 'https://api.smith.langchain.com'})
+    config.setdefault('memory', {'conversation_interval': 600, 'context': 0.3, 'max_summary_size': 1000, 'relevance': 0.12, 'redis': 'redis://localhost:6379/', 'embedding_model': 'text-embedding-ada-002'})
 
     # Check for required models
     persyn_config = PersynConfig(config)
     download_models(persyn_config)
+
+    # Set some environment variables
+    if persyn_config.dev.debug:
+        os.environ['DEBUG'] = '1'
+
+    if persyn_config.dev.langchain_api_key:
+        os.environ['LANGCHAIN_API_KEY'] = persyn_config.dev.langchain_api_key
+        os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+        os.environ['LANGCHAIN_PROJECT'] = f'Persyn: {persyn_config.id.name}'
+        os.environ['LANGCHAIN_ENDPOINT'] = persyn_config.dev.langchain_endpoint
 
     return persyn_config

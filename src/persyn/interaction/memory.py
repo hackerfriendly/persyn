@@ -41,6 +41,16 @@ def scquery(service: Optional[str] = None, channel: Optional[str] = None) -> str
         ret.append("(@channel:{" + escape(channel) + "})")
     return  ' '.join(ret)
 
+def decode_dict(d: dict[str, Any]) -> dict:
+    ''' Decode a dict fetched from Redis '''
+    ret = {}
+    for (k, v) in d.items():
+        try:
+            ret[k.decode()] = v.decode()
+        except UnicodeDecodeError:
+            ret[k.decode()] = v
+    return ret
+
 @dataclass
 class Convo:
     ''' Container class for conversations. '''
@@ -91,10 +101,11 @@ class Recall:
         # indices
         pre = f'persyn2:{self.bot_id}'
         self.convo_prefix = f'{pre}:convo'
-        self.opinion_prefix = f'{pre}:opinion'
-        self.goal_prefix = f'{pre}:goal'
+        self.opinion_prefix = f'{pre}:opinions'
+        self.goal_prefix = f'{pre}:goals'
         self.news_prefix = f'{pre}:news'
 
+        # schemas, required for langchain.redis
         self.convo_schema = {
             "tag": [
                 {"name":"service"},
@@ -120,7 +131,7 @@ class Recall:
         for cmd in [
             f"FT.CREATE {self.convo_prefix} on HASH PREFIX 1 {self.convo_prefix}: SCHEMA service TAG channel TAG expired TAG expired_at NUMERIC role TAG speaker_name TAG initiator TAG verb TAG content TEXT convo_id TEXT feels TEXT content_vector VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.opinion_prefix} on HASH PREFIX 1 {self.opinion_prefix}: SCHEMA service TAG channel TAG opinion TEXT topic TEXT convo_id TAG",
-            f"FT.CREATE {self.goal_prefix} on HASH PREFIX 1 {self.goal_prefix}: SCHEMA service TAG channel TAG goal TEXT",
+            f"FT.CREATE {self.goal_prefix} on HASH PREFIX 1 {self.goal_prefix}: SCHEMA service TAG channel TAG goal_id TEXT content TEXT achieved NUMERIC content_vector VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE",
             f"FT.CREATE {self.news_prefix} on HASH PREFIX 1 {self.news_prefix}: SCHEMA service TAG channel TAG url TEXT title TEXT",
         ]:
             try:
@@ -180,13 +191,6 @@ class Recall:
                 'redis': rds
         }
 
-    def decode_dict(self, d: dict[str, Any]) -> dict:
-        ''' Decode a dict fetched from Redis '''
-        ret = {}
-        for (k, v) in d.items():
-            ret[k.decode()] = v.decode()
-        return ret
-
     def set_convo_meta(self, convo_id: str, k: str, v: str) -> None:
         ''' Set metadata for a conversation '''
         self.redis.hset(f"{self.convo_prefix}:{convo_id}:meta", k, v)
@@ -199,7 +203,7 @@ class Recall:
         ''' Fetch a metadata key from a conversation in Redis. If k is not provided, return all metadata. '''
         try:
             if k is None:
-                return self.decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
+                return decode_dict(self.redis.hscan(f'{self.convo_prefix}:{convo_id}:meta')[1].items())
             return self.redis.hget(f"{self.convo_prefix}:{convo_id}:meta", k).decode()
         except AttributeError:
             return None
@@ -222,25 +226,31 @@ class Recall:
         return ""
 
     def new_convo(self, service: str, channel: str, speaker_name: str, convo_id: Optional[str] = None) -> Convo:
-        ''' Start a new conversation. If convo_id is not supplied, generate a new one. '''
+        '''
+        Start or continue a conversation. If convo_id is not supplied, generate a new one.
+        '''
         convo = Convo(
             service=service,
             channel=channel,
             id=convo_id
         )
 
-        if convo_id:
-            log.warning("👉 Continuing convo:", convo)
-            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
-        else:
-            log.warning("⚠️  New convo:", convo)
+        if convo_id is None:
+            log.warning("🤙 Starting new convo:", convo)
 
             self.set_convo_meta(convo.id, "service", service)
             self.set_convo_meta(convo.id, "channel", channel)
             self.set_convo_meta(convo.id, "initiator", speaker_name)
+            self.set_convo_meta(convo.id, "expired", "False")
+            self.set_convo_meta(convo.id, "convo_id", convo.id)
 
-        self.set_convo_meta(convo.id, "expired", "False")
-        self.set_convo_meta(convo.id, "convo_id", convo.id)
+        else:
+            speaker_name = self.fetch_convo_meta(convo_id, "initiator") or speaker_name
+
+            if self.convo_expired(convo_id=convo.id):
+                log.warning("⚠️  Expired convo:", convo)
+            else:
+                log.warning("👉 Continuing convo:", convo)
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
@@ -318,9 +328,6 @@ class Recall:
 
         if convo_id is None:
             convo_id = self.get_last_convo_id(service, channel)
-            # Only continue active convos
-            if convo_id and self.convo_expired(convo_id=convo_id):
-                return None
 
         if convo_id is None:
             return None
@@ -333,15 +340,25 @@ class Recall:
 
         return convo
 
-    def dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
+    def fetch_dialog(self, service: str, channel: str, convo_id: Optional[str] = None) -> str:
         ''' Fetch the convo and return only the current dialog. '''
-        return self.fetch_convo(service, channel, convo_id).memories['summary'].load_memory_variables({})['history']
+        convo = self.fetch_convo(service, channel, convo_id)
+        if convo is None:
+            return ""
+        return self.convo_dialog(convo)
+
+    def convo_dialog(self, convo: Convo) -> str:
+        ''' Return the current dialog from a Convo object. '''
+        return convo.memories['summary'].load_memory_variables({})['history'].replace("System:", "", -1)
 
     def current_convo_id(self, service: str, channel: str) -> Union[str, None]:
         ''' Return the current convo_id for service and channel (if any) '''
         convo = self.fetch_convo(service, channel)
-        if not convo:
+        if convo is None:
             log.warning("🤷 No previous convo for:", f"{service}|{channel}")
+            return None
+
+        if self.fetch_convo_meta(convo.id, "expired") == 'True':
             return None
 
         return convo.id
@@ -430,7 +447,7 @@ class Recall:
                     "(" + service_channel + exclude + ") @content_vector:[VECTOR_RANGE $threshold $emb]=>{$YIELD_DISTANCE_AS: score}"
                 )
                 .sort_by("score")
-                .return_fields("service", "channel", "content", "score")
+                .return_fields("service", "channel", "convo_id", "content", "score")
                 .paging(0, size)
                 .dialect(2)
             )

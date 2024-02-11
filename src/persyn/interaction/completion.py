@@ -1,15 +1,18 @@
 ''' LLM completion '''
 # pylint: disable=invalid-name
 
+import json
 import re
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from time import sleep
+from typing import Optional, Union, Set
 import pydantic
 import spacy
 import tiktoken
 
 import openai
+import anthropic
 
 import numpy as np
 
@@ -98,8 +101,16 @@ class LanguageModel:
             temperature=self.config.completion.anthropic_temperature,
             max_tokens=250,
         )
-
-        self.embeddings = OpenAIEmbeddings(openai_api_key=self.config.completion.openai_api_key)
+        self.reflection_llm = setup_llm(
+            self.config,
+            model=self.reasoning_model,
+            temperature=self.config.completion.reasoning_temperature,
+            max_tokens=500,
+        )
+        self.embeddings = OpenAIEmbeddings(
+            openai_api_key=self.config.completion.openai_api_key,
+            model=self.config.memory.embedding_model
+        )
 
         log.debug(f"💬 chat model: {self.chat_model}")
         log.debug(f"🧠 reasoning model: {self.reasoning_model}")
@@ -128,8 +139,8 @@ class LanguageModel:
                     return 200000
                 return 100000
             # Beta OpenAI models
-            if model == 'gpt-4-1106-preview':
-                return 128 * 1024
+            if model.startswith('gpt-4-') and model.endswith('-preview'):
+                return 128000
             # Unknown model
             raise err
 
@@ -206,11 +217,14 @@ class LanguageModel:
         enc = self.get_enc(model)
         return enc.decode(enc.encode(text)[:maxlen])
 
-    def get_embedding(self, text, model='text-embedding-ada-002', max_tokens=8192):
+    def get_embedding(self, text, model=None, max_tokens=8192):
         '''
         Return the embedding for text as bytes. Truncates text to the max size supported by the model.
         TODO: embedding model should determine its own size, but embedding models are not (yet?) in BaseOpenAI.modelname_to_contextsize()
         '''
+        if model is None:
+            model = self.config.memory.embedding_model
+
         text = text.replace("\n", " ")
 
         return  np.array(
@@ -237,7 +251,7 @@ class LanguageModel:
         else:
             llm = self.summary_llm
 
-        text = self.truncate(text) # FIXME: proper model selection here
+        text = self.truncate(text.strip()) # FIXME: proper model selection here
         if not text:
             log.warning('summarize_text():', "No text, skipping summary.")
             return ""
@@ -255,6 +269,48 @@ class LanguageModel:
 
         log.warning("summarize_text():", reply)
         return reply
+
+    def reflect(
+        self,
+        text: str
+    ) -> Union[dict[str, list[str]], None]:
+        ''' Ask the LLM to reflect on text. Returns a dict of {question: [answer, answer, answer]} '''
+
+        llm = self.reflection_llm
+
+        text = self.truncate(text) # FIXME: proper model selection here
+        if not text:
+            log.warning('reflect():', "No text, skipping.")
+            return None
+
+        prompt = PromptTemplate.from_template(
+            f"""Given only following dialog, list up to two salient high-level questions that can be asked about {self.config.id.name}'s goals, desires, and opinions.
+For each question, also list up to two specific actions that {self.config.id.name} can take to answer those questions.
+Make your answers as concise as possible. Convert pronouns and verbs to the first person, and format your reply using JSON in the following format:
+""" + """
+{{
+    "First question": [ "Answers to question 1", "as a list" ],
+    "Second optional question": [ "Answers to question 2", "as a list" ]
+}}
+
+Your response MUST only include JSON, no other text or preamble. Your response MUST return valid JSON, with no ``` or other special formatting.\n
+{input}""")
+
+        chain = prompt | llm | StrOutputParser()
+
+        reply = chain.invoke({"input": text})
+
+        # Try to remove any preamble and ``` if present
+        if not reply.startswith('{'):
+            reply = '{' + reply.split('{', 1)[1].replace('`', '')
+
+        try:
+            ret = json.loads(reply)
+        except json.decoder.JSONDecodeError as err:
+            log.error("reflect(): Could not parse JSON response:", str(err))
+            return None
+
+        return ret
 
     def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''
@@ -288,7 +344,13 @@ class LanguageModel:
             return ""
 
         prompt = PromptTemplate.from_template(f"{prefix}{{input}}")
-        chain = prompt | self.anthropic_llm | StrOutputParser()
+
+        try:
+            chain = prompt | self.anthropic_llm | StrOutputParser()
+        except anthropic.RateLimitError:
+            log.warning('ask_claude():', "Rate limit error, retrying.")
+            sleep(2)
+            chain = prompt | self.anthropic_llm | StrOutputParser()
 
         reply = self.trim(chain.invoke({"input": query}))
 
@@ -322,7 +384,7 @@ class LanguageModel:
         }
         return list(nouns)
 
-    def extract_entities(self, text: str) -> list[str]:
-        ''' return a list of all entities in text '''
+    def extract_entities(self, text: str) -> Set[str]:
+        ''' Return a set of all entities in text '''
         doc = self.nlp(text)
-        return list({n.text.strip() for n in doc.ents if n.text.strip() != self.config.id.name})
+        return {n.text.strip() for n in doc.ents if len(n.text.strip()) > 2}

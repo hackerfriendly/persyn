@@ -74,7 +74,7 @@ def slack_msg(
 
     if images:
         log.info(f"⚡️ Posted image to Slack as {bot_name}")
-        chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
+        chat.inject_idea(channel, chat.get_caption(url), verb='describing a picture')
     else:
         log.info(f"⚡️ Posted dialog to Slack as {bot_name}")
 
@@ -124,7 +124,7 @@ def discord_msg(
 
     if images:
         log.info(f"⚡️ Posted image to Discord as {bot_name}")
-        chat.inject_idea(channel, chat.get_caption(url), verb='posts a picture')
+        chat.inject_idea(channel, chat.get_caption(url), verb='describing a picture')
     else:
         log.info(f"⚡️ Posted dialog to Discord as {bot_name}")
 
@@ -154,3 +154,22 @@ def mastodon_msg(
             )
     else:
         mastodon.toot(msg, kwargs=json.loads(extra))
+
+def send_msg(persyn_config: PersynConfig, service: str, channel: str, msg: str, images: Optional[list[str]] = None, extra: Optional[str] = None) -> None:
+    ''' Send a chat message to the correct service + channel '''
+
+    if 'slack.com' in service:
+        func = slack_msg
+    elif service == 'discord':
+        func = discord_msg
+    elif service == 'mastodon':
+        func = mastodon_msg
+    else:
+        log.critical(f"Unknown service: {service}")
+        return
+
+    chat = Chat(persyn_config=persyn_config, service=service)
+    try:
+        func(persyn_config, chat, channel, msg, images, extra)
+    except Exception as err:
+        log.error(f"💬 Could not send chat to {service}|{channel}: {err}")

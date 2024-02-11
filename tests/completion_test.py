@@ -202,3 +202,34 @@ def test_safe_name_whitespace(lm):
     assert sanitized_name == "surrounded by spaces"
     assert sanitized_name[0] != " "
     assert sanitized_name[-1] != " "
+
+def test_extract_entities(lm):
+    # Test with no entities
+    assert lm.extract_entities("") == set()
+
+    # Test with one Anna
+    assert lm.extract_entities("Anna") == {"Anna"}
+
+    # Test with multiple entities
+    assert sorted(list(lm.extract_entities("Anna and Robert"))) == ["Anna", "Robert"]
+
+    # "Anna Robert" looks like a name
+    assert sorted(list(lm.extract_entities("Anna Robert"))) == ["Anna Robert"]
+
+    # Test with duplicate entities
+    assert lm.extract_entities("Apple and also Apple") == {"Apple"}
+
+    # Test with entities that have leading or trailing whitespace
+    assert lm.extract_entities("and   Anna    says hello") == {"Anna"}
+
+    # Test with entities that are less than 3 characters long
+    assert lm.extract_entities("en") == set()
+
+    # Test with entities that are exactly 3 characters long
+    assert lm.extract_entities("Rob") == {"Rob"}
+
+    # Test with multiple entities, some of which are less than 3 characters long
+    assert lm.extract_entities("me Anna") == {"Anna"}
+
+    # Test with multiple entities, some of which are exactly 3 characters long
+    assert sorted(list(lm.extract_entities("Anna and Rob"))) == ["Anna", "Rob"]

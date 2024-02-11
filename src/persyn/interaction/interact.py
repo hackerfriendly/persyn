@@ -5,6 +5,7 @@ The limbic system library.
 '''
 
 from dataclasses import dataclass
+import random
 from typing import Optional, Union, List, Tuple
 
 import ulid
@@ -21,6 +22,9 @@ from persyn.interaction.memory import Convo, Recall
 # Prompt completion
 from persyn.interaction.completion import LanguageModel
 
+# Goals
+from persyn.interaction.goals import Goal
+
 # Color logging
 from persyn.utils.color_logging import log
 from persyn.utils.config import PersynConfig
@@ -36,12 +40,9 @@ class Interact:
     config: PersynConfig
 
     def __post_init__(self):
-
-        # Pick a language model for completion
         self.lm = LanguageModel(self.config) # pylint: disable=invalid-name
-
-        # Then create the Recall object (conversation management)
         self.recall = Recall(self.config)
+        self.goal = Goal(self.config)
 
     def send_chat(self, service: str, channel: str, msg: str, extra: Optional[str] = None) -> None:
         '''
@@ -59,7 +60,7 @@ class Interact:
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
-            return
+            return None
 
     def template(self, context: Optional[str] = "") -> str:
         '''
@@ -79,21 +80,36 @@ class Interact:
 {human}: {input}
 {bot}:"""
 
-    def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str]]]:
+    def add_context(self, convo: Convo, raw=False) -> Union[str, List[Tuple[str, str, int]]]:
         ''' Add context to the prompt. If raw is True, return a list of tuples of (source, text). Otherwise return a string. '''
-        context = [self.get_sentiment_analysis(convo)]
-        context += self.get_relevant_memories(convo, used=len('\n'.join([ctx[1] for ctx in context])))
-        context += self.get_recent_summaries(convo, used=len('\n'.join([ctx[1] for ctx in context])))
-        # TODO: Also fetch recent dialog, if it's quite recent
+        log.warning(f"🧠 add_context: {convo.service}|{convo.channel} ({convo.id})")
+
+        the_dialog = self.recall.convo_dialog(convo)
+        dialog = [('dialog', the_dialog, self.lm.toklen(the_dialog))]
+        feels = [self.get_sentiment_analysis(convo)]
+
+        context = []
+        if not dialog:
+            log.warning("🧠 ...without dialog.")
+        else:
+            log.warning("🧠 ...including goals and memories.")
+            context += self.get_relevant_goals(convo, dialog + context + feels)
+            context += self.get_relevant_memories(convo, dialog + context + feels)
+
+        # Always retrieve recent summaries
+        context += self.get_recent_summaries(convo, context + feels)
+
+        # TODO: Also fetch dialog from recently expired convos.
+
+        # Sentiment analysis
+        context += feels
+
         return context if raw else '\n'.join([ctx[1] for ctx in context])
 
-    def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str]:
+    def get_sentiment_analysis(self, convo: Convo) -> Tuple[str, str, int]:
         ''' Fetch sentiment analysis for this convo '''
-        sentiment = self.recall.fetch_convo_meta(convo.id, 'feels') or 'nothing in particular'
-        return (
-            'sentiment analysis',
-            f"{self.config.id.name} is feeling {sentiment}."
-        )
+        sentiment = f"{self.config.id.name}'s emotional state: {self.recall.fetch_convo_meta(convo.id, 'feels') or 'neutral'}."
+        return ('sentiment analysis', sentiment, self.lm.toklen(sentiment))
 
     def too_many_tokens(self, convo: Convo, text: str, used: Optional[int] = 0) -> bool:
         '''
@@ -103,21 +119,25 @@ class Interact:
         TODO: Allow llm selection (currently always uses chat_llm)
         '''
         max_tokens = int(self.lm.max_prompt_length() * self.config.memory.context)
-        history = self.current_dialog(convo)
+        history = self.recall.convo_dialog(convo)
 
         return self.lm.chat_llm.get_num_tokens(f"{history} {text}".strip()) + used > max_tokens # type: ignore
 
-    def get_relevant_memories(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+    def get_relevant_memories(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]: # dangerous-default-value
         ''' Return a list of tuples of (source, text) for relevant memories '''
+        if context is None:
+            context = []
+
         relevant_memories = []
         related_convos = self.recall.find_related_convos(
             convo.service,
             convo.channel,
-            self.current_dialog(convo),
+            '\n'.join([ctx[1] for ctx in context]),
             exclude_convo_ids=list(convo.visited),
             threshold=self.config.memory.relevance,
             size=5
         )
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
         for convo_id, score in related_convos:
             if convo_id in convo.visited:
                 continue
@@ -126,13 +146,45 @@ class Interact:
             if summary:
                 if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in relevant_memories]), used):
                     break
-                preamble = self.get_time_preamble(convo_id)
-                relevant_memories.append((f"relevant memory ({score})", f"{self.config.id.name} recalls{preamble}\n{summary}"))
+                mem = f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)}\n{summary}"
+                relevant_memories.append((f"relevant memory ({score})", mem, self.lm.toklen(mem)))
         return relevant_memories
 
-    def get_recent_summaries(self, convo: Convo, used: Optional[int] = 0) -> List[Tuple[str, str]]:
+    def get_relevant_goals(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]:
+        ''' Return a list of tuples of (source, text) for relevant goals '''
+        if context is None:
+            context = []
+
+        relevant_goals = []
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
+        for goal in self.goal.find_related_goals(
+            convo.service,
+            convo.channel,
+            '\n'.join([ctx[1] for ctx in context]),
+            threshold=self.config.memory.relevance,
+            size=2
+        ):
+            actions = self.goal.list_actions(goal.goal_id)
+            if not actions:
+                continue
+            # Actions are used only once. Delete them from the goal, but save for later evaluation.
+            action = random.sample(actions, 1)[0]
+            self.goal.undertake_action(convo.id, goal.goal_id, action)
+
+            todo = f"{self.config.id.name}'s objective: {action}"
+            if self.too_many_tokens(convo, todo, used):
+                break
+            log.warning(f"🎯 To achieve {goal.content}, {todo}")
+            relevant_goals.append(("relevant goal", todo, self.lm.toklen(todo)))
+        return relevant_goals
+
+    def get_recent_summaries(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]:
         ''' Return a list of tuples of (source, text) for recent summaries'''
+        if context is None:
+            context = []
+
         recent_summaries = []
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
         convo_ids = list(self.recall.list_convo_ids(convo.service, convo.channel, expired=True))
 
         for convo_id in convo_ids:
@@ -141,7 +193,8 @@ class Interact:
                 continue
             if self.too_many_tokens(convo, summary + '\n'.join([ctx[1] for ctx in recent_summaries]), used):
                 break
-            recent_summaries.append(("recent summary", f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"))
+            the_summary = f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"
+            recent_summaries.append(("recent summary", the_summary, self.lm.toklen(the_summary)))
         return recent_summaries
 
     def get_time_preamble(self, convo_id: str) -> str:
@@ -151,10 +204,6 @@ class Interact:
             return f" a conversation from {chrono.hence(last_ts)} ago:\n"
         return ""
 
-    def current_dialog(self, convo: Convo) -> str:
-        ''' Return the current dialog from convo '''
-        return convo.memories['summary'].load_memory_variables({})['history'].replace("System: ", "", -1)
-
     def save_summary(self, convo: Convo) -> None:
         '''
         Save the summary for this convo.
@@ -163,7 +212,7 @@ class Interact:
         '''
         convo.memories['redis'].add_texts(
             texts=[
-                self.current_dialog(convo)
+                self.recall.convo_dialog(convo)
             ],
             metadatas=[
                 {
@@ -197,16 +246,25 @@ class Interact:
         log.info(f"💬 retort to: {msg}")
 
         convo = self.recall.fetch_convo(service, channel)
-        if convo is None:
+        if convo is None or self.recall.convo_expired(convo_id = convo.id):
             convo = self.recall.new_convo(service, channel, speaker_name)
+
+        if msg == '...':
+            msg = ''
+            partial_variables = {
+                'human': '',
+                'bot': f'{self.config.id.name} continues',
+            }
+        else:
+            partial_variables = {
+                'human': speaker_name,
+                'bot': self.config.id.name
+            }
 
         prompt = PromptTemplate(
             input_variables=["input"],
             template=self.template(self.add_context(convo)),
-            partial_variables={
-                "human": speaker_name,
-                "bot": self.config.id.name
-            }
+            partial_variables=partial_variables
         )
 
         chain = ConversationChain(
@@ -267,21 +325,30 @@ class Interact:
     def status(self, service: str, channel: str, speaker_name: str) -> str:
         ''' Return the prompt and chat history for this channel '''
         convo = self.recall.fetch_convo(service, channel)
-        if convo is None:
+        if convo is None or self.recall.convo_expired(convo_id = convo.id):
             convo = self.recall.new_convo(service, channel, speaker_name)
 
         prompt = PromptTemplate(
             input_variables=["input"],
-            template=self.template(self.add_context(convo)),
+            template=self.template(),
             partial_variables={
                 "human": convo.memories['summary'].human_prefix,
                 "bot": self.config.id.name
             }
         )
 
+        context = self.add_context(convo, raw=True)
+
+        the_dialog = self.recall.convo_dialog(convo)
+        tokens = self.lm.toklen(the_dialog)
+        dialog = [
+            ('recent dialog', the_dialog, tokens),
+            ('token count', '', sum(ctx[2] for ctx in context) + tokens) # type: ignore
+        ]
+
         return prompt.format(
-            kg='', # FIXME: this is a hack to avoid rendering {kg} in the template
-            history=self.current_dialog(convo),
+            kg='\n'.join([str(ctx) for ctx in context]),
+            history='\n'.join([str(ctx) for ctx in dialog]),
             input='input'
         )
 
@@ -296,10 +363,10 @@ class Interact:
             return False
 
         convo = self.recall.fetch_convo(service, channel)
-        if convo is None:
+        if convo is None or self.recall.convo_expired(convo_id = convo.id):
             return False
 
-        log.debug(self.current_dialog(convo))
+        log.debug(self.recall.convo_dialog(convo))
 
         convo.memories['combined'].save_context({"input": ""}, {"output": f"({verb}) {idea}"})
         self.save_summary(convo)
@@ -316,7 +383,7 @@ class Interact:
 
         summary = self.lm.summarize_text(self.recall.fetch_summary(convo_id), final=final)
 
-        if final:
+        if final and summary:
             log.info(f"🎬 Saving final summary for {service}|{channel} : {convo_id}")
             self.recall.redis.hset(f"{self.recall.convo_prefix}:{convo_id}:summary", "final", summary)
 

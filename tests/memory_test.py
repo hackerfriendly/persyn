@@ -15,7 +15,7 @@ from langchain.memory import (
 )
 from langchain.vectorstores.redis import Redis
 
-from src.persyn.interaction.memory import Recall, Convo, escape, scquery
+from src.persyn.interaction.memory import Recall, Convo, escape, scquery, decode_dict
 
 # Bot config
 from src.persyn.utils.config import load_config
@@ -96,27 +96,27 @@ def test_fetch_summary(recall, cleanup):
     assert summary == expected_summary
 
 def test_decode_dict(recall):
-    assert recall.decode_dict({}) == {}
+    assert decode_dict({}) == {}
 
     input_dict = {b'key1': b'value1', b'key2': b'value2'}
     expected_dict = {'key1': 'value1', 'key2': 'value2'}
-    assert recall.decode_dict(input_dict) == expected_dict
+    assert decode_dict(input_dict) == expected_dict
 
     input_dict = {'key1': 'value1', 'key2': 'value2'}
     with pytest.raises(AttributeError):
-        recall.decode_dict(input_dict)
+        decode_dict(input_dict)
 
     input_dict = {b'key1': b'value1', b'key2': 123}
     with pytest.raises(AttributeError):
-        recall.decode_dict(input_dict)
+        decode_dict(input_dict)
 
     input_dict = {123: b'value1', 456: b'value2'}
     with pytest.raises(AttributeError):
-        recall.decode_dict(input_dict)
+        decode_dict(input_dict)
 
     input_dict = {b'key1': b'value1', b'key2': b'value2'}
     expected_dict = {'key1': 'value1', 'key2': 'value2'}
-    decoded_dict = recall.decode_dict(input_dict)
+    decoded_dict = decode_dict(input_dict)
     assert decoded_dict == expected_dict
 
 def test_create_lc_memories(recall):

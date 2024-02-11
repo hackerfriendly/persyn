@@ -13,7 +13,7 @@ import os
 from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, HTTPException, Query, Form
+from fastapi import FastAPI, HTTPException, Query, Form, BackgroundTasks
 from fastapi.responses import RedirectResponse
 
 import uvicorn
@@ -21,11 +21,14 @@ import uvicorn
 # The event bus
 from persyn import autobus
 
+# Fast send chat
+from persyn.chat.simple import send_msg
+
 # Interaction routines
 from persyn.interaction.interact import Interact
 
 # Message classes
-from persyn.interaction.messages import SendChat, ChatReceived, Opine, CheckGoals, VibeCheck, News, KnowledgeGraph, Web
+from persyn.interaction.messages import ChatReceived, CheckGoals, VibeCheck, News, Web
 
 # Color logging
 from persyn.utils.color_logging import log
@@ -54,13 +57,14 @@ def root():
 
 @app.post("/reply/")
 async def handle_reply(
+    background_tasks: BackgroundTasks,
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535),
     speaker_name: str = Query(..., min_length=1, max_length=255),
     send_chat: Optional[bool] = Query(True),
     extra: Optional[str] = Query(None, min_length=1, max_length=65535),
-    ):
+    ) -> dict[str, str]:
     ''' Get a reply to a message posted to a channel '''
 
     if not msg.strip():
@@ -69,11 +73,10 @@ async def handle_reply(
             detail="Text must contain at least one non-space character."
         )
 
-    ret = await asyncio.gather(in_thread(
-        interact.retort, [service, channel, msg, speaker_name, send_chat, extra]
-    ))
+    background_tasks.add_task(interact.retort, service, channel, msg, speaker_name, send_chat, extra)
+
     return {
-        "reply": ret[0]
+        "reply": "queued"
     }
 
 @app.post("/chat_received/")
@@ -278,42 +281,20 @@ async def handle_check_goals(
 
 @app.post("/send_msg/")
 async def handle_send_msg(
+    background_tasks: BackgroundTasks,
     service: str = Query(..., min_length=1, max_length=255),
     channel: str = Query(..., min_length=1, max_length=255),
     msg: str = Query(..., min_length=1, max_length=65535),
     extra: Optional[str] = Query(None, min_length=1, max_length=65535),
 ):
-    ''' Send a chat message via the autobus '''
-    event = SendChat(
-        service=service,
-        channel=channel,
-        msg=msg,
-        extra=extra
-    )
-    autobus.publish(event)
+    ''' Send a chat message immediately '''
+
+    background_tasks.add_task(send_msg, persyn_config, service, channel, msg, None, extra) # type: ignore
 
     return {
         "success": True
     }
 
-
-@app.post("/opine/")
-async def handle_opine(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    entities: List[str] = Query(...)
-):
-    ''' Ask the autobus to gather opinions about entities '''
-    event = Opine(
-        service=service,
-        channel=channel,
-        entities=entities
-    )
-    autobus.publish(event)
-
-    return {
-        "success": True
-    }
 
 @app.post("/vibe_check/")
 async def handle_vibe_check(
@@ -324,27 +305,6 @@ async def handle_vibe_check(
     event = VibeCheck(
         service=service,
         channel=channel,
-    )
-    autobus.publish(event)
-
-    return {
-        "success": True
-    }
-
-
-@app.post("/build_graph/")
-async def handle_build_graph(
-    service: str = Query(..., min_length=1, max_length=255),
-    channel: str = Query(..., min_length=1, max_length=255),
-    convo_id: str = Query(..., min_length=1, max_length=255),
-    convo: str = Form(..., max_length=2e6),
-):
-    ''' Add to this convo to the knowledge graph '''
-    event = KnowledgeGraph(
-        service=service,
-        channel=channel,
-        convo_id=convo_id,
-        convo=convo
     )
     autobus.publish(event)
 
