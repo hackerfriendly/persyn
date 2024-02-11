@@ -139,8 +139,8 @@ class LanguageModel:
                     return 200000
                 return 100000
             # Beta OpenAI models
-            if model == 'gpt-4-1106-preview':
-                return 128 * 1024
+            if model.startswith('gpt-4-') and model.endswith('-preview'):
+                return 128000
             # Unknown model
             raise err
 
