@@ -1,55 +1,61 @@
 ''' graph.py: knowledge graph support by Neo4j '''
+# pylint: disable=no-member, abstract-method
+
+import re
+
 from dataclasses import dataclass
-from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, FloatProperty, IntegerProperty, RelationshipTo, StructuredRel, Q
+from typing import Any, List, Optional
+
+from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, IntegerProperty, RelationshipTo, StructuredRel, Q
 from neomodel import config as neomodel_config
 from neomodel import db as neomodel_db
 from neomodel.contrib import SemiStructuredNode
 
-from persyn.utils.config import PersynConfig # pylint: disable=no-member
+from persyn.utils.color_logging import log
+
+from persyn.utils.config import PersynConfig
+
+
+# believes desires owns supports criticizes trusts knows ignores challenges values respects shares doubts rejects learns hopes contains
 
 # Neomodel (Neo4j) graph classes
-class Entity(SemiStructuredNode):
-    ''' Superclass for everything '''
-    name = StringProperty(required=True)
-    bot_id = StringProperty(required=True)
-
 class PredicateRel(StructuredRel):
     ''' Predicate relationship: s P o '''
     weight = IntegerProperty(default=0)
     verb = StringProperty(required=True)
 
+class Entity(SemiStructuredNode):
+    ''' Superclass for everything '''
+    name = StringProperty(required=True)
+    bot_id = StringProperty(required=True)
+    entity_id = UniqueIdProperty()
+    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
+
 class Person(Entity):
     ''' Something you can have a conversation with '''
     created = DateTimeProperty(default_now=True)
-    last_contact = DateTimeProperty(default_now=True)
-    entity_id = UniqueIdProperty()
-    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
+
+class Place(Entity):
+    ''' Somewhere to be '''
+    created = DateTimeProperty(default_now=True)
 
 class Thing(Entity):
     ''' Any old thing '''
     created = DateTimeProperty(default_now=True)
-    link = RelationshipTo('Entity', 'LINK', model=PredicateRel)
-
-class Human(Person):
-    ''' Flesh and blood '''
-    last_contact = DateTimeProperty(default_now=True)
-    trust = FloatProperty(default=0.0)
-
-class Bot(Person):
-    ''' Silicon and electricity '''
-    service = StringProperty(required=True)
-    channel = StringProperty(required=True)
-    trust = FloatProperty(default=0.0)
 
 @dataclass
 class KnowledgeGraph:
+    ''' Knowledge graph support by Neo4j '''
     config: PersynConfig
 
     def __post_init__(self):
         if hasattr(self.config.memory, 'neo4j'):
             neomodel_config.DATABASE_URL = self.config.memory.neo4j.url
+        self.bot_id = self.config.id.guid
+        self.name = self.config.id.name
 
-    def delete_all_nodes(self, confirm=False):
+
+    def delete_all_nodes(self, confirm=False) -> bool:
         ''' Delete all graph nodes for this bot '''
         if confirm is not True:
             return False
@@ -59,32 +65,48 @@ class KnowledgeGraph:
 
         return True
 
-    def fetch_all_nodes(self, node_type=None):
+    def person(self, name) -> Person:
+        ''' Return a Person node with the given name '''
+        return Person(name=name, bot_id=self.bot_id).save()
+
+    def place(self, name) -> Place:
+        ''' Return a Place node with the given name '''
+        return Place(name=name, bot_id=self.bot_id).save()
+
+    def thing(self, name) -> Thing:
+        ''' Return a Thing node with the given name '''
+        return Thing(name=name, bot_id=self.bot_id).save()
+
+    def fetch_all_nodes(self, node_type=None) -> List[Any]:
         ''' Return all graph nodes for this bot '''
         if node_type is None:
             return Entity.nodes.filter(Q(bot_id=self.bot_id))
-        if node_type == 'person':
+        if node_type == 'Person':
             return Person.nodes.filter(Q(bot_id=self.bot_id))
-        if node_type == 'thing':
+        if node_type == 'Place':
+            return Place.nodes.filter(Q(bot_id=self.bot_id))
+        if node_type == 'Thing':
             return Thing.nodes.filter(Q(bot_id=self.bot_id))
         raise RuntimeError(f'Invalid node_type: {node_type}')
 
-    def find_node(self, name, node_type=None):
+    def find_node(self, name, node_type=None) -> List[Any]:
         ''' Return all nodes with the given name'''
         if node_type is None:
             return Entity.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
-        if node_type == 'person':
+        if node_type == 'Person':
             return Person.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
-        if node_type == 'thing':
+        if node_type == 'Place':
+            return Place.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
+        if node_type == 'Thing':
             return Thing.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
         raise RuntimeError(f'Invalid node_type: {node_type}')
 
     @staticmethod
-    def safe_name(name):  # TODO: unify this with gpt.py
+    def safe_name(name) -> str:
         ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
         return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64]
 
-    def shortest_path(self, src, dest, src_type=None, dest_type=None):
+    def shortest_path(self, src, dest, src_type=None, dest_type=None, min_distance=0):
         '''
         Find the shortest path between two nodes, if any.
         If src_type or dest_type are specified, constrain the search to nodes of that type.
@@ -102,71 +124,61 @@ class KnowledgeGraph:
         (b{':'+dest_type if dest_type else ''} {{name: '{safe_dest}', bot_id: '{self.bot_id}'}}),
         p = shortestPath((a)-[*]-(b))
         WITH p
-        WHERE length(p) > 1
+        WHERE length(p) > {min_distance}
         RETURN p
         """
+
         paths = neomodel_db.cypher_query(query)[0]
         ret = []
         if not paths:
             return ret
 
-        for r in paths[0][0].relationships:
-            ret.append((r.start_node.get('name'), r.get('verb'), r.end_node.get('name')))
+        for rel in paths[0][0].relationships:
+            ret.append((rel.start_node.get('name'), rel.get('verb'), rel.end_node.get('name')))
 
         return ret
 
-    def triples_to_kg(self, triples):
+    def triples_to_kg(self, triples: List[tuple[str, str, str]], types: Optional[dict[str, str]]=None):
         '''
         Convert subject, predicate, object triples into a Neo4j graph.
+        If types is provided, map {name: type} for the subjects and objects.
         '''
         if not hasattr(self.config.memory, 'neo4j'):
             log.error('፨ No graph server defined, cannot call triples_to_kg()')
             return
 
-        speaker_names = {p.name for p in Person.nodes.all() if p.bot_id == self.bot_id}
-        thing_names = set()
-        speakers = {}
+        if types is None:
+            types = {}
 
-        for triple in triples:
-            (s, _, o) = triple
-
-            if s not in speaker_names:
-                thing_names.add(s)
-
-            if o not in speaker_names:
-                thing_names.add(o)
+        for k, v in types.items():
+            if v == 'Person':
+                types[k] = Person
+            elif v == 'Place':
+                types[k] = Place
+            elif v == 'Thing':
+                types[k] = Thing
+            else:
+                log.error('፨ Invalid type:', k)
+                return
 
         with neomodel_db.transaction:
-            for name in speaker_names:
+            for triple in triples:
+                (subj, pred, obj) = triple
+
+                if subj not in types:
+                    types[subj] = Entity
+
+                if obj not in types:
+                    types[obj] = Entity
+
                 try:
-                    speakers[name] = Person.nodes.get(name=name, bot_id=self.bot_id)  # pylint: disable=no-member
-                # If they don't yet exist in the graph, make a new node
-                except Person.DoesNotExist:  # pylint: disable=no-member
-                    speakers[name] = Person(name=name, bot_id=self.bot_id).save()
+                    the_subject = types[subj].nodes.get(name=subj, bot_id=self.bot_id)
+                except types[subj].DoesNotExist:
+                    the_subject = types[subj](name=subj, bot_id=self.bot_id).save()
 
-            things = {}
-            for t in Thing.get_or_create(*[{'name': n, 'bot_id': self.bot_id} for n in list(thing_names) if n not in speakers]):
-                things[t.name] = t
+                try:
+                    the_object = types[obj].nodes.get(name=obj, bot_id=self.bot_id)
+                except types[obj].DoesNotExist:
+                    the_object = types[obj](name=obj, bot_id=self.bot_id).save()
 
-            for link in triples:
-                if link[0] in speakers:
-                    subj = speakers[link[0]]
-                else:
-                    subj = things[link[0]]
-
-                pred = link[1]
-
-                if link[2] in speakers:
-                    obj = speakers[link[2]]
-                else:
-                    obj = things[link[2]]
-
-                found = False
-                for rel in subj.link.all_relationships(obj):
-                    if rel.verb == pred:
-                        found = True
-                        rel.weight = rel.weight + 1
-                        rel.save()
-
-                if not found:
-                    rel = subj.link.connect(obj, {'verb': pred})
+                the_subject.link.connect(the_object, {'verb': pred})
