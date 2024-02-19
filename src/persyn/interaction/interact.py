@@ -95,8 +95,10 @@ class Interact:
             context += self.get_relevant_goals(convo, dialog + context + feels)
             context += self.get_relevant_memories(convo, dialog + context + feels)
 
-        # Always retrieve recent summaries
+        # Always retrieve recent summaries and the knowledge graph.
         context += self.get_recent_summaries(convo, context + feels)
+
+        context += self.get_knowledge_graph(convo, dialog + context + feels)
 
         # TODO: Also fetch dialog from recently expired convos.
 
@@ -195,6 +197,23 @@ class Interact:
             the_summary = f"{self.config.id.name} recalls{self.get_time_preamble(convo_id)} {summary}"
             recent_summaries.append(("recent summary", the_summary, self.lm.toklen(the_summary)))
         return recent_summaries
+
+    def get_knowledge_graph(self, convo: Convo, context: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str, int]]:
+        ''' Return a list of tuples of (source, text) from the knowledge graph '''
+        if context is None:
+            context = []
+
+        used = self.lm.chat_llm.get_num_tokens('\n'.join([ctx[1] for ctx in context]))
+
+        # FIXME: Make this fit within the token limit and ask better questions!
+        speaker_name = self.recall.fetch_convo_meta(convo.id, 'initiator')
+        reply = self.lm.query_graph(f'What is {speaker_name} up to?')
+
+        return [(
+            'knowledge graph',
+            reply,
+            self.lm.toklen(reply)
+        )]
 
     def get_time_preamble(self, convo_id: str) -> str:
         ''' Return an appropriate time elapsed preamble '''

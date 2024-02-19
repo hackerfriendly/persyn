@@ -114,9 +114,9 @@ class KnowledgeGraph:
         raise RuntimeError(f'Invalid node_type: {node_type}')
 
     @staticmethod
-    def safe_name(name) -> str:
+    def safe_name(name: str) -> str:
         ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
-        return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64]
+        return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64].strip()
 
     def shortest_path(self, src, dest, src_type=None, dest_type=None, min_distance=0):
         '''
@@ -187,6 +187,9 @@ class KnowledgeGraph:
                         obj_type = 'Concept'
                 else:
                     obj_type = 'Concept'
+
+                subj = self.safe_name(subj)
+                obj = self.safe_name(obj)
 
                 try:
                     the_subject = types[subj_type].nodes.get(name=subj, bot_id=self.bot_id)

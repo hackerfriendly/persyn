@@ -18,13 +18,16 @@ import numpy as np
 
 from ftfy import fix_text
 
+from langchain_community.chat_models import ChatAnthropic
+from langchain_community.graphs import Neo4jGraph
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_openai.llms.base import BaseOpenAI
-from langchain_community.chat_models import ChatAnthropic
 
 # from langchain.globals import set_verbose
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
+
+from langchain.chains import GraphCypherQAChain
 
 # Triple extraction template
 from persyn.interaction.prompts import triple_extraction_template
@@ -155,6 +158,26 @@ class LanguageModel:
             openai_api_key=self.config.completion.openai_api_key,
             model=self.config.memory.embedding_model
         )
+
+        # GraphCypherQAChain setup
+        if hasattr(self.config.memory, 'neo4j'):
+            (proto, username, pwhost, port) = self.config.memory.neo4j.url.split(':')
+            username = username.lstrip('/')
+            (pw, host) = pwhost.split('@')
+            url = f'{proto}://{host}:{port}'
+
+            self.graph_qa_chain = GraphCypherQAChain.from_llm(
+                self.chat_llm,
+                graph=Neo4jGraph(
+                    url=url,
+                    username=username,
+                    password=pw
+                ),
+                verbose=True
+            )
+        else:
+            log.warning('No neo4j config found, skipping GraphCypherQAChain setup.')
+            self.graph_qa_chain = None
 
         log.debug(f"💬 chat model: {self.chat_model}")
         log.debug(f"🧠 reasoning model: {self.reasoning_model}")
@@ -429,6 +452,17 @@ Your response MUST only include JSON, no other text or preamble. Your response M
         log.warning("ask_claude():", reply)
         return reply
 
+
+    def query_graph(self, query: str) -> str:
+        ''' Query the graph using natural language '''
+        if not self.graph_qa_chain:
+            log.warning('query_graph():', "No graph, skipping.")
+            return ''
+
+        reply = self.graph_qa_chain.invoke({'query': query})
+        if 'result' in reply:
+            return reply['result']
+        return ''
 
     @staticmethod
     def camelCaseName(name):
