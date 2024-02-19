@@ -64,21 +64,16 @@ class Interact:
             reply.raise_for_status()
         except (requests.exceptions.RequestException, requests.exceptions.ConnectionError) as err:
             log.critical(f"🤖 Could not post /send_msg/ to interact: {err}")
-            return None
 
     def template(self, context: Optional[str] = "") -> str:
         '''
         Return the current prompt template.
-
-        Note that {kg} is used as a placeholder for knowledge graph memory but is never rendered.
-        It's overridden later in status() to provide the full prompt context.
 
         Curly braces in the context are replaced with () to avoid template issues.
         '''
         return f"""It is {chrono.exact_time()} {chrono.natural_time()} on {chrono.today()}.
 {self.config.interact.character}
 """ + context.replace('{', '(').replace('}', ')') + """
-{kg}
 {history}
 
 {human}: {input}
@@ -358,8 +353,7 @@ class Interact:
         ]
 
         return prompt.format(
-            kg='\n'.join([str(ctx) for ctx in context]),
-            history='\n'.join([str(ctx) for ctx in dialog]),
+            history='\n'.join([str(ctx) for ctx in context] + [str(ctx) for ctx in dialog]),
             input='input'
         )
 

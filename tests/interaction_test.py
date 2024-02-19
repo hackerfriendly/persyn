@@ -64,7 +64,7 @@ def test_template(interact: Interact):
     result = interact.template(context)
     assert context in result
     assert result.startswith("It is ")
-    for key in ["kg", "history", "human", "bot", "input"]:
+    for key in ["history", "human", "bot", "input"]:
         assert f"{{{key}}}" in result
 
     # Test with embedded {}

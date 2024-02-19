@@ -26,6 +26,9 @@ from langchain_community.chat_models import ChatAnthropic
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
 
+# Triple extraction template
+from persyn.interaction.prompts import triple_extraction_template
+
 # Color logging
 from persyn.utils.color_logging import ColorLog
 from persyn.utils.config import PersynConfig
@@ -306,15 +309,16 @@ class LanguageModel:
     def reflect(
         self,
         text: str
-    ) -> Union[dict[str, list[str]], None]:
+    ) -> dict[str, list[str]]:
         ''' Ask the LLM to reflect on text. Returns a dict of {question: [answer, answer, answer]} '''
 
         llm = self.reflection_llm
 
+        # FIXME: include the prompt and response when truncating
         text = self.truncate(text, model=self.reasoning_model)
         if not text:
             log.warning('reflect():', "No text, skipping.")
-            return None
+            return {}
 
         prompt = PromptTemplate.from_template(
             f"""
@@ -342,9 +346,43 @@ Your response MUST only include JSON, no other text or preamble. Your response M
             ret = json.loads(reply)
         except json.decoder.JSONDecodeError as err:
             log.error("reflect(): Could not parse JSON response:", str(err))
-            return None
+            return {}
 
         return ret
+
+    def extract_triples(
+        self,
+        history: str,
+        line: str
+    ) -> Union[list[tuple[str, str, str]]]:
+        ''' Ask the LLM to extract triples from line, using history for context. Returns a list of (subject, predicate, object) tuples. '''
+
+        llm = self.reflection_llm
+
+        # FIXME: include the prompt and response when truncating
+        history = self.truncate(history, model=self.reasoning_model)
+        if not line:
+            log.warning('extract_triples():', "No text, skipping.")
+            return []
+
+        prompt = PromptTemplate.from_template(triple_extraction_template)
+        chain = prompt | llm | StrOutputParser() # type: ignore
+        reply = chain.invoke({"input": line, "history": history})
+
+        log.debug("extract_triples():", reply)
+
+        triples = []
+        for triple in [item.strip() for item in reply.lstrip('Output:').split('|')]:
+            # Triples they are. Like Yoda the LLM speaks.
+            try:
+                (subj, obj, pred) = [item.strip() for item in triple.split('#', maxsplit=2)]
+            except ValueError:
+                log.warning("Malformed triple, skipping:", triple)
+                continue
+            # I prefer Subject, Predicate, Object
+            triples.append((subj, pred, obj))
+
+        return triples
 
     def cosine_similarity(self, a, b):
         ''' Cosine similarity for two embeddings '''

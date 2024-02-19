@@ -19,6 +19,10 @@ from bs4 import BeautifulSoup
 
 from scheduler import Scheduler
 
+# Knowledge graph
+from persyn.interaction.graph import KnowledgeGraph
+
+# Wikipedia
 from persyn.langchain.zim import ZimWrapper
 
 # Autobus, forked from https://github.com/schuyler/autobus
@@ -66,6 +70,7 @@ class CNS:
         self.lm = LanguageModel(persyn_config)
         self.datasources = {}
         self.rs = requests.Session()
+        self.kg = KnowledgeGraph(persyn_config)
 
         if self.config.get('zim'):
             for cfgtool in self.config.zim: # type: ignore
@@ -90,7 +95,7 @@ class CNS:
         chat = Chat(persyn_config=self.config, service=event.service)
 
         start = get_cur_ts()
-        log.warning("💬 chat_received")
+        log.info(f"💬 chat_received: {event.speaker_name}:", event.msg)
 
         # TODO: Decide whether to delay reply, or to reply at all?
 
@@ -120,6 +125,15 @@ class CNS:
             focus=event.msg
         )
         autobus.publish(wp)
+
+        # Build the knowledge graph
+        st = SaveTriples(
+            service=event.service,
+            channel=event.channel,
+            line=f"{event.speaker_name}: {event.msg}",
+            convo_id=convo_id
+        )
+        autobus.publish(st)
 
         log.warning("💬 chat_received done in:", f"{elapsed(start, get_cur_ts()):0.2f} sec")
 
@@ -390,6 +404,18 @@ class CNS:
         #     # only one at a time
         #     return
 
+    def save_triples(self, event: SaveTriples) -> None:
+        ''' Save triples to the knowledge graph '''
+
+        convo = self.recall.fetch_convo(event.service, event.channel)
+        if convo is None or self.recall.convo_expired(convo_id=convo.id):
+            log.warning("📐 No convo, nothing to save.")
+            return
+
+        triples = self.lm.extract_triples(self.recall.convo_dialog(convo), event.line)
+        log.info(f"💬 Saving {len(triples)} triples:", str(triples))
+        self.kg.save_triples(triples)
+
     def reflect_on(self, event: Reflect) -> None:
         ''' Reflect on recent events. Inspired by Stanford's Smallville, https://arxiv.org/abs/2304.03442 '''
         convo_id = event.convo_id or cns.recall.get_last_convo_id(event.service, event.channel)
@@ -538,7 +564,13 @@ async def photo_event(event):
 async def wikipedia_event(event):
     ''' Dispatch Wikipedia event. '''
     log.debug("Wikipedia", event)
-    schedule.once(dt.timedelta(seconds=1), cns.check_wikipedia, kwargs={'event':event})
+    schedule.once(dt.timedelta(seconds=3), cns.check_wikipedia, kwargs={'event':event})
+
+@autobus.subscribe(SaveTriples)
+async def save_triples_event(event):
+    ''' Dispatch SaveTriples event. '''
+    log.debug("SaveTriples", event)
+    schedule.once(dt.timedelta(seconds=1), cns.save_triples, kwargs={'event':event})
 
 # Autobus scheduled events. These must also be top-level functions.
 

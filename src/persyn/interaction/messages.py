@@ -98,3 +98,10 @@ class Photo(Event):
     channel: str
     prompt: str
     size: Optional[tuple[int, int]] = (1024, 1024)
+
+class SaveTriples(Event):
+    ''' Save triples to the knowledge graph. '''
+    service: str
+    channel: str
+    line: str
+    convo_id: Optional[str] = None

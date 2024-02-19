@@ -123,13 +123,12 @@ def test_create_lc_memories(recall):
     memories = recall.create_lc_memories()
 
     # Verify dictionary with correct keys
-    expected_keys = ["combined", "summary", "kg", "redis"]
+    expected_keys = ["combined", "summary", "redis"]
     assert all(key in memories for key in expected_keys)
 
     # Verify correct types
     assert isinstance(memories["combined"], CombinedMemory)
     assert isinstance(memories["summary"], ConversationSummaryBufferMemory)
-    assert isinstance(memories["kg"], ConversationKGMemory)
     assert isinstance(memories["redis"], Redis)
 
 def test_set_and_fetch_convo_meta(recall, cleanup):

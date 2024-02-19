@@ -4,19 +4,19 @@
 import re
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List
 
 from neomodel import DateTimeProperty, StringProperty, UniqueIdProperty, IntegerProperty, RelationshipTo, StructuredRel, Q
 from neomodel import config as neomodel_config
 from neomodel import db as neomodel_db
 from neomodel.contrib import SemiStructuredNode
 
+# Prompt completion
+from persyn.interaction.completion import LanguageModel
+
 from persyn.utils.color_logging import log
 
 from persyn.utils.config import PersynConfig
-
-
-# believes desires owns supports criticizes trusts knows ignores challenges values respects shares doubts rejects learns hopes contains
 
 # Neomodel (Neo4j) graph classes
 class PredicateRel(StructuredRel):
@@ -43,6 +43,10 @@ class Thing(Entity):
     ''' Any old thing '''
     created = DateTimeProperty(default_now=True)
 
+class Concept(Entity):
+    ''' Something less tangible '''
+    created = DateTimeProperty(default_now=True)
+
 @dataclass
 class KnowledgeGraph:
     ''' Knowledge graph support by Neo4j '''
@@ -53,7 +57,7 @@ class KnowledgeGraph:
             neomodel_config.DATABASE_URL = self.config.memory.neo4j.url
         self.bot_id = self.config.id.guid
         self.name = self.config.id.name
-
+        self.lm = LanguageModel(self.config)  # pylint: disable=invalid-name
 
     def delete_all_nodes(self, confirm=False) -> bool:
         ''' Delete all graph nodes for this bot '''
@@ -77,6 +81,10 @@ class KnowledgeGraph:
         ''' Return a Thing node with the given name '''
         return Thing(name=name, bot_id=self.bot_id).save()
 
+    def concept(self, name) -> Concept:
+        ''' Return a Concept node with the given name '''
+        return Concept(name=name, bot_id=self.bot_id).save()
+
     def fetch_all_nodes(self, node_type=None) -> List[Any]:
         ''' Return all graph nodes for this bot '''
         if node_type is None:
@@ -87,6 +95,8 @@ class KnowledgeGraph:
             return Place.nodes.filter(Q(bot_id=self.bot_id))
         if node_type == 'Thing':
             return Thing.nodes.filter(Q(bot_id=self.bot_id))
+        if node_type == 'Concept':
+            return Concept.nodes.filter(Q(bot_id=self.bot_id))
         raise RuntimeError(f'Invalid node_type: {node_type}')
 
     def find_node(self, name, node_type=None) -> List[Any]:
@@ -99,6 +109,8 @@ class KnowledgeGraph:
             return Place.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
         if node_type == 'Thing':
             return Thing.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
+        if node_type == 'Concept':
+            return Concept.nodes.filter(Q(bot_id=self.bot_id), Q(name=name))
         raise RuntimeError(f'Invalid node_type: {node_type}')
 
     @staticmethod
@@ -138,47 +150,53 @@ class KnowledgeGraph:
 
         return ret
 
-    def triples_to_kg(self, triples: List[tuple[str, str, str]], types: Optional[dict[str, str]]=None):
+    def save_triples(self, triples: List[tuple[str, str, str]]):
         '''
         Convert subject, predicate, object triples into a Neo4j graph.
-        If types is provided, map {name: type} for the subjects and objects.
+        Subject and object may include an optional [type].
         '''
         if not hasattr(self.config.memory, 'neo4j'):
-            log.error('፨ No graph server defined, cannot call triples_to_kg()')
+            log.error('፨ No graph server defined, cannot call save_triples()')
             return
 
-        if types is None:
-            types = {}
-
-        for k, v in types.items():
-            if v == 'Person':
-                types[k] = Person
-            elif v == 'Place':
-                types[k] = Place
-            elif v == 'Thing':
-                types[k] = Thing
-            else:
-                log.error('፨ Invalid type:', k)
-                return
+        types = {
+            'Person': Person,
+            'Place': Place,
+            'Thing': Thing,
+            'Concept': Concept
+        }
 
         with neomodel_db.transaction:
             for triple in triples:
                 (subj, pred, obj) = triple
 
-                if subj not in types:
-                    types[subj] = Entity
+                if '[' in subj:
+                    match = re.search(r'(.*) ?\[(.*)\]', subj)
+                    subj, subj_type = match.group(1), match.group(2)
+                    if subj_type not in types:
+                        log.warning(f'፨ Unknown subject type: {subj_type}, coercing to Concept')
+                        subj_type = 'Concept'
+                else:
+                    subj_type = 'Concept'
 
-                if obj not in types:
-                    types[obj] = Entity
+                if '[' in obj:
+                    match = re.search(r'(.*) ?\[(.*)\]', obj)
+                    obj, obj_type = match.group(1), match.group(2)
+                    if obj_type not in types:
+                        log.warning(f'፨ Unknown object type: {obj_type}, coercing to Concept')
+                        obj_type = 'Concept'
+                else:
+                    obj_type = 'Concept'
 
                 try:
-                    the_subject = types[subj].nodes.get(name=subj, bot_id=self.bot_id)
-                except types[subj].DoesNotExist:
-                    the_subject = types[subj](name=subj, bot_id=self.bot_id).save()
+                    the_subject = types[subj_type].nodes.get(name=subj, bot_id=self.bot_id)
+                except types[subj_type].DoesNotExist:
+                    the_subject = types[subj_type](name=subj, bot_id=self.bot_id).save()
 
                 try:
-                    the_object = types[obj].nodes.get(name=obj, bot_id=self.bot_id)
-                except types[obj].DoesNotExist:
-                    the_object = types[obj](name=obj, bot_id=self.bot_id).save()
+                    the_object = types[obj_type].nodes.get(name=obj, bot_id=self.bot_id)
+                except types[obj_type].DoesNotExist:
+                    the_object = types[obj_type](name=obj, bot_id=self.bot_id).save()
 
+                # TODO: If the link already exists, increment the weight
                 the_subject.link.connect(the_object, {'verb': pred})

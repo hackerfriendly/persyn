@@ -17,16 +17,8 @@ def test_fetch_all_nodes(cleanup):
     kg.person("Test Person")
     kg.place("Test Place")
     kg.thing("Test Thing")
-    assert len(kg.fetch_all_nodes()) == 3
-
-def test_fetch_all_nodes_person(cleanup):
-    assert len(kg.fetch_all_nodes('Person')) >= 0
-
-def test_fetch_all_nodes_place(cleanup):
-    assert len(kg.fetch_all_nodes('Place')) >= 0
-
-def test_fetch_all_nodes_thing(cleanup):
-    assert len(kg.fetch_all_nodes('Thing')) >= 0
+    kg.concept("Test Concept")
+    assert len(kg.fetch_all_nodes()) == 4
 
 def test_fetch_all_nodes_invalid(cleanup):
     with pytest.raises(RuntimeError):
@@ -107,11 +99,11 @@ def test_shortest_path_place_thing(cleanup):
     place1.delete()
     thing1.delete()
 
-def test_triples_to_kg(cleanup):
+def test_save_triples(cleanup):
     triples = [("Person1", "knows", "Person2"), ("Person2", "lives", "Place1")]
 
     # Default type mapping, everything is an Entity
-    kg.triples_to_kg(triples)
+    kg.save_triples(triples)
     assert len(kg.fetch_all_nodes()) == 3
     assert len(kg.fetch_all_nodes('Person')) == 0
     assert len(kg.fetch_all_nodes('Place')) == 0
@@ -122,7 +114,7 @@ def test_triples_to_kg(cleanup):
     assert len(kg.fetch_all_nodes()) == 0
 
     # Use the correct types
-    kg.triples_to_kg(triples, {'Person1': 'Person', 'Person2': 'Person', 'Place1': 'Place'})
+    kg.save_triples(triples, {'Person1': 'Person', 'Person2': 'Person', 'Place1': 'Place'})
 
     assert len(kg.fetch_all_nodes('Person')) == 2
     assert len(kg.fetch_all_nodes('Place')) == 1

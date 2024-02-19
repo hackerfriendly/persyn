@@ -15,8 +15,7 @@ from redis.commands.search.query import Query
 
 from langchain.memory import (
     CombinedMemory,
-    ConversationSummaryBufferMemory,
-    ConversationKGMemory
+    ConversationSummaryBufferMemory
 )
 
 from langchain.vectorstores.redis import Redis
@@ -166,14 +165,6 @@ class Recall:
             # human_prefix is set on first use
         )
 
-        kg_memory = ConversationKGMemory(
-            llm=self.lm.summary_llm,
-            input_key="input",
-            memory_key="kg",
-            ai_prefix=self.config.id.name,
-            # human_prefix is set on first use
-        )
-
         rds = Redis(
             redis_url=self.config.memory.redis,
             index_name=self.convo_prefix,
@@ -182,12 +173,11 @@ class Recall:
             key_prefix=self.convo_prefix,
         )
 
-        combined_memory = CombinedMemory(memories=[summary_memory, kg_memory])
+        combined_memory = CombinedMemory(memories=[summary_memory])
 
         return {
                 'combined': combined_memory,
                 'summary': summary_memory,
-                'kg': kg_memory,
                 'redis': rds
         }
 
@@ -254,7 +244,6 @@ class Recall:
 
         convo.memories=self.create_lc_memories()
         convo.memories['summary'].human_prefix = speaker_name
-        convo.memories['kg'].human_prefix = speaker_name
 
         return convo
 
