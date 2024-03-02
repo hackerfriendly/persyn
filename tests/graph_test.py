@@ -114,7 +114,9 @@ def test_save_triples(cleanup):
     assert len(kg.fetch_all_nodes()) == 0
 
     # Use the correct types
-    kg.save_triples(triples, {'Person1': 'Person', 'Person2': 'Person', 'Place1': 'Place'})
+    triples = [("Person1 [Person]", "knows", "Person2 [Person]"), ("Person2 [Person]", "lives", "Place1 [Place]")]
+
+    kg.save_triples(triples)
 
     assert len(kg.fetch_all_nodes('Person')) == 2
     assert len(kg.fetch_all_nodes('Place')) == 1
