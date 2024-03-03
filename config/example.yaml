@@ -6,18 +6,22 @@ id:
   name: My Bot
   # Every bot gets its own GUID. Run uuidgen to get a fresh one.
   guid: fed828a8-64c8-4f46-a15d-93973724614c
-  # Photo used for Discord and other places
-  avatar: https://hackerfriendly.com/pub/anna/anna.png
+  # Photo used for Discord and other chat services.
+  avatar: https://hackerfriendly.com/pub/4ca20c2c-9c3e-4959-829b-12e85cd77ac8.jpg
 
-# Required: Redis. Neo4j is optional but recommended.
+# Required: Redis.
 memory:
   # Location of your redis server (default)
-  # redis: redis://localhost:6379/
+  redis: redis://localhost:6379/
   # If using a simple password with the default user:
   # redis: redis://:secret@my.redis.server:6379/
   # Using SSL and an ACL with a username:
   # redis: rediss://user:secret@my.redis.server:6379/
-  # redis:
+
+  # Text embedding model. Only ada-002 is supported at the moment, text-embedding-3-small support is planned.
+  # text-embedding-3-large needs a change to the Redis schema, or shortening from 3072 to 1536 bytes.
+  # https://openai.com/blog/new-embedding-models-and-api-updates
+  embedding_model: text-embedding-ada-002
 
   # Optional, but recommended: Neo4j graph database server for knowledge graph generation.
   # neo4j:
@@ -28,8 +32,13 @@ memory:
   # Conversations end when this many seconds pass in silence
   conversation_interval: 600
 
+  # Context size. When building prompts, use up to this fraction of available tokens for additional context.
+  # This improves results but it can get expensive for large models like Claude or GPT-4 beta.
+  context: 0.5
+
   # Treshold for retrieving relevant memories. 0 = perfect match, 1 = random
-  relevance: 0.06
+  relevance: 0.15
+
 
 # Required: Prompt completion options. Enable one of these.
 #
@@ -37,23 +46,38 @@ memory:
 
 # Currently only openai is supported, others are experimental.
 completion:
-  engine: openai
-  api_key: sk-your-api_key-goes-here
-  # Choose an OpenAI model:
-  #   https://beta.openai.com/docs/models/overview
-  #   https://beta.openai.com/docs/model-index-for-researchers
-  # The default completion model
-  completion_model: gpt-3.5-turbo
-  # The chat model is used for opinions, sentiment, knowledge graph building,
-  # and other non-chat functions. Required.
-  chat_model: gpt-3.5-turbo
-  # The summary model is used for summarizing conversations, predicting replies,
-  # and assessing goals.
-  # Optional since it can cost significantly more than the chat model. Falls back
-  # to the chat_model if undefined.
-  # summary_model: gpt-4
-  minimum_quality_score: -2.0
-  temperature: 0.99
+  # OpenAI API key, required for gpt* models
+  openai_api_key: sk-your-openapi-key-here
+
+  # Anthropic API key, required for claude* models
+  anthropic_key: sk-your-anthropic-key-here
+
+  # The chat model is used for general conversation. Use OpenAI, since Claude breaks character far too often.
+  chat_model: gpt-4-turbo-preview
+  chat_temperature: 0.8
+
+  # The reasoning model is used for summaries and inference
+  reasoning_model: gpt-4-turbo-preview
+  # reasoning_model: gpt-3.5-turbo
+  reasoning_temperature: 0.0
+
+  # The Anthropic model is used for fact checking and reducing hallucinations
+  anthropic_model: claude-2.1
+  anthropic_temperature: 0.0
+
+  # Other supported models:
+  # gpt-3.5-turbo, gpt-4, gpt-4-1106-preview, gpt-4-0125-preview, claude-2.0, ...
+
+# Required: Central Nervous System. Used for asynchronous events, image generation,
+# and posting images to social media. It also requires autobus, https://github.com/schuyler/autobus/
+cns:
+  # Location of a redis server to use for pub/sub (default)
+  redis: redis://localhost:6379/
+  # If using a simple password with the default user:
+  # redis: redis://:secret@my.redis.server:6379/
+  # Using SSL and an ACL with a username:
+  # redis: rediss://user:secret@my.redis.server:6379/
+  workers: 1
 
 # Required: Personality server (interact-server.py)
 interact:
@@ -66,15 +90,9 @@ interact:
   # include in each completion prompt. This can give the bot a more nuanced and
   # characteristic tone.
   #
-  # character: |
-  #   Persyn is a fun-loving bot. She frequently uses sarcasm and irony to get a
-  #   laugh out of people. She likes ice cream and dancing the tango.
-
-  # Optional: Provide a custom output filter (in the form of a Python
-  # expression) that is applied to all interaction replies. For example, a bot
-  # that doesn't use capitalization or commas:
-  #
-  # filter: re.sub(r",", "", reply.lower())
+  character: >
+    You are a fun-loving Persyn bot. You frequently use sarcasm and irony to get a
+    laugh out of people. You like ice cream and dancing the tango.
 
 # Chat modules. Enable one or more of these to talk to your bot.
 chat:
@@ -100,67 +118,49 @@ chat:
 
   # Mastodon chat module
   #
+  # Mastodon support. Chat and post generated images from other services to Mastodon. Optional.
   # Run masto-login.py to authenticate and generate the MASTODON_SECRET file.
-  #
   # mastodon:
   #   instance: "https://mastodon.social/"
   #   secret: "/path/to/your/user.secret"
   #   toot_length: 500
 
-# Optional, but recommended: Spacy NLP model. https://spacy.io/models/en
+# Spacy NLP model. https://spacy.io/models/en
 # en_core_web_sm is the minimum (default) required.
 # Other options are en_core_web_md, en_core_web_lg, or en_core_web_trf.
 # These are more accurate for some tasks, but require significantly more resources.
 spacy:
   model: "en_core_web_sm"
 
-# Required: Central Nervous System. Used for asynchronous events, image generation,
-# and posting images to social media. It also requires autobus, https://github.com/schuyler/autobus/
-cns:
-  # Location of your redis server (default)
-  # redis: redis://localhost:6379/
-  # If using a simple password with the default user:
-  # redis: redis://:secret@my.redis.server:6379/
-  # Using SSL and an ACL with a username:
-  # redis: rediss://user:secret@my.redis.server:6379/
-  workers: 1
 
 # # Optional: Dream image generation multiplexer (dreams.py)
 # dreams:
 #   url: http://localhost:8002
-#
-# If running locally, specify the number of local workers to launch.
+
+#   # If running locally, specify the number of local workers to launch.
 #   workers: 1
-#
-#   # Image upload SCP destination and URL. Only required if generating images.
+
+#   # Image upload destination and URL.
 #   # dest_path can use user@server:path/ or a local /path/ if you're using a local webserver.
 #   upload:
 #     url_base: https://server.example.com/images/
-#     dest_path: user@server.example.com:htdocs/images/
-#     opts:
 
-#   # Optional: Stable Diffusion image server (sdd.py) for image generation
-#   stable_diffusion:
+#   # For SCP destinations, use user@server:path/ and any additional options to pass to scp.
+#   #   dest_path: user@server.example.com:htdocs/images/
+#   #   opts:
 
-  # Stable Diffusion image server (stable_diffusion.py)
-  # stable_diffusion:
-    # url: http://localhost:8003
-    ## If you're running it locally, add a worker and choose a model.
-    # workers: 1
-    # model: "stabilityai/stable-diffusion-2-1"
-    # model: "prompthero/openjourney"
+#   # For S3 destinations, use the bucket name and path.
+#   #   bucket: my-bucket
+#   #   dest_path: images/
 
-#   # Optional: Prompt Parrot server for 🪄 prompt enhancement (prompt-parrot.py)
-#   parrot:
-#     url: http://localhost:8004
-#
-#   If running locally, specify the number of local workers to launch.
-#     workers: 1
+#   # Size of the images generated by DALL-E 3
+#   dalle:
+#     width: 1792
+#     height: 1024
+#     quality: hd
 
-#   # Optional: BLIP server for image recognition (captions.py)
-#   captions:
-#     url: http://localhost:8005
-#
-#   If running locally, specify the number of local workers to launch.
-#     workers: 1
-
+# Kiwix / Zim for offline Wikipedia, https://kiwix.org/en/
+# zim:
+#   Wikipedia:
+#     description: Look up general facts and data using Wikipedia for up-to-date information.
+#     path: http://my-kiwix-server:9999/viewer#wikipedia_en_all_maxi/

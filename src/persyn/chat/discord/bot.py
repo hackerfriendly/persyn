@@ -158,7 +158,7 @@ def synthesize_image(ctx, prompt, engine="dall-e", width=None, height=None, styl
 def fetch_and_post_to_masto(url, toot):
     ''' Download the image at URL and post it to Mastodon '''
     if not mastodon.client:
-        log.error("🎺 Mastodon not configured, check your yaml config.")
+        log.error("🎺 Mastodon is not configured, check your config file.")
         return
 
     media_ids = []
