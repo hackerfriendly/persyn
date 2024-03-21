@@ -18,7 +18,7 @@ import numpy as np
 
 from ftfy import fix_text
 
-from langchain_community.chat_models import ChatAnthropic
+from langchain_anthropic import ChatAnthropic
 from langchain_community.graphs import Neo4jGraph
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_openai.llms.base import BaseOpenAI
@@ -76,6 +76,9 @@ max_tokens_for_model = {
     "text-davinci-003": 4097,
 
     # Anthropic, https://docs.anthropic.com/claude/reference/input-and-output-sizes
+    "claude-3-opus-20240229": 200000,
+    "claude-3-sonnet-20240229": 200000,
+    "claude-3-haiku-20240307": 200000,
     "claude-2.0": 200000,
     "claude-2.1": 100000,
     "claude-instant-2.1": 100000,
@@ -459,9 +462,12 @@ Your response MUST only include JSON, no other text or preamble. Your response M
             log.warning('query_graph():', "No graph, skipping.")
             return ''
 
-        reply = self.graph_qa_chain.invoke({'query': query})
-        if 'result' in reply:
-            return reply['result']
+        try:
+            reply = self.graph_qa_chain.invoke({'query': query})
+            if 'result' in reply:
+                return reply['result']
+        except ValueError as err:
+            log.error('query_graph():', str(err))
         return ''
 
     @staticmethod
