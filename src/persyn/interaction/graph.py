@@ -118,7 +118,7 @@ class KnowledgeGraph:
         ''' Return name sanitized as alphanumeric, space, or comma only, max 64 characters. '''
         return re.sub(r"[^a-zA-Z0-9, ]+", '', name.strip())[:64].strip()
 
-    def shortest_path(self, src, dest, src_type=None, dest_type=None, min_distance=0):
+    def shortest_path(self, src, dest, src_type=None, dest_type=None) -> list[Any]:
         '''
         Find the shortest path between two nodes, if any.
         If src_type or dest_type are specified, constrain the search to nodes of that type.
@@ -135,8 +135,6 @@ class KnowledgeGraph:
         (a{':'+src_type if src_type else ''} {{name: '{safe_src}', bot_id: '{self.bot_id}'}}),
         (b{':'+dest_type if dest_type else ''} {{name: '{safe_dest}', bot_id: '{self.bot_id}'}}),
         p = shortestPath((a)-[*]-(b))
-        WITH p
-        WHERE length(p) > {min_distance}
         RETURN p
         """
 
@@ -149,6 +147,31 @@ class KnowledgeGraph:
             ret.append((rel.start_node.get('name'), rel.get('verb'), rel.end_node.get('name')))
 
         return ret
+
+    def find_path(self, src, dest, src_type=None, dest_type=None, via=None, via_type=None) -> list[Any]:
+        '''
+        Find a path between two nodes, if any. If via is specified, require the path to pass through a node of that type.
+        If src_type, dest_type, or via_type are specified, constrain the search to nodes of that type.
+        Returns a list of triples (string names of nodes and edges) encountered along the path.
+        '''
+        safe_src = self.safe_name(src)
+        safe_dest = self.safe_name(dest)
+
+        if safe_src == safe_dest:
+            return []
+
+        if via is None:
+            return self.shortest_path(safe_src, safe_dest, src_type, dest_type)
+
+        safe_via = self.safe_name(via)
+
+        a_to_b = self.shortest_path(safe_src, safe_via, src_type, via_type)
+        b_to_c = self.shortest_path(safe_dest, safe_via, dest_type, via_type)
+
+        if not a_to_b or not b_to_c:
+            return []
+
+        return a_to_b + b_to_c[::-1]
 
     def save_triples(self, triples: List[tuple[str, str, str]]):
         '''
