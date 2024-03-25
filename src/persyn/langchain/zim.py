@@ -146,7 +146,6 @@ class ZimWrapper(BaseModel):
                 return None
             entry = web.text
 
-        ret = []
         if self.zim:
             soup = BeautifulSoup(bytes(entry.get_item().content).decode("UTF-8"), features="lxml")
         else:
@@ -156,20 +155,7 @@ class ZimWrapper(BaseModel):
         for table in soup.select('table'):
             table.decompose()
 
-        # title and summary
-        ret.append(soup.select_one('.mw-headline').text)
-        ret.append(soup.select_one('.mf-section-0').text)
-
-        # remaining content
-        for elm in soup.find_all('details'):
-            # Skip the ending
-            if elm.find('summary').text in ['See also', 'References', 'Further reading']:
-                break
-
-            ret.append(elm.text)
-            ret.append('\n')
-
-        return self._cleanup('\n'.join(ret))
+        return self._cleanup(soup.get_text())
 
     def _page_to_document(self, page_title: str, wiki_page: Any) -> Document:
         ''' not implemented '''
